@@ -25,3 +25,6 @@ models/DMDNet.pth
 faceswap/
 .vscode/
 switch_states.json
+
+# Blueprint work orders (task-specific, may contain sensitive details)
+docs/blueprint/work-orders/
