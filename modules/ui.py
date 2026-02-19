@@ -1,4 +1,5 @@
 import os
+import threading
 import webbrowser
 import customtkinter as ctk
 from typing import Callable, Tuple
@@ -400,24 +401,39 @@ def _add_camera_row(root: ctk.CTk) -> None:
     camera_label = ctk.CTkLabel(root, text=_("Select Camera:"))
     camera_label.place(relx=0.1, rely=0.92, relwidth=0.2, relheight=0.05)
 
-    available_cameras = get_available_cameras()
-    camera_indices, camera_names = available_cameras
-
-    if not camera_names or camera_names[0] == "No cameras found":
-        camera_variable = ctk.StringVar(value="No cameras found")
-        camera_optionmenu = ctk.CTkOptionMenu(
-            root,
-            variable=camera_variable,
-            values=["No cameras found"],
-            state="disabled",
-        )
-    else:
-        camera_variable = ctk.StringVar(value=camera_names[0])
-        camera_optionmenu = ctk.CTkOptionMenu(
-            root, variable=camera_variable, values=camera_names
-        )
-
+    # Start with a placeholder while cameras are enumerated in the background
+    camera_variable = ctk.StringVar(value=_("Detecting cameras..."))
+    camera_optionmenu = ctk.CTkOptionMenu(
+        root,
+        variable=camera_variable,
+        values=[_("Detecting cameras...")],
+        state="disabled",
+    )
     camera_optionmenu.place(relx=0.35, rely=0.92, relwidth=0.25, relheight=0.05)
+
+    # camera_indices is captured by the live_button command below
+    camera_indices: list = []
+    camera_names: list = []
+
+    def _on_cameras_found(indices, names):
+        """Called on the main thread once enumeration is complete."""
+        camera_indices.clear()
+        camera_indices.extend(indices)
+        camera_names.clear()
+        camera_names.extend(names)
+        if names and names[0] != "No cameras found":
+            camera_variable.set(names[0])
+            camera_optionmenu.configure(values=names, state="normal")
+            live_button.configure(state="normal")
+        else:
+            camera_variable.set(_("No cameras found"))
+            camera_optionmenu.configure(values=[_("No cameras found")], state="disabled")
+
+    def _enumerate_cameras():
+        indices, names = get_available_cameras()
+        root.after(0, lambda: _on_cameras_found(indices, names))
+
+    threading.Thread(target=_enumerate_cameras, daemon=True).start()
 
     live_button = ctk.CTkButton(
         root,
@@ -431,11 +447,7 @@ def _add_camera_row(root: ctk.CTk) -> None:
                 else None
             ),
         ),
-        state=(
-            "normal"
-            if camera_names and camera_names[0] != "No cameras found"
-            else "disabled"
-        ),
+        state="disabled",  # enabled once cameras are detected
     )
     live_button.place(relx=0.65, rely=0.92, relwidth=0.2, relheight=0.05)
 
@@ -742,59 +754,47 @@ def update_preview(frame_number: int = 0) -> None:
 
 
 def get_available_cameras():
-    """Returns a list of available camera names and indices."""
+    """Returns a list of available camera names and indices.
+
+    On Windows, uses pygrabber FilterGraph for named device enumeration.
+    On macOS and Linux, uses a bounded cv2.VideoCapture probe loop (avoids
+    CAP_AVFOUNDATION enumeration which can segfault on macOS).
+    """
     if platform.system() == "Windows":
         try:
             graph = FilterGraph()
             devices = graph.get_input_devices()
-
             camera_indices = list(range(len(devices)))
             camera_names = devices
 
             if not camera_names:
-                test_indices = [-1, 0]
-                working_cameras = []
-
-                for idx in test_indices:
+                # Fallback: probe indices 0 and 1
+                camera_indices = []
+                camera_names = []
+                for idx in range(2):
                     cap = cv2.VideoCapture(idx)
                     if cap.isOpened():
-                        working_cameras.append(f"Camera {idx}")
+                        camera_indices.append(idx)
+                        camera_names.append(f"Camera {idx}")
                         cap.release()
-
-                if working_cameras:
-                    return test_indices[: len(working_cameras)], working_cameras
 
             if not camera_names:
                 return [], ["No cameras found"]
-
             return camera_indices, camera_names
-
         except Exception as e:
             print(f"Error detecting cameras: {str(e)}")
             return [], ["No cameras found"]
     else:
+        # Covers macOS (Darwin) and Linux — safe bounded probe loop
         camera_indices = []
         camera_names = []
-
-        if platform.system() == "Darwin":
-            # Avoid enumerate_cameras(CAP_AVFOUNDATION) — it probes indices
-            # 0-99 through OpenCV's AVFoundation backend which intermittently
-            # segfaults on macOS when invalid device indices are probed.
-            for i in range(10):
-                cap = cv2.VideoCapture(i)
-                if cap.isOpened():
-                    camera_indices.append(i)
-                    camera_names.append(f"Camera {i}")
-                    cap.release()
-        else:
-            for i in range(10):
-                cap = cv2.VideoCapture(i)
-                if cap.isOpened():
-                    camera_indices.append(i)
-                    camera_names.append(f"Camera {i}")
-                    cap.release()
+        for i in range(10):
+            cap = cv2.VideoCapture(i)
+            if cap.isOpened():
+                camera_indices.append(i)
+                camera_names.append(f"Camera {i}")
+                cap.release()
 
         if not camera_names:
             return [], ["No cameras found"]
-
         return camera_indices, camera_names
