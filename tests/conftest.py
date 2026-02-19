@@ -29,9 +29,17 @@ def _stub_ml_packages():
         cluster_stub.find_closest_centroid = MagicMock(return_value=(0, None))
         sys.modules["modules.cluster_analysis"] = cluster_stub
 
+    # tkinter needs TkVersion as a float
+    if "tkinter" not in sys.modules:
+        tk_mock = MagicMock()
+        tk_mock.TkVersion = 8.6
+        sys.modules["tkinter"] = tk_mock
+    sys.modules.setdefault("_tkinter", MagicMock())
+
     for name in [
         "onnxruntime", "torch", "tensorflow",
         "gfpgan", "basicsr", "facexlib",
+        "customtkinter",
     ]:
         if name not in sys.modules:
             sys.modules[name] = MagicMock()
