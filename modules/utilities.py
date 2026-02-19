@@ -4,8 +4,10 @@ import mimetypes
 import os
 import platform
 import shutil
+import ssl
 import subprocess
 import urllib
+import urllib.request
 from pathlib import Path
 from typing import List, Any
 from tqdm import tqdm
@@ -291,7 +293,8 @@ def conditional_download(download_directory_path: str, urls: List[str], expected
             download_directory_path, os.path.basename(url)
         )
         if not os.path.exists(download_file_path):
-            request = urllib.request.urlopen(url)  # type: ignore[attr-defined]
+            ssl_context = ssl.create_default_context()
+            request = urllib.request.urlopen(url, context=ssl_context)  # type: ignore[attr-defined]
             total = int(request.headers.get("Content-Length", 0))
             with tqdm(
                 total=total,
