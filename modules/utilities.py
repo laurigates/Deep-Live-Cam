@@ -268,7 +268,7 @@ def clean_temp(target_path: str) -> None:
 
 
 def has_image_extension(image_path: str) -> bool:
-    return image_path.lower().endswith(("png", "jpg", "jpeg"))
+    return image_path.lower().endswith((".png", ".jpg", ".jpeg", ".gif", ".bmp"))
 
 
 def is_image(image_path: str) -> bool:
