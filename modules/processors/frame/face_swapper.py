@@ -43,11 +43,11 @@ models_dir = os.path.join(
 )
 
 def pre_check() -> bool:
-    download_directory_path = abs_dir
+    download_directory_path = models_dir
     conditional_download(
         download_directory_path,
         [
-            "https://huggingface.co/hacksider/deep-live-cam/blob/main/inswapper_128_fp16.onnx"
+            "https://huggingface.co/hacksider/deep-live-cam/resolve/main/inswapper_128_fp16.onnx"
         ],
     )
     return True
