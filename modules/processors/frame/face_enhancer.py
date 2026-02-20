@@ -20,7 +20,11 @@ from modules.utilities import (
 )
 
 FACE_ENHANCER = None
-THREAD_SEMAPHORE = threading.Semaphore()
+# Allow up to min(4, cpu_count) concurrent GFPGAN calls to better utilise multi-core hardware.
+# A value of 1 (the previous default) serialised all enhancement and left cores idle.
+# Cap at 8 to avoid saturating VRAM on systems with many cores.
+_SEMAPHORE_COUNT = min(max(1, (os.cpu_count() or 1)), 8)
+THREAD_SEMAPHORE = threading.Semaphore(_SEMAPHORE_COUNT)
 THREAD_LOCK = threading.Lock()
 NAME = "DLC.FACE-ENHANCER"
 
@@ -145,16 +149,22 @@ def enhance_face(temp_frame: Frame) -> Frame:
 
 
 def process_frame(source_face: Face | None, temp_frame: Frame) -> Frame:
-    """Processes a frame: enhances face if detected."""
-    # We don't strictly need source_face for enhancement only
-    # Check if any face exists to potentially save processing time, though GFPGAN also does detection.
-    # For simplicity and ensuring enhancement is attempted if possible, we can rely on enhance_face.
-    # target_face = get_one_face(temp_frame) # This gets only ONE face
-    # If you want to enhance ONLY if a face is detected by your *own* analyser first:
-    # has_face = get_one_face(temp_frame) is not None # Or use get_many_faces
-    # if has_face:
-    #     temp_frame = enhance_face(temp_frame)
-    # else: # Enhance regardless, let GFPGAN handle detection
+    """Processes a frame: enhances face if detected.
+
+    We run a lightweight InsightFace detection before calling GFPGAN to avoid
+    paying the full GFPGAN inference cost on frames that contain no face.
+    GFPGAN runs its own internal detection, so this is a redundant detection,
+    but it is cheap compared to the full enhancement pass and allows early-exit
+    on face-free frames.
+
+    TODO: if the frame processor pipeline is ever refactored to pass detected
+    face bounding boxes between stages, the InsightFace call here can be
+    replaced by reusing the bboxes produced by face_swapper, eliminating the
+    redundancy entirely.
+    """
+    target_face = get_one_face(temp_frame)
+    if target_face is None:
+        return temp_frame
     temp_frame = enhance_face(temp_frame)
     return temp_frame
 
