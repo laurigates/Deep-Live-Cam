@@ -48,6 +48,12 @@ models:
         echo "GFPGANv1.4.pth already exists, skipping."
     fi
 
+
+# Convert ONNX swap model to CoreML .mlpackage for native ANE dispatch (macOS only)
+[group: "setup"]
+convert-coreml:
+    uv run scripts/convert_to_coreml.py
+
 ##########
 # Run
 ##########

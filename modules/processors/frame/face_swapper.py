@@ -116,12 +116,28 @@ def get_face_swapper() -> Any:
                         providers=providers_config,
                     )
                     update_status("Face swapper model loaded successfully.", NAME)
+
+                    # Prefer direct CoreML model (.mlpackage) over ONNX Runtime CoreML EP
+                    # when running on Apple Silicon — eliminates runtime ONNX→CoreML
+                    # conversion overhead and enables proper ANE dispatch.
+                    # Generate with: uv run scripts/convert_to_coreml.py
+                    mlpackage_path = os.path.join(models_dir, "inswapper_128.mlpackage")
+                    if IS_APPLE_SILICON and os.path.exists(mlpackage_path):
+                        try:
+                            from modules.coreml_session import CoreMLSessionWrapper
+                            coreml_session = CoreMLSessionWrapper.load(mlpackage_path)
+                            if coreml_session is not None:
+                                FACE_SWAPPER.session = coreml_session
+                                update_status("Using direct CoreML model (bypassing ONNX Runtime).", NAME)
+                        except Exception as cml_err:
+                            update_status(f"CoreML session load failed, using ONNX Runtime: {cml_err}", NAME)
+
                     # Warmup inference: trigger CoreML JIT compilation and compute plan
                     # caching so the first real inference call has no latency spike.
                     if any(
                         (p[0] if isinstance(p, tuple) else p) == "CoreMLExecutionProvider"
                         for p in providers_config
-                    ):
+                    ) or (IS_APPLE_SILICON and os.path.exists(mlpackage_path)):
                         try:
                             session = FACE_SWAPPER.session
                             input_feed = {
