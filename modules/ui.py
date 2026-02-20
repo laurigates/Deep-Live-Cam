@@ -1,4 +1,5 @@
 import os
+import queue
 import threading
 import webbrowser
 import customtkinter as ctk
@@ -163,6 +164,8 @@ def save_switch_states():
         "show_fps": modules.globals.show_fps,
         "mouth_mask": modules.globals.mouth_mask,
         "show_mouth_mask_box": modules.globals.show_mouth_mask_box,
+        "source_path": modules.globals.source_path,
+        "target_path": modules.globals.target_path,
     }
     with open(_state_file_path(), "w") as f:
         json.dump(switch_states, f)
@@ -188,8 +191,33 @@ def load_switch_states():
         modules.globals.show_mouth_mask_box = switch_states.get(
             "show_mouth_mask_box", False
         )
+        # Restore last-used paths; validate existence before accepting.
+        saved_source = switch_states.get("source_path")
+        if saved_source and os.path.isfile(saved_source):
+            modules.globals.source_path = saved_source
+        saved_target = switch_states.get("target_path")
+        if saved_target and os.path.isfile(saved_target):
+            modules.globals.target_path = saved_target
     except FileNotFoundError:
         pass
+
+
+def _restore_recent_paths() -> None:
+    """Populate image labels from saved paths after labels have been created."""
+    global RECENT_DIRECTORY_SOURCE, RECENT_DIRECTORY_TARGET
+    if modules.globals.source_path and is_image(modules.globals.source_path):
+        RECENT_DIRECTORY_SOURCE = os.path.dirname(modules.globals.source_path)
+        image = render_image_preview(modules.globals.source_path, (200, 200))
+        source_label.configure(image=image)
+    if modules.globals.target_path:
+        if is_image(modules.globals.target_path):
+            RECENT_DIRECTORY_TARGET = os.path.dirname(modules.globals.target_path)
+            image = render_image_preview(modules.globals.target_path, (200, 200))
+            target_label.configure(image=image)
+        elif is_video(modules.globals.target_path):
+            RECENT_DIRECTORY_TARGET = os.path.dirname(modules.globals.target_path)
+            frame = render_video_preview(modules.globals.target_path, (200, 200))
+            target_label.configure(image=frame)
 
 
 def _setup_window(destroy: Callable) -> ctk.CTk:
@@ -415,8 +443,7 @@ def _add_camera_row(root: ctk.CTk) -> None:
     camera_indices: list = []
     camera_names: list = []
 
-    def _on_cameras_found(indices, names):
-        """Called on the main thread once enumeration is complete."""
+    def _finish_camera_probe(indices, names):
         camera_indices.clear()
         camera_indices.extend(indices)
         camera_names.clear()
@@ -429,11 +456,37 @@ def _add_camera_row(root: ctk.CTk) -> None:
             camera_variable.set(_("No cameras found"))
             camera_optionmenu.configure(values=[_("No cameras found")], state="disabled")
 
-    def _enumerate_cameras():
-        indices, names = get_available_cameras()
-        root.after(0, lambda: _on_cameras_found(indices, names))
+    # Thread-safe queue: background thread posts results, main thread polls.
+    # root.after() called from a non-main thread is unreliable in CustomTkinter.
+    _camera_queue: queue.Queue = queue.Queue()
+
+    def _poll_camera_queue():
+        try:
+            indices, names = _camera_queue.get_nowait()
+            _finish_camera_probe(indices, names)
+        except queue.Empty:
+            root.after(100, _poll_camera_queue)
+
+    if platform.system() == "Darwin":
+        # Camera enumeration via cv2.VideoCapture on macOS is unsafe:
+        # - Invalid indices trigger OBSENSOR (OrbbecSDK) which corrupts global
+        #   OpenCV state and causes SIGSEGV on the first probe.
+        # - Running enumeration in a subprocess (subprocess.run) also crashes
+        #   the parent: fork() after cv2/AVFoundation initialisation in a
+        #   multithreaded process is unsafe on macOS (Objective-C runtime).
+        #
+        # Skip probing entirely. FaceTime (index 0) is always present; a second
+        # camera (index 1) covers the common USB-webcam case. The user can pick
+        # the correct index from the dropdown if they have more cameras.
+        def _enumerate_cameras():
+            _camera_queue.put(([0, 1], ["Camera 0", "Camera 1"]))
+    else:
+        def _enumerate_cameras():
+            indices, names = get_available_cameras()
+            _camera_queue.put((indices, names))
 
     threading.Thread(target=_enumerate_cameras, daemon=True).start()
+    root.after(100, _poll_camera_queue)
 
     live_button = ctk.CTkButton(
         root,
@@ -543,6 +596,7 @@ def create_root(start: Callable[[], None], destroy: Callable[[], None]) -> ctk.C
     _add_camera_row(root)
     _add_sliders(root)
     _add_status_bar(root)
+    _restore_recent_paths()
     return root
 
 
@@ -567,8 +621,9 @@ def create_preview(parent: ctk.CTkToplevel) -> ctk.CTkToplevel:
 
 
 def update_status(text: str) -> None:
-    status_label.configure(text=_(text))
-    ROOT.update()
+    # May be called from background threads (e.g. face swapper model loading).
+    # Tkinter is not thread-safe: schedule the label update on the main thread.
+    ROOT.after(0, lambda t=text: status_label.configure(text=_(t)))
 
 
 def update_tumbler(var: str, value: bool) -> None:
@@ -595,6 +650,7 @@ def select_source_path() -> None:
         RECENT_DIRECTORY_SOURCE = os.path.dirname(modules.globals.source_path)
         image = render_image_preview(modules.globals.source_path, (200, 200))
         source_label.configure(image=image)
+        save_switch_states()
     else:
         modules.globals.source_path = None
         source_label.configure(image=None)
@@ -622,6 +678,7 @@ def swap_faces_paths() -> None:
 
     target_image = render_image_preview(modules.globals.target_path, (200, 200))
     target_label.configure(image=target_image)
+    save_switch_states()
 
 
 def select_target_path() -> None:
@@ -638,11 +695,13 @@ def select_target_path() -> None:
         RECENT_DIRECTORY_TARGET = os.path.dirname(modules.globals.target_path)
         image = render_image_preview(modules.globals.target_path, (200, 200))
         target_label.configure(image=image)
+        save_switch_states()
     elif is_video(target_path):
         modules.globals.target_path = target_path
         RECENT_DIRECTORY_TARGET = os.path.dirname(modules.globals.target_path)
         video_frame = render_video_preview(target_path, (200, 200))
         target_label.configure(image=video_frame)
+        save_switch_states()
     else:
         modules.globals.target_path = None
         target_label.configure(image=None)
@@ -757,8 +816,10 @@ def get_available_cameras():
     """Returns a list of available camera names and indices.
 
     On Windows, uses pygrabber FilterGraph for named device enumeration.
-    On macOS and Linux, uses a bounded cv2.VideoCapture probe loop (avoids
-    CAP_AVFOUNDATION enumeration which can segfault on macOS).
+    On Linux, uses a bounded cv2.VideoCapture probe loop with CAP_ANY.
+    On macOS, this function is not used — see _add_camera_row which probes
+    cameras incrementally on the main thread using CAP_AVFOUNDATION to avoid
+    the OBSENSOR backend that segfaults on invalid indices.
     """
     if platform.system() == "Windows":
         try:
@@ -785,15 +846,24 @@ def get_available_cameras():
             print(f"Error detecting cameras: {str(e)}")
             return [], ["No cameras found"]
     else:
-        # Covers macOS (Darwin) and Linux — safe bounded probe loop
+        # Linux only (macOS uses CAP_AVFOUNDATION on the main thread; see
+        # _add_camera_row). Use CAP_ANY so OpenCV manages threading internally.
+        # Break after 3 consecutive failures to tolerate non-contiguous indices
+        # (e.g. virtual cameras at index 3 with nothing at 1 and 2).
         camera_indices = []
         camera_names = []
+        consecutive_failures = 0
         for i in range(10):
             cap = cv2.VideoCapture(i)
             if cap.isOpened():
                 camera_indices.append(i)
                 camera_names.append(f"Camera {i}")
                 cap.release()
+                consecutive_failures = 0
+            else:
+                consecutive_failures += 1
+                if consecutive_failures >= 3:
+                    break
 
         if not camera_names:
             return [], ["No cameras found"]
