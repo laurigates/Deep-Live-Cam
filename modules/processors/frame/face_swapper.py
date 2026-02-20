@@ -645,10 +645,9 @@ def process_frames(
             # traceback.print_exc()
             result_frame = temp_frame # Use original frame on processing error
 
-        # Write the result back to the same frame path with optimized compression
+        # Write the result back to the same frame path
         try:
-            # Use PNG compression level 3 (faster) instead of default 9
-            write_success = cv2.imwrite(temp_frame_path, result_frame, [cv2.IMWRITE_PNG_COMPRESSION, 3])
+            write_success = cv2.imwrite(temp_frame_path, result_frame)
             if not write_success:
                 print(f"{NAME}: Error: Failed to write processed frame to {temp_frame_path}")
         except Exception as write_e:
