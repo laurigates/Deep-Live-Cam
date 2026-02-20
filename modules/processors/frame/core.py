@@ -66,7 +66,15 @@ def set_frame_processors_modules_from_ui(frame_processors: List[str]) -> None:
                  print(f"Warning: Error removing frame processor {frame_processor}: {e}")
 
 def multi_process_frame(source_path: str, temp_frame_paths: List[str], process_frames: Callable[[str, List[str], Any], None], progress: Any = None) -> None:
-    """Process frames in parallel using all workers continuously."""
+    """Process frames in parallel using all workers continuously.
+
+    ThreadPoolExecutor is intentional here: ONNX Runtime releases the GIL
+    during inference, so threads get true parallelism on the dominant cost.
+    ProcessPoolExecutor would require re-loading models in each worker process
+    (2-5s × N workers startup overhead) and has documented ONNX Runtime
+    multiprocessing issues (onnxruntime#10786). For typical video lengths the
+    per-process model loading cost exceeds any GIL-relief benefit.
+    """
     max_workers = modules.globals.execution_threads
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
