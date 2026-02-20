@@ -100,7 +100,7 @@ def get_face_swapper() -> Any:
                                 "SpecializationStrategy": "FastPrediction",
                                 "AllowLowPrecisionAccumulationOnGPU": 1,
                                 "EnableOnSubgraphs": 1,
-                                "RequireStaticShapes": 0,
+                                "RequireStaticShapes": 1,
                                 "MaximumCacheSize": 1024 * 1024 * 512,  # 512MB cache
                             }
                         ))
