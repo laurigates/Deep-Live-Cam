@@ -6,24 +6,31 @@ from modules.gpu_processing import gpu_gaussian_blur, gpu_resize, gpu_cvt_color
 
 def apply_color_transfer(source, target):
     """
-    Apply color transfer from target to source image
+    Apply color transfer from target to source image using LAB color space.
+    Uses float32 throughout for performance (sufficient precision for 8-bit images).
     """
-    source = cv2.cvtColor(source, cv2.COLOR_BGR2LAB).astype("float32")
-    target = cv2.cvtColor(target, cv2.COLOR_BGR2LAB).astype("float32")
+    # Convert to float32 [0,1] range for proper LAB conversion
+    source_f32 = source.astype(np.float32) / 255.0
+    target_f32 = target.astype(np.float32) / 255.0
 
-    source_mean, source_std = cv2.meanStdDev(source)
-    target_mean, target_std = cv2.meanStdDev(target)
+    source_lab = cv2.cvtColor(source_f32, cv2.COLOR_BGR2LAB)
+    target_lab = cv2.cvtColor(target_f32, cv2.COLOR_BGR2LAB)
 
-    # Reshape mean and std to be broadcastable
-    source_mean = source_mean.reshape(1, 1, 3)
-    source_std = source_std.reshape(1, 1, 3)
-    target_mean = target_mean.reshape(1, 1, 3)
-    target_std = target_std.reshape(1, 1, 3)
+    source_mean, source_std = cv2.meanStdDev(source_lab)
+    target_mean, target_std = cv2.meanStdDev(target_lab)
 
-    # Perform the color transfer
-    source = (source - source_mean) * (target_std / source_std) + target_mean
+    # Reshape mean and std to be broadcastable (already float64 from meanStdDev, cast to f32)
+    source_mean = source_mean.reshape(1, 1, 3).astype(np.float32)
+    source_std = np.maximum(source_std.reshape(1, 1, 3), 1e-6).astype(np.float32)
+    target_mean = target_mean.reshape(1, 1, 3).astype(np.float32)
+    target_std = target_std.reshape(1, 1, 3).astype(np.float32)
 
-    return cv2.cvtColor(np.clip(source, 0, 255).astype("uint8"), cv2.COLOR_LAB2BGR)
+    # Perform the color transfer in LAB space
+    result_lab = (source_lab - source_mean) * (target_std / source_std) + target_mean
+
+    # Convert back to BGR and uint8
+    result_bgr = cv2.cvtColor(result_lab, cv2.COLOR_LAB2BGR)
+    return np.clip(result_bgr * 255.0, 0, 255).astype(np.uint8)
 
 def create_face_mask(face: Face, frame: Frame) -> np.ndarray:
     mask = np.zeros(frame.shape[:2], dtype=np.uint8)
@@ -48,16 +55,14 @@ def create_face_mask(face: Face, frame: Frame) -> np.ndarray:
         # Create a slightly larger convex hull for padding
         face_outline = landmarks[0:33]
         hull = cv2.convexHull(face_outline)
-        hull_padded = []
-        for point in hull:
-            x, y = point[0]
-            center = np.mean(face_outline, axis=0)
-            direction = np.array([x, y]) - center
-            direction = direction / np.linalg.norm(direction)
-            padded_point = np.array([x, y]) + direction * padding
-            hull_padded.append(padded_point)
-
-        hull_padded = np.array(hull_padded, dtype=np.int32)
+        # Vectorized hull padding — expand each point outward from center
+        center = np.mean(face_outline, axis=0, dtype=np.float32)
+        hull_pts = hull.reshape(-1, 2).astype(np.float32)
+        directions = hull_pts - center
+        norms = np.linalg.norm(directions, axis=1, keepdims=True)
+        norms = np.maximum(norms, 1e-6)  # avoid division by zero
+        directions /= norms
+        hull_padded = (hull_pts + directions * padding).astype(np.int32)
 
         # Fill the padded convex hull
         cv2.fillConvexPoly(mask, hull_padded, 255)
@@ -472,26 +477,28 @@ def apply_mask_area(
             box_height // modules.globals.mask_feather_ratio,
         )
         feathered_mask = cv2.GaussianBlur(
-            polygon_mask.astype(float), (0, 0), feather_amount
+            polygon_mask.astype(np.float32), (0, 0), feather_amount
         )
-        feathered_mask = feathered_mask / feathered_mask.max()
+        max_val = feathered_mask.max()
+        if max_val > 1e-6:
+            feathered_mask *= np.float32(1.0 / max_val)
 
         # Apply additional smoothing to the mask edges
         feathered_mask = cv2.GaussianBlur(feathered_mask, (5, 5), 1)
 
         face_mask_roi = face_mask[min_y:max_y, min_x:max_x]
-        combined_mask = feathered_mask * (face_mask_roi / 255.0)
+        combined_mask = feathered_mask * (face_mask_roi.astype(np.float32) * np.float32(1.0 / 255.0))
 
-        combined_mask = combined_mask[:, :, np.newaxis]
+        combined_mask_3ch = combined_mask[:, :, np.newaxis]
+        inv_mask = np.float32(1.0) - combined_mask_3ch
         blended = (
-            color_corrected_area * combined_mask + roi * (1 - combined_mask)
+            color_corrected_area * combined_mask_3ch + roi * inv_mask
         ).astype(np.uint8)
 
         # Apply face mask to blended result
-        face_mask_3channel = (
-            np.repeat(face_mask_roi[:, :, np.newaxis], 3, axis=2) / 255.0
-        )
-        final_blend = blended * face_mask_3channel + roi * (1 - face_mask_3channel)
+        face_mask_f32 = face_mask_roi[:, :, np.newaxis].astype(np.float32) * np.float32(1.0 / 255.0)
+        face_mask_3channel = np.broadcast_to(face_mask_f32, blended.shape)
+        final_blend = blended * face_mask_3channel + roi * (np.float32(1.0) - face_mask_3channel)
 
         frame[min_y:max_y, min_x:max_x] = final_blend.astype(np.uint8)
     except Exception as e:
