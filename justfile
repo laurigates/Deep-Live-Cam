@@ -59,6 +59,11 @@ convert-coreml:
 benchmark-mlx *args:
     uv run scripts/benchmark_mlx.py {{ args }}
 
+# Check NumPy BLAS configuration (useful on macOS ARM to verify Accelerate is in use)
+[group: "setup"]
+check-blas:
+    uv run python -c "from modules.blas_check import check_apple_silicon_blas, log_blas_config; import logging; logging.basicConfig(level=logging.INFO); log_blas_config(); check_apple_silicon_blas()"
+
 ##########
 # Run
 ##########
