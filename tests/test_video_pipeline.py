@@ -88,48 +88,91 @@ class TestJPEGIntermediateFrames:
 class TestProcessPoolExecutor:
     """Issue #10: Verify ProcessPoolExecutor is used for video batch mode."""
 
-    def test_multi_process_frame_uses_process_pool_for_video(self):
-        """Video batch mode should use ProcessPoolExecutor."""
-        from modules.processors.frame.core import multi_process_frame
+    def test_core_imports_process_pool_executor(self):
+        """core module should have ProcessPoolExecutor available."""
+        from modules.processors.frame import core
+        assert hasattr(core, "ProcessPoolExecutor")
+
+    def test_multi_process_frame_uses_process_pool(self):
+        """multi_process_frame should instantiate ProcessPoolExecutor."""
+        import modules.processors.frame.core as core
         import modules.globals
 
-        modules.globals.execution_threads = 2
+        modules.globals.execution_threads = 1
 
-        mock_process_frames = MagicMock()
-        with patch("modules.processors.frame.core.ProcessPoolExecutor") as mock_ppe:
-            mock_executor = MagicMock()
-            mock_ppe.return_value.__enter__ = MagicMock(return_value=mock_executor)
-            mock_ppe.return_value.__exit__ = MagicMock(return_value=False)
-            mock_executor.submit.return_value = MagicMock()
-            mock_executor.submit.return_value.result.return_value = None
+        # Patch at module level to intercept the class
+        original_ppe = core.ProcessPoolExecutor
+        calls = []
 
-            multi_process_frame(
-                "/fake/source.jpg",
-                ["/tmp/0001.jpg", "/tmp/0002.jpg"],
-                mock_process_frames,
-                progress=None,
-            )
-            mock_ppe.assert_called_once()
+        class FakeProcessPoolExecutor:
+            def __init__(self, **kwargs):
+                calls.append(("init", kwargs))
+                self._executor = original_ppe(max_workers=1)
 
-    def test_multi_process_frame_live_uses_thread_pool(self):
-        """Live mode should continue using ThreadPoolExecutor."""
-        from modules.processors.frame.core import multi_process_frame_live
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                self._executor.shutdown(wait=True)
+                return False
+
+            def submit(self, fn, *args, **kwargs):
+                from concurrent.futures import Future
+                f = Future()
+                f.set_result(None)
+                return f
+
+        core.ProcessPoolExecutor = FakeProcessPoolExecutor
+        try:
+            core.multi_process_frame("/fake/src.jpg", ["/tmp/0001.jpg"], lambda *a: None, progress=None)
+            assert len(calls) == 1, "ProcessPoolExecutor should be instantiated once"
+        finally:
+            core.ProcessPoolExecutor = original_ppe
+
+    def test_multi_process_frame_live_exists_and_uses_threads(self):
+        """multi_process_frame_live should exist and use ThreadPoolExecutor."""
+        from modules.processors.frame import core
+        assert hasattr(core, "multi_process_frame_live"), "multi_process_frame_live must exist for live mode"
+
         import modules.globals
+        modules.globals.execution_threads = 1
 
-        modules.globals.execution_threads = 2
+        original_tpe = core.ThreadPoolExecutor
+        calls = []
 
-        mock_process_frames = MagicMock()
-        with patch("modules.processors.frame.core.ThreadPoolExecutor") as mock_tpe:
-            mock_executor = MagicMock()
-            mock_tpe.return_value.__enter__ = MagicMock(return_value=mock_executor)
-            mock_tpe.return_value.__exit__ = MagicMock(return_value=False)
-            mock_executor.submit.return_value = MagicMock()
-            mock_executor.submit.return_value.result.return_value = None
+        class FakeThreadPoolExecutor:
+            def __init__(self, **kwargs):
+                calls.append(("init", kwargs))
 
-            multi_process_frame_live(
-                "/fake/source.jpg",
-                ["/tmp/0001.jpg"],
-                mock_process_frames,
-                progress=None,
-            )
-            mock_tpe.assert_called_once()
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+            def submit(self, fn, *args, **kwargs):
+                from concurrent.futures import Future
+                f = Future()
+                f.set_result(None)
+                return f
+
+        core.ThreadPoolExecutor = FakeThreadPoolExecutor
+        try:
+            core.multi_process_frame_live("/fake/src.jpg", ["/tmp/0001.jpg"], lambda *a: None, progress=None)
+            assert len(calls) == 1, "ThreadPoolExecutor should be instantiated once"
+        finally:
+            core.ThreadPoolExecutor = original_tpe
+
+    def test_process_video_delegates_to_multi_process_frame(self):
+        """process_video should call multi_process_frame (ProcessPoolExecutor path)."""
+        from modules.processors.frame import core
+
+        called_with = []
+        original = core.multi_process_frame
+        core.multi_process_frame = lambda *args, **kwargs: called_with.append(args)
+
+        try:
+            core.process_video("/src.jpg", ["/tmp/f1.jpg"], lambda *a: None)
+            assert len(called_with) == 1
+        finally:
+            core.multi_process_frame = original
