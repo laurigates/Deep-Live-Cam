@@ -1,7 +1,19 @@
 """Tests for NumPy BLAS configuration on Apple Silicon."""
+import io
+import contextlib
 import sys
 import platform
 import pytest
+
+
+def _get_numpy_config_string():
+    """Capture np.show_config() stdout output (it returns None)."""
+    import numpy as np
+
+    f = io.StringIO()
+    with contextlib.redirect_stdout(f):
+        np.show_config()
+    return f.getvalue()
 
 
 @pytest.mark.skipif(
@@ -10,16 +22,12 @@ import pytest
 )
 def test_numpy_uses_accelerate_blas():
     """Verify NumPy is using Apple Accelerate BLAS on macOS ARM."""
-    import numpy as np
+    config_str = _get_numpy_config_string().lower()
 
-    # Check if Accelerate is the BLAS implementation
-    config = np.show_config()
-    config_str = str(config)
-
-    # Should contain reference to Accelerate/vecLib
-    assert "accelerate" in config_str.lower() or "veclib" in config_str.lower(), \
+    assert "accelerate" in config_str or "veclib" in config_str, \
         "NumPy should use Apple Accelerate BLAS on macOS ARM64. " \
-        "To fix: install NumPy via conda with `libblas=*=*accelerate` or build from source"
+        "To fix: set no-binary-package = ['numpy'] in pyproject.toml " \
+        "and rebuild with: uv sync"
 
 
 @pytest.mark.skipif(
@@ -27,20 +35,19 @@ def test_numpy_uses_accelerate_blas():
     reason="Apple Accelerate BLAS only on Apple Silicon (macOS ARM64)"
 )
 def test_numpy_blas_not_openblas():
-    """Verify NumPy is NOT using OpenBLAS on Apple Silicon."""
-    import numpy as np
+    """Verify NumPy BLAS name is not OpenBLAS on Apple Silicon."""
+    config_str = _get_numpy_config_string().lower()
 
-    config = np.show_config()
-    config_str = str(config)
+    # Check the "name:" field specifically, not the entire output
+    # (the output always contains "openblas configuration:" as a field label)
+    import re
+    blas_name_match = re.search(r"blas:.*?name:\s*(\S+)", config_str, re.DOTALL)
+    assert blas_name_match, "Could not find BLAS name in numpy config"
+    blas_name = blas_name_match.group(1)
 
-    # Should NOT use OpenBLAS on Apple Silicon (suboptimal)
-    # Note: This may be too strict if there's a legitimate reason to use OpenBLAS,
-    # but the goal is to prefer Accelerate
-    if "openblas" in config_str.lower():
-        pytest.skip(
-            "NumPy is using OpenBLAS. Performance would benefit from Apple Accelerate. "
-            "To fix: install via conda with `libblas=*=*accelerate` or build from source"
-        )
+    assert blas_name != "openblas64" and blas_name != "openblas", \
+        f"NumPy BLAS is '{blas_name}' — should be 'accelerate' on Apple Silicon. " \
+        "Rebuild from source to use Apple Accelerate instead."
 
 
 def test_numpy_linear_algebra_performance():
@@ -48,8 +55,6 @@ def test_numpy_linear_algebra_performance():
     import numpy as np
     import time
 
-    # Create some matrices for typical face processing operations
-    # (embedding normalization, affine transforms)
     matrix_size = 512
     iterations = 100
 
@@ -61,6 +66,4 @@ def test_numpy_linear_algebra_performance():
         np.dot(A, B)
     elapsed = time.time() - start
 
-    # Just verify it runs without error
-    # Actual performance comparison would require baseline measurements
     assert elapsed > 0, "Matrix multiplication should complete"
