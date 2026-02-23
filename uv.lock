@@ -345,6 +345,9 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+rife = [
+    { name = "rife-ncnn-vulkan-python-tntwise" },
+]
 virtualcam = [
     { name = "pyvirtualcam" },
 ]
@@ -375,6 +378,7 @@ requires-dist = [
     { name = "psutil", specifier = "==5.9.8" },
     { name = "pygrabber", marker = "sys_platform == 'win32'" },
     { name = "pyvirtualcam", marker = "extra == 'virtualcam'", specifier = ">=0.14.0" },
+    { name = "rife-ncnn-vulkan-python-tntwise", marker = "extra == 'rife'", specifier = ">=1.4.0" },
     { name = "tensorflow", marker = "sys_platform != 'darwin'" },
     { name = "tk", specifier = "==0.1.0" },
     { name = "torch", marker = "sys_platform != 'darwin'", specifier = "==2.8.0+cu128", index = "https://download.pytorch.org/whl/cu128" },
@@ -383,7 +387,7 @@ requires-dist = [
     { name = "torchvision", marker = "sys_platform == 'darwin'" },
     { name = "typing-extensions", specifier = ">=4.8.0" },
 ]
-provides-extras = ["virtualcam"]
+provides-extras = ["virtualcam", "rife"]
 
 [package.metadata.requires-dev]
 dev = [{ name = "pytest", specifier = ">=9.0.2" }]
@@ -1519,6 +1523,18 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/74/99/a4cab2acbb884f80e558b0771e97e21e939c5dfb460f488d19df485e8298/rich-14.3.2.tar.gz", hash = "sha256:e712f11c1a562a11843306f5ed999475f09ac31ffb64281f73ab29ffdda8b3b8", size = 230143, upload-time = "2026-02-01T16:20:47.908Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/ef/45/615f5babd880b4bd7d405cc0dc348234c5ffb6ed1ea33e152ede08b2072d/rich-14.3.2-py3-none-any.whl", hash = "sha256:08e67c3e90884651da3239ea668222d19bea7b589149d8014a21c633420dbb69", size = 309963, upload-time = "2026-02-01T16:20:46.078Z" },
+]
+
+[[package]]
+name = "rife-ncnn-vulkan-python-tntwise"
+version = "1.4.5"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pillow" },
+]
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/8b/4f/ff0a1774c1463e3d14225744af21d59c4ac6fb597541d39a5c8610ff38c7/rife_ncnn_vulkan_python_tntwise-1.4.5-cp310-cp310-manylinux1_x86_64.whl", hash = "sha256:46e0aa3892f075e88513b2e2aac530199e5fae13a33e6852022e06bde6ba3955", size = 19785154, upload-time = "2025-01-12T22:49:12.219Z" },
+    { url = "https://files.pythonhosted.org/packages/70/ce/dd85214ac01ff68fe1590d5f0a9bf622269cce5927d39ca4e1fe808606d7/rife_ncnn_vulkan_python_tntwise-1.4.5-cp310-cp310-win_amd64.whl", hash = "sha256:b55af9c5ed8ac9414786b424dec577a3c0d59da7be7d52e502afc5fd817988ab", size = 40026335, upload-time = "2025-01-12T22:49:19.824Z" },
 ]
 
 [[package]]
