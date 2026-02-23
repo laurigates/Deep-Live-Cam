@@ -1,7 +1,6 @@
 """Tests for the RIFE frame interpolation module."""
 import os
 import sys
-import types
 from unittest.mock import patch, MagicMock
 
 import pytest
@@ -11,12 +10,20 @@ from modules.rife_interpolation import (
     _binary_name,
     _build_command,
     _count_frames,
+    _get_backend,
     find_binary,
     find_model_dir,
+    has_native_binding,
     pre_check,
+    interpolate_frames,
     RIFE_DIR,
     DEFAULT_MODEL,
 )
+
+
+# ---------------------------------------------------------------------------
+# Binary name
+# ---------------------------------------------------------------------------
 
 
 class TestBinaryName:
@@ -31,6 +38,11 @@ class TestBinaryName:
     def test_windows_binary_name(self):
         with patch.object(sys, "platform", "win32"):
             assert _binary_name() == "rife-ncnn-vulkan.exe"
+
+
+# ---------------------------------------------------------------------------
+# Binary detection
+# ---------------------------------------------------------------------------
 
 
 class TestFindBinary:
@@ -52,6 +64,11 @@ class TestFindBinary:
         with patch("modules.rife_interpolation.shutil.which", return_value=None), \
              patch("modules.rife_interpolation.RIFE_DIR", "/nonexistent/path"):
             assert find_binary() is None
+
+
+# ---------------------------------------------------------------------------
+# Model dir detection
+# ---------------------------------------------------------------------------
 
 
 class TestFindModelDir:
@@ -76,32 +93,74 @@ class TestFindModelDir:
             assert find_model_dir("rife-v4.25") is None
 
 
+# ---------------------------------------------------------------------------
+# Backend detection
+# ---------------------------------------------------------------------------
+
+
+class TestBackendDetection:
+    def test_native_preferred_over_cli(self):
+        with patch("modules.rife_interpolation.has_native_binding", return_value=True), \
+             patch("modules.rife_interpolation.find_binary", return_value="/usr/bin/rife"):
+            assert _get_backend() == "native"
+
+    def test_cli_fallback_when_no_native(self):
+        with patch("modules.rife_interpolation.has_native_binding", return_value=False), \
+             patch("modules.rife_interpolation.find_binary", return_value="/usr/bin/rife"):
+            assert _get_backend() == "cli"
+
+    def test_none_when_nothing_available(self):
+        with patch("modules.rife_interpolation.has_native_binding", return_value=False), \
+             patch("modules.rife_interpolation.find_binary", return_value=None):
+            assert _get_backend() == "none"
+
+    def test_has_native_binding_returns_false_without_package(self):
+        # The package is not installed in test env
+        assert has_native_binding() is False
+
+
+# ---------------------------------------------------------------------------
+# Pre-check
+# ---------------------------------------------------------------------------
+
+
 class TestPreCheck:
     def test_passes_when_disabled(self):
         modules.globals.rife_enabled = False
         assert pre_check() is True
 
-    def test_fails_when_no_binary(self):
+    def test_fails_when_no_backend(self):
         modules.globals.rife_enabled = True
-        with patch("modules.rife_interpolation.find_binary", return_value=None):
+        with patch("modules.rife_interpolation._get_backend", return_value="none"):
             assert pre_check() is False
         modules.globals.rife_enabled = False
 
-    def test_fails_when_no_model(self):
+    def test_passes_with_native_backend(self):
+        modules.globals.rife_enabled = True
+        with patch("modules.rife_interpolation._get_backend", return_value="native"):
+            assert pre_check() is True
+        modules.globals.rife_enabled = False
+
+    def test_passes_with_cli_backend_and_model(self):
         modules.globals.rife_enabled = True
         modules.globals.rife_model = "rife-v4.25-lite"
-        with patch("modules.rife_interpolation.find_binary", return_value="/usr/bin/rife-ncnn-vulkan"), \
+        with patch("modules.rife_interpolation._get_backend", return_value="cli"), \
+             patch("modules.rife_interpolation.find_model_dir", return_value="/models/rife-v4.25-lite"):
+            assert pre_check() is True
+        modules.globals.rife_enabled = False
+
+    def test_fails_with_cli_backend_no_model(self):
+        modules.globals.rife_enabled = True
+        modules.globals.rife_model = "rife-v4.25-lite"
+        with patch("modules.rife_interpolation._get_backend", return_value="cli"), \
              patch("modules.rife_interpolation.find_model_dir", return_value=None):
             assert pre_check() is False
         modules.globals.rife_enabled = False
 
-    def test_passes_when_binary_and_model_found(self):
-        modules.globals.rife_enabled = True
-        modules.globals.rife_model = "rife-v4.25-lite"
-        with patch("modules.rife_interpolation.find_binary", return_value="/usr/bin/rife-ncnn-vulkan"), \
-             patch("modules.rife_interpolation.find_model_dir", return_value="/models/rife-v4.25-lite"):
-            assert pre_check() is True
-        modules.globals.rife_enabled = False
+
+# ---------------------------------------------------------------------------
+# Frame counting
+# ---------------------------------------------------------------------------
 
 
 class TestCountFrames:
@@ -123,6 +182,11 @@ class TestCountFrames:
 
     def test_empty_directory(self, tmp_path):
         assert _count_frames(str(tmp_path)) == 0
+
+
+# ---------------------------------------------------------------------------
+# CLI command building
+# ---------------------------------------------------------------------------
 
 
 class TestBuildCommand:
@@ -159,6 +223,44 @@ class TestBuildCommand:
         assert cmd[cmd.index("-n") + 1] == "200"  # 50 * 4
 
 
+# ---------------------------------------------------------------------------
+# interpolate_frames dispatch
+# ---------------------------------------------------------------------------
+
+
+class TestInterpolateFramesDispatch:
+    def test_dispatches_to_native(self, tmp_path):
+        # Create dummy frames
+        for i in range(3):
+            (tmp_path / f"{i+1:04d}.jpg").touch()
+
+        with patch("modules.rife_interpolation._get_backend", return_value="native"), \
+             patch("modules.rife_interpolation._interpolate_native", return_value=5) as mock_native:
+            result = interpolate_frames(str(tmp_path))
+            assert result == 5
+            mock_native.assert_called_once_with(str(tmp_path))
+
+    def test_dispatches_to_cli(self, tmp_path):
+        for i in range(3):
+            (tmp_path / f"{i+1:04d}.jpg").touch()
+
+        with patch("modules.rife_interpolation._get_backend", return_value="cli"), \
+             patch("modules.rife_interpolation._interpolate_cli", return_value=5) as mock_cli:
+            result = interpolate_frames(str(tmp_path))
+            assert result == 5
+            mock_cli.assert_called_once_with(str(tmp_path))
+
+    def test_returns_none_when_no_backend(self, tmp_path):
+        with patch("modules.rife_interpolation._get_backend", return_value="none"):
+            result = interpolate_frames(str(tmp_path))
+            assert result is None
+
+
+# ---------------------------------------------------------------------------
+# Globals
+# ---------------------------------------------------------------------------
+
+
 class TestGlobals:
     def test_rife_globals_exist(self):
         assert hasattr(modules.globals, "rife_enabled")
@@ -166,7 +268,6 @@ class TestGlobals:
         assert hasattr(modules.globals, "rife_multiplier")
 
     def test_rife_defaults(self):
-        # Reset to defaults
         assert isinstance(modules.globals.rife_enabled, bool)
         assert isinstance(modules.globals.rife_model, str)
         assert isinstance(modules.globals.rife_multiplier, int)
