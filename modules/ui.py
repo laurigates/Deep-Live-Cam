@@ -175,6 +175,8 @@ def save_switch_states():
         "rife_enabled": modules.globals.rife_enabled,
         "rife_model": modules.globals.rife_model,
         "rife_multiplier": modules.globals.rife_multiplier,
+        "half_rate_enabled": modules.globals.half_rate_enabled,
+        "half_rate_interval": modules.globals.half_rate_interval,
         "source_path": modules.globals.source_path,
         "target_path": modules.globals.target_path,
     }
@@ -206,6 +208,8 @@ def load_switch_states():
         modules.globals.rife_enabled = switch_states.get("rife_enabled", False)
         modules.globals.rife_model = switch_states.get("rife_model", "rife-v4.25-lite")
         modules.globals.rife_multiplier = switch_states.get("rife_multiplier", 2)
+        modules.globals.half_rate_enabled = switch_states.get("half_rate_enabled", False)
+        modules.globals.half_rate_interval = switch_states.get("half_rate_interval", 2)
         # Restore last-used paths; validate existence before accepting.
         saved_source = switch_states.get("source_path")
         if saved_source and os.path.isfile(saved_source):
@@ -341,6 +345,7 @@ def _get_switch_defs():
             (_("Fix Blueish Cam"), "color_correction", False),
             (_("Show FPS"), "show_fps", False),
             (_("Virtual Camera"), "virtual_cam", False),
+            (_("Half-Rate RIFE"), "half_rate_enabled", False),
         ],
     }
 
@@ -404,8 +409,9 @@ def _add_settings_tabview(root: ctk.CTk, live_button: ctk.CTkButton) -> None:
     output_tab = tabview.tab("Output")
     _add_rife_controls_to_tab(output_tab, len(switch_defs["Output"]))
 
-    # Live Mode tab: add camera dropdown (live button is in action bar)
+    # Live Mode tab: add half-rate interval dropdown and camera dropdown
     live_tab = tabview.tab("Live Mode")
+    _add_half_rate_controls_to_tab(live_tab, len(switch_defs["Live Mode"]))
     _add_camera_to_tab(live_tab, root, len(switch_defs["Live Mode"]), live_button)
 
 
@@ -508,6 +514,31 @@ def _add_rife_controls_to_tab(tab: ctk.CTkFrame, num_switches: int) -> None:
     )
     multiplier_optionmenu.grid(
         row=start_row + 1, column=1, sticky="ew", padx=(0, 15), pady=2,
+    )
+
+
+def _add_half_rate_controls_to_tab(tab: ctk.CTkFrame, num_switches: int) -> None:
+    """Add half-rate keyframe interval dropdown to the Live Mode tab."""
+    start_row = (num_switches + 1) // 2 + 1
+
+    interval_label = ctk.CTkLabel(tab, text="Keyframe Interval:")
+    interval_label.grid(row=start_row, column=0, sticky="w", padx=15, pady=(15, 2))
+
+    interval_values = ["2", "3", "4"]
+    current_interval = getattr(modules.globals, "half_rate_interval", 2)
+    interval_variable = ctk.StringVar(value=str(current_interval))
+
+    def on_interval_change(choice):
+        modules.globals.half_rate_interval = int(choice)
+        save_switch_states()
+        update_status(f"Half-rate keyframe interval set to {choice}")
+
+    interval_optionmenu = ctk.CTkOptionMenu(
+        tab, variable=interval_variable, values=interval_values,
+        command=on_interval_change,
+    )
+    interval_optionmenu.grid(
+        row=start_row, column=1, sticky="ew", padx=(0, 15), pady=(15, 2),
     )
 
 

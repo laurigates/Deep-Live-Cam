@@ -61,6 +61,8 @@ def parse_args() -> None:
     program.add_argument('--live-mirror', help='The live camera display as you see it in the front-facing camera frame', dest='live_mirror', action='store_true', default=False)
     program.add_argument('--live-resizable', help='The live camera frame is resizable', dest='live_resizable', action='store_true', default=False)
     program.add_argument('--virtual-cam', help='output to virtual camera device', dest='virtual_cam', action='store_true', default=False)
+    program.add_argument('--half-rate', help='process face swap on every Nth frame, RIFE fills gaps (live mode)', dest='half_rate_enabled', action='store_true', default=False)
+    program.add_argument('--half-rate-interval', help='keyframe interval for half-rate mode (2=every other, 3=every third)', dest='half_rate_interval', type=int, default=2, choices=[2, 3, 4])
     program.add_argument('--rife', help='enable RIFE frame interpolation for video output', dest='rife_enabled', action='store_true', default=False)
     program.add_argument('--rife-model', help='RIFE model to use', dest='rife_model', default='rife-v4.25-lite', choices=['rife-v4.25', 'rife-v4.25-lite'])
     program.add_argument('--rife-multiplier', help='RIFE frame rate multiplier (2=double, 4=quadruple)', dest='rife_multiplier', type=int, default=2, choices=[2, 4])
@@ -98,6 +100,8 @@ def parse_args() -> None:
     modules.globals.execution_providers = decode_execution_providers(args.execution_provider)
     modules.globals.execution_threads = args.execution_threads
     modules.globals.lang = args.lang
+    modules.globals.half_rate_enabled = args.half_rate_enabled
+    modules.globals.half_rate_interval = args.half_rate_interval
     modules.globals.rife_enabled = args.rife_enabled
     modules.globals.rife_model = args.rife_model
     modules.globals.rife_multiplier = args.rife_multiplier

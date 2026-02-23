@@ -91,6 +91,11 @@ def _processing_thread_func(capture_queue, processed_queue, stop_event,
     prev_processed_frame = None
     rife_warned = False
 
+    # Half-rate mode state
+    keyframe_counter = 0
+    prev_keyframe = None
+    half_rate_warned = False
+
     while not stop_event.is_set():
         try:
             frame = capture_queue.get(timeout=0.05)
@@ -105,6 +110,23 @@ def _processing_thread_func(capture_queue, processed_queue, stop_event,
         # Publish the mirrored frame for the detection thread to pick up
         with detection_lock:
             latest_frame_holder[0] = temp_frame
+
+        # --- Half-rate mode: skip face processing on non-keyframes ---
+        half_rate = getattr(modules.globals, "half_rate_enabled", False)
+        half_rate_interval = getattr(modules.globals, "half_rate_interval", 2)
+
+        if not half_rate:
+            # Reset half-rate state when disabled
+            prev_keyframe = None
+            keyframe_counter = 0
+
+        is_keyframe = not half_rate or (keyframe_counter % half_rate_interval == 0)
+        keyframe_counter += 1
+
+        if not is_keyframe:
+            # Non-keyframe: skip face processing entirely.
+            # Interpolated fill-in frames are emitted when the next keyframe arrives.
+            continue
 
         if not modules.globals.map_faces:
             if modules.globals.source_path and modules.globals.source_path != last_source_path:
@@ -166,10 +188,57 @@ def _processing_thread_func(capture_queue, processed_queue, stop_event,
                 else:
                     temp_frame = frame_processor.process_frame(None, temp_frame)
 
+        # --- Half-rate RIFE fill-in: interpolate between keyframes ---
+        if half_rate and prev_keyframe is not None:
+            if not half_rate_warned and not has_native_binding():
+                print("[DLC.HALF-RATE] RIFE native binding not available — using frame repeat fallback")
+                half_rate_warned = True
+
+            if has_native_binding():
+                intermediates = interpolate_frame_pair(
+                    prev_keyframe, temp_frame, multiplier=half_rate_interval
+                )
+                for interp_frame in intermediates:
+                    frame_count += 1
+                    if modules.globals.virtual_cam:
+                        virtual_cam.send(interp_frame)
+                    try:
+                        processed_queue.put_nowait(interp_frame)
+                    except queue.Full:
+                        try:
+                            processed_queue.get_nowait()
+                        except queue.Empty:
+                            pass
+                        try:
+                            processed_queue.put_nowait(interp_frame)
+                        except queue.Full:
+                            pass
+            else:
+                # Fallback: repeat previous keyframe to fill the gap
+                for _ in range(half_rate_interval - 1):
+                    frame_count += 1
+                    if modules.globals.virtual_cam:
+                        virtual_cam.send(prev_keyframe)
+                    try:
+                        processed_queue.put_nowait(prev_keyframe)
+                    except queue.Full:
+                        try:
+                            processed_queue.get_nowait()
+                        except queue.Empty:
+                            pass
+                        try:
+                            processed_queue.put_nowait(prev_keyframe)
+                        except queue.Full:
+                            pass
+
+        if half_rate:
+            prev_keyframe = temp_frame.copy()
+
         # RIFE frame interpolation: emit intermediate frames between
         # the previous processed frame and the current one.
+        # Skipped when half-rate mode is active (half-rate uses its own RIFE fill-in).
         rife_enabled = getattr(modules.globals, "rife_enabled", False)
-        if rife_enabled and prev_processed_frame is not None:
+        if not half_rate and rife_enabled and prev_processed_frame is not None:
             if not rife_warned and not has_native_binding():
                 print("[DLC.RIFE] Native binding not available — live interpolation disabled")
                 rife_warned = True
@@ -194,7 +263,7 @@ def _processing_thread_func(capture_queue, processed_queue, stop_event,
                         except queue.Full:
                             pass
 
-        if rife_enabled:
+        if not half_rate and rife_enabled:
             prev_processed_frame = temp_frame.copy()
         else:
             prev_processed_frame = None

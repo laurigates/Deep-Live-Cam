@@ -93,4 +93,8 @@ rife_enabled: bool = False            # Toggle RIFE frame interpolation for vide
 rife_model: str = "rife-v4.25-lite"   # Model to use: "rife-v4.25" or "rife-v4.25-lite"
 rife_multiplier: int = 2              # Frame rate multiplier: 2 = double fps, 4 = quadruple fps
 
+# --- Half-Rate Face Processing with RIFE ---
+half_rate_enabled: bool = False       # Process face swap on every Nth frame, RIFE fills gaps
+half_rate_interval: int = 2           # Keyframe interval: process every Nth frame (2 = every other)
+
 # --- END OF FILE globals.py ---
