@@ -195,6 +195,11 @@ test-blas:
 # Maintenance
 ##########
 
+# Update CLI arguments section in README.md from --help output
+[group: "maintenance"]
+update-readme:
+    uv run scripts/update_readme_args.py
+
 # Clean up virtual environment and lock file
 [group: "maintenance"]
 [confirm("Remove virtual environment?")]
