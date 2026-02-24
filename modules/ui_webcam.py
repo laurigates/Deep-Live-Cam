@@ -90,6 +90,8 @@ def _processing_thread_func(capture_queue, processed_queue, stop_event,
     fps = 0
     prev_processed_frame = None
     rife_warned = False
+    half_rate_warned = False
+    frame_counter = 0
 
     while not stop_event.is_set():
         try:
@@ -106,70 +108,94 @@ def _processing_thread_func(capture_queue, processed_queue, stop_event,
         with detection_lock:
             latest_frame_holder[0] = temp_frame
 
-        if not modules.globals.map_faces:
-            if modules.globals.source_path and modules.globals.source_path != last_source_path:
-                last_source_path = modules.globals.source_path
-                source_image = get_one_face(cv2.imread(modules.globals.source_path))
+        # Half-rate processing: run face processing only on keyframes
+        half_rate_enabled = getattr(modules.globals, "half_rate_processing", False)
+        keyframe_interval = max(2, getattr(modules.globals, "keyframe_interval", 2))
+        frame_counter += 1
+        is_keyframe = (frame_counter % keyframe_interval) == 1
+        skip_face_processing = half_rate_enabled and not is_keyframe
 
-            # Read latest detection results — brief lock copy so we don't
-            # block the detection thread longer than necessary
-            with detection_lock:
-                cached_target_face = detection_result.get('target_face')
-                cached_many_faces = detection_result.get('many_faces')
+        if not skip_face_processing:
+            if not modules.globals.map_faces:
+                if modules.globals.source_path and modules.globals.source_path != last_source_path:
+                    last_source_path = modules.globals.source_path
+                    source_image = get_one_face(cv2.imread(modules.globals.source_path))
 
-            # Build a face list from cached detection for enhancer reuse
-            cached_faces_list = None
-            if cached_many_faces:
-                cached_faces_list = cached_many_faces
-            elif cached_target_face is not None:
-                cached_faces_list = [cached_target_face]
+                # Read latest detection results — brief lock copy so we don't
+                # block the detection thread longer than necessary
+                with detection_lock:
+                    cached_target_face = detection_result.get('target_face')
+                    cached_many_faces = detection_result.get('many_faces')
 
-            for frame_processor in frame_processors:
-                if frame_processor.NAME == "DLC.FACE-ENHANCER":
-                    if modules.globals.fp_ui.get("face_enhancer"):
-                        temp_frame = frame_processor.process_frame(None, temp_frame, faces=cached_faces_list)
-                elif frame_processor.NAME == "DLC.FACE-ENHANCER-GPEN256":
-                    if modules.globals.fp_ui.get("face_enhancer_gpen256"):
-                        temp_frame = frame_processor.process_frame(None, temp_frame, faces=cached_faces_list)
-                elif frame_processor.NAME == "DLC.FACE-ENHANCER-GPEN512":
-                    if modules.globals.fp_ui.get("face_enhancer_gpen512"):
-                        temp_frame = frame_processor.process_frame(None, temp_frame, faces=cached_faces_list)
-                elif frame_processor.NAME == "DLC.FACE-SWAPPER":
-                    # Use cached face positions to skip redundant detection
-                    swapped_bboxes = []
-                    if modules.globals.many_faces and cached_many_faces:
-                        opacity = getattr(modules.globals, "opacity", 1.0)
-                        result = temp_frame if opacity >= 1.0 else temp_frame.copy()
-                        for t_face in cached_many_faces:
-                            result = frame_processor.swap_face(source_image, t_face, result)
-                            if hasattr(t_face, 'bbox') and t_face.bbox is not None:
-                                swapped_bboxes.append(t_face.bbox.astype(int))
-                        temp_frame = result
-                    elif cached_target_face is not None:
-                        temp_frame = frame_processor.swap_face(source_image, cached_target_face, temp_frame)
-                        if hasattr(cached_target_face, 'bbox') and cached_target_face.bbox is not None:
-                            swapped_bboxes.append(cached_target_face.bbox.astype(int))
-                    # Apply post-processing (sharpening, interpolation)
-                    temp_frame = frame_processor.apply_post_processing(temp_frame, swapped_bboxes)
-                else:
-                    temp_frame = frame_processor.process_frame(source_image, temp_frame)
+                # Build a face list from cached detection for enhancer reuse
+                cached_faces_list = None
+                if cached_many_faces:
+                    cached_faces_list = cached_many_faces
+                elif cached_target_face is not None:
+                    cached_faces_list = [cached_target_face]
+
+                for frame_processor in frame_processors:
+                    if frame_processor.NAME == "DLC.FACE-ENHANCER":
+                        if modules.globals.fp_ui.get("face_enhancer"):
+                            temp_frame = frame_processor.process_frame(None, temp_frame, faces=cached_faces_list)
+                    elif frame_processor.NAME == "DLC.FACE-ENHANCER-GPEN256":
+                        if modules.globals.fp_ui.get("face_enhancer_gpen256"):
+                            temp_frame = frame_processor.process_frame(None, temp_frame, faces=cached_faces_list)
+                    elif frame_processor.NAME == "DLC.FACE-ENHANCER-GPEN512":
+                        if modules.globals.fp_ui.get("face_enhancer_gpen512"):
+                            temp_frame = frame_processor.process_frame(None, temp_frame, faces=cached_faces_list)
+                    elif frame_processor.NAME == "DLC.FACE-SWAPPER":
+                        # Use cached face positions to skip redundant detection
+                        swapped_bboxes = []
+                        if modules.globals.many_faces and cached_many_faces:
+                            opacity = getattr(modules.globals, "opacity", 1.0)
+                            result = temp_frame if opacity >= 1.0 else temp_frame.copy()
+                            for t_face in cached_many_faces:
+                                result = frame_processor.swap_face(source_image, t_face, result)
+                                if hasattr(t_face, 'bbox') and t_face.bbox is not None:
+                                    swapped_bboxes.append(t_face.bbox.astype(int))
+                            temp_frame = result
+                        elif cached_target_face is not None:
+                            temp_frame = frame_processor.swap_face(source_image, cached_target_face, temp_frame)
+                            if hasattr(cached_target_face, 'bbox') and cached_target_face.bbox is not None:
+                                swapped_bboxes.append(cached_target_face.bbox.astype(int))
+                        # Apply post-processing (sharpening, interpolation)
+                        temp_frame = frame_processor.apply_post_processing(temp_frame, swapped_bboxes)
+                    else:
+                        temp_frame = frame_processor.process_frame(source_image, temp_frame)
+            else:
+                modules.globals.target_path = None
+                for frame_processor in frame_processors:
+                    if frame_processor.NAME == "DLC.FACE-ENHANCER":
+                        if modules.globals.fp_ui.get("face_enhancer"):
+                            temp_frame = frame_processor.process_frame_v2(temp_frame)
+                    elif frame_processor.NAME in ("DLC.FACE-ENHANCER-GPEN256", "DLC.FACE-ENHANCER-GPEN512"):
+                        fp_key = "face_enhancer_gpen256" if "256" in frame_processor.NAME else "face_enhancer_gpen512"
+                        if modules.globals.fp_ui.get(fp_key):
+                            temp_frame = frame_processor.process_frame_v2(temp_frame)
+                    else:
+                        temp_frame = frame_processor.process_frame(None, temp_frame)
         else:
-            modules.globals.target_path = None
-            for frame_processor in frame_processors:
-                if frame_processor.NAME == "DLC.FACE-ENHANCER":
-                    if modules.globals.fp_ui.get("face_enhancer"):
-                        temp_frame = frame_processor.process_frame_v2(temp_frame)
-                elif frame_processor.NAME in ("DLC.FACE-ENHANCER-GPEN256", "DLC.FACE-ENHANCER-GPEN512"):
-                    fp_key = "face_enhancer_gpen256" if "256" in frame_processor.NAME else "face_enhancer_gpen512"
-                    if modules.globals.fp_ui.get(fp_key):
-                        temp_frame = frame_processor.process_frame_v2(temp_frame)
+            # Skip frame: use RIFE to interpolate between the last keyframe and current raw frame
+            rife_for_skip = getattr(modules.globals, "rife_enabled", False)
+            if half_rate_enabled and not rife_for_skip:
+                if not half_rate_warned:
+                    print("[DLC.HALF-RATE] Half-rate processing requires RIFE — output will use raw frames on skips")
+                    half_rate_warned = True
+            elif rife_for_skip and prev_processed_frame is not None:
+                if not has_native_binding():
+                    if not half_rate_warned:
+                        print("[DLC.HALF-RATE] RIFE native binding not available — skip frames will use raw camera input")
+                        half_rate_warned = True
                 else:
-                    temp_frame = frame_processor.process_frame(None, temp_frame)
+                    intermediates = interpolate_frame_pair(prev_processed_frame, temp_frame, multiplier=2)
+                    if intermediates:
+                        temp_frame = intermediates[0]
 
-        # RIFE frame interpolation: emit intermediate frames between
-        # the previous processed frame and the current one.
+        # RIFE frame interpolation: emit intermediate frames between consecutive keyframes.
+        # Suppressed on half-rate skip frames (those are handled in the else-branch above).
         rife_enabled = getattr(modules.globals, "rife_enabled", False)
-        if rife_enabled and prev_processed_frame is not None:
+        if rife_enabled and prev_processed_frame is not None and not skip_face_processing:
             if not rife_warned and not has_native_binding():
                 print("[DLC.RIFE] Native binding not available — live interpolation disabled")
                 rife_warned = True
@@ -194,10 +220,13 @@ def _processing_thread_func(capture_queue, processed_queue, stop_event,
                         except queue.Full:
                             pass
 
-        if rife_enabled:
-            prev_processed_frame = temp_frame.copy()
-        else:
-            prev_processed_frame = None
+        # Update prev_processed_frame on keyframes; keep unchanged on skip frames
+        if not skip_face_processing:
+            if rife_enabled or half_rate_enabled:
+                prev_processed_frame = temp_frame.copy()
+            else:
+                prev_processed_frame = None
+        # else (skip frame): prev_processed_frame stays set to the last keyframe output
 
         # Calculate and display FPS
         current_time = time.time()
