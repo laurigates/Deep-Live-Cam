@@ -164,6 +164,7 @@ just start-virtualcam
 | `--rife-multiplier` | RIFE frame rate multiplier (2=double, 4=quadruple) | `2` | `2, 4` |
 | `--half-rate` | enable half-rate face processing with RIFE interpolation for live mode | `False` |  |
 | `--keyframe-interval` | process every Nth frame in half-rate mode (2-10) | `2` | `2-10` |
+| `--live-enhance-size` | face alignment resolution for enhancement in live mode; smaller values reduce warp/paste cost | `256` | `128, 192, 256, 384, 512` |
 | `--max-memory` | maximum amount of RAM in GB | `(auto)` |  |
 | `--execution-provider` | execution provider | `'cpu'` | `(auto)` |
 | `--execution-threads` | number of execution threads | `(auto)` |  |
