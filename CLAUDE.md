@@ -8,9 +8,9 @@ Deep-Live-Cam is a real-time face swap and video deepfake application (v2.0.3c).
 
 ## Setup
 
-- Python 3.10 required (pinned via `.python-version` and `pyproject.toml requires-python = "==3.10.*"`)
+- Python 3.13 required (pinned via `.python-version` and `pyproject.toml requires-python = "==3.13.*"`)
 - `uv` for package management and running (`uv sync`, `uv run`)
-- `mise` for Python version management (provides Python with working Tcl/Tk)
+- `mise` for Python version management (provides Python 3.13 with working Tcl/Tk)
 - `just` as task runner — run `just` to see all recipes
 - Requires `ffmpeg` on PATH
 - Models in `models/`: `GFPGANv1.4.pth` and `inswapper_128_fp16.onnx`

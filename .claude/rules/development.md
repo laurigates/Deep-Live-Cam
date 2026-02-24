@@ -17,7 +17,7 @@ Follow RED → GREEN → REFACTOR workflow:
 
 ## Python Version
 
-- Python 3.10 only (pinned via `.python-version` and `pyproject.toml requires-python = "==3.10.*"`)
+- Python 3.13 only (pinned via `.python-version` and `pyproject.toml requires-python = "==3.13.*"`)
 - Managed by `mise` for consistent Tcl/Tk support
 
 ## Commit Conventions
