@@ -319,13 +319,17 @@ def _postprocess_face(output: np.ndarray) -> np.ndarray:
     return cv2.cvtColor(face, cv2.COLOR_RGB2BGR)
 
 
-def enhance_face(temp_frame: Frame, faces=None) -> Frame:
+def enhance_face(temp_frame: Frame, faces=None, live_mode: bool = False) -> Frame:
     """Enhances all faces in a frame using the GFPGAN ONNX model.
 
     Args:
         temp_frame: The input frame to enhance.
         faces: Optional pre-detected face list. When provided, skips the
             redundant InsightFace detection pass (~100-200 ms saved per frame).
+        live_mode: When True, aligns and pastes at ``modules.globals.live_enhance_size``
+            instead of the model's native input size.  The face is upscaled to the
+            model's expected resolution before inference and the output is
+            downscaled back, reducing warp/paste costs for real-time use.
     """
     # Check for faces before loading the model — avoids paying the session
     # initialisation cost on face-free frames.
@@ -352,6 +356,14 @@ def enhance_face(temp_frame: Frame, faces=None) -> Frame:
     except (ValueError, TypeError, IndexError):
         align_size = 512
 
+    # In live mode use a smaller alignment/paste resolution to reduce warp costs.
+    # The face is still run through the model at `align_size` (upscaled before
+    # inference, downscaled after), so quality degrades only slightly.
+    if live_mode and modules.globals.live_enhance_size < align_size:
+        paste_size = modules.globals.live_enhance_size
+    else:
+        paste_size = align_size
+
     result_frame = temp_frame.copy()
 
     for face in faces:
@@ -363,16 +375,25 @@ def enhance_face(temp_frame: Frame, faces=None) -> Frame:
         if landmarks_5.shape[0] < 5:
             continue
 
-        # Align / crop the face at the model's INPUT resolution
+        # Align / crop the face at paste_size (smaller in live mode)
         aligned_face, affine_matrix = _align_face(
-            temp_frame, landmarks_5, output_size=align_size
+            temp_frame, landmarks_5, output_size=paste_size
         )
         if aligned_face is None or affine_matrix is None:
             continue
 
         try:
             with THREAD_SEMAPHORE:
-                input_tensor = _preprocess_face(aligned_face)
+                # Upscale to the model's expected input size if needed
+                if paste_size != align_size:
+                    face_for_model = cv2.resize(
+                        aligned_face,
+                        (align_size, align_size),
+                        interpolation=cv2.INTER_LINEAR,
+                    )
+                else:
+                    face_for_model = aligned_face
+                input_tensor = _preprocess_face(face_for_model)
                 iobinding_ctx = _get_iobinding(session)
                 if iobinding_ctx is not None:
                     output_tensor = iobinding_ctx.run({input_name: input_tensor})[0]
@@ -380,21 +401,22 @@ def enhance_face(temp_frame: Frame, faces=None) -> Frame:
                     output_tensor = session.run(None, {input_name: input_tensor})[0]
                 enhanced_bgr = _postprocess_face(output_tensor)
 
-            # The model may output at a different resolution than its input
-            # (e.g. input 512x512 -> output 1024x1024).  Resize the enhanced
-            # face back to the alignment size so the inverse affine maps
-            # correctly.
+            # Resize the enhanced face to paste_size so the inverse affine
+            # maps correctly back to frame coordinates.
+            # Use INTER_AREA when downscaling (avoids aliasing), INTER_CUBIC
+            # when upscaling (bicubic for smooth results).
             eh, ew = enhanced_bgr.shape[:2]
-            if eh != align_size or ew != align_size:
+            if eh != paste_size or ew != paste_size:
+                interp = cv2.INTER_AREA if (eh >= paste_size) else cv2.INTER_CUBIC
                 enhanced_bgr = cv2.resize(
                     enhanced_bgr,
-                    (align_size, align_size),
-                    interpolation=cv2.INTER_AREA,
+                    (paste_size, paste_size),
+                    interpolation=interp,
                 )
 
             # Paste enhanced face back onto the frame
             result_frame = _paste_back(
-                result_frame, enhanced_bgr, affine_matrix, output_size=align_size
+                result_frame, enhanced_bgr, affine_matrix, output_size=paste_size
             )
         except Exception as e:
             print(f"{NAME}: Error enhancing a face: {e}")
@@ -403,7 +425,12 @@ def enhance_face(temp_frame: Frame, faces=None) -> Frame:
     return result_frame
 
 
-def process_frame(source_face: Face | None, temp_frame: Frame, faces=None) -> Frame:
+def process_frame(
+    source_face: Face | None,
+    temp_frame: Frame,
+    faces=None,
+    live_mode: bool = False,
+) -> Frame:
     """Processes a frame: enhances all detected faces.
 
     Args:
@@ -411,8 +438,9 @@ def process_frame(source_face: Face | None, temp_frame: Frame, faces=None) -> Fr
         temp_frame: The input frame.
         faces: Optional pre-detected face list. Passed through to
             enhance_face() to skip redundant InsightFace detection.
+        live_mode: Passed through to enhance_face() for live-mode resolution scaling.
     """
-    return enhance_face(temp_frame, faces=faces)
+    return enhance_face(temp_frame, faces=faces, live_mode=live_mode)
 
 
 def process_frames(
@@ -445,7 +473,7 @@ def process_video(
     """Processes video frames using the frame processor core."""
     modules.processors.frame.core.process_video(source_path, temp_frame_paths, process_frames)
 
-def process_frame_v2(temp_frame: Frame, faces=None) -> Frame:
-    return enhance_face(temp_frame, faces=faces)
+def process_frame_v2(temp_frame: Frame, faces=None, live_mode: bool = False) -> Frame:
+    return enhance_face(temp_frame, faces=faces, live_mode=live_mode)
 
 # --- END OF FILE face_enhancer.py ---

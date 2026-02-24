@@ -66,6 +66,7 @@ def parse_args() -> None:
     program.add_argument('--rife-multiplier', help='RIFE frame rate multiplier (2=double, 4=quadruple)', dest='rife_multiplier', type=int, default=2, choices=[2, 4])
     program.add_argument('--half-rate', help='enable half-rate face processing with RIFE interpolation for live mode', dest='half_rate_processing', action='store_true', default=False)
     program.add_argument('--keyframe-interval', help='process every Nth frame in half-rate mode (2-10)', dest='keyframe_interval', type=int, default=2, choices=range(2, 11))
+    program.add_argument('--live-enhance-size', help='face alignment resolution for enhancement in live mode; smaller values reduce warp/paste cost (default: 256)', dest='live_enhance_size', type=int, default=256, choices=[128, 192, 256, 384, 512])
     program.add_argument('--max-memory', help='maximum amount of RAM in GB', dest='max_memory', type=int, default=suggest_max_memory())
     program.add_argument('--execution-provider', help='execution provider', dest='execution_provider', default=['cpu'], choices=suggest_execution_providers(), nargs='+')
     program.add_argument('--execution-threads', help='number of execution threads', dest='execution_threads', type=int, default=suggest_execution_threads())
@@ -105,6 +106,7 @@ def parse_args() -> None:
     modules.globals.rife_multiplier = args.rife_multiplier
     modules.globals.half_rate_processing = args.half_rate_processing
     modules.globals.keyframe_interval = args.keyframe_interval
+    modules.globals.live_enhance_size = args.live_enhance_size
 
     #for ENHANCER tumblers:
     for enhancer_key in ('face_enhancer', 'face_enhancer_gpen256', 'face_enhancer_gpen512'):

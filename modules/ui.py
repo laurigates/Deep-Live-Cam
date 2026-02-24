@@ -1149,7 +1149,7 @@ def _processing_thread_func(capture_queue, processed_queue, stop_event):
             for frame_processor in frame_processors:
                 if frame_processor.NAME == "DLC.FACE-ENHANCER":
                     if modules.globals.fp_ui["face_enhancer"]:
-                        temp_frame = frame_processor.process_frame(None, temp_frame)
+                        temp_frame = frame_processor.process_frame(None, temp_frame, live_mode=True)
                 elif frame_processor.NAME == "DLC.FACE-SWAPPER":
                     # Use cached face positions to skip redundant detection
                     swapped_bboxes = []
@@ -1173,7 +1173,7 @@ def _processing_thread_func(capture_queue, processed_queue, stop_event):
             for frame_processor in frame_processors:
                 if frame_processor.NAME == "DLC.FACE-ENHANCER":
                     if modules.globals.fp_ui["face_enhancer"]:
-                        temp_frame = frame_processor.process_frame_v2(temp_frame)
+                        temp_frame = frame_processor.process_frame_v2(temp_frame, live_mode=True)
                 else:
                     temp_frame = frame_processor.process_frame_v2(temp_frame)
 
