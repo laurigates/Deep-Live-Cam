@@ -65,6 +65,11 @@ benchmark-mlx *args:
 check-blas:
     uv run python -c "from modules.blas_check import check_apple_silicon_blas, log_blas_config; import logging; logging.basicConfig(level=logging.INFO); log_blas_config(); check_apple_silicon_blas()"
 
+# Convert GFPGAN ONNX model from FP32 to FP16 for faster inference
+[group: "setup"]
+convert-gfpgan-fp16:
+    uv run scripts/convert_gfpgan_fp16.py
+
 ##########
 # Run
 ##########
