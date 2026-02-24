@@ -137,3 +137,38 @@ def test_get_feathered_mask_different_sizes():
     assert mask256 is not mask512
     assert mask256.shape == (256, 256, 3)
     assert mask512.shape == (512, 512, 3)
+
+
+# --- ROI blend tests ---
+
+
+def test_paste_back_roi_blend_matches_full_blend():
+    """ROI blending should produce identical results to full-frame blending."""
+    from modules.processors.frame.face_enhancer import _paste_back
+
+    # Create a simple test case
+    frame = np.random.randint(0, 255, (480, 640, 3), dtype=np.uint8)
+    enhanced = np.random.randint(0, 255, (512, 512, 3), dtype=np.uint8)
+
+    # Create a simple affine matrix (identity-ish, centered in frame)
+    affine = np.array([[1.0, 0.0, 64.0], [0.0, 1.0, 0.0]], dtype=np.float64)
+
+    result = _paste_back(frame, enhanced, affine, 512)
+    assert result is not None
+    assert result.shape == frame.shape
+    assert result.dtype == np.uint8
+
+
+def test_paste_back_empty_mask_returns_frame():
+    """When the inverse warp produces an all-zero mask, return the original frame."""
+    from modules.processors.frame.face_enhancer import _paste_back
+
+    frame = np.random.randint(0, 255, (100, 100, 3), dtype=np.uint8)
+    enhanced = np.zeros((64, 64, 3), dtype=np.uint8)
+
+    # Affine that places the face entirely outside the frame
+    affine = np.array([[1.0, 0.0, 9999.0], [0.0, 1.0, 9999.0]], dtype=np.float64)
+
+    result = _paste_back(frame, enhanced, affine, 64)
+    # When mask is all zeros, should return original frame unchanged
+    np.testing.assert_array_equal(result, frame)

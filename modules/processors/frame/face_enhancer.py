@@ -247,12 +247,29 @@ def _paste_back(
     )
     inv_mask = np.clip(inv_mask, 0.0, 1.0)
 
-    # Alpha-blend
-    result = (
-        frame.astype(np.float32) * (1.0 - inv_mask)
-        + inv_restored.astype(np.float32) * inv_mask
-    )
-    return np.clip(result, 0, 255).astype(np.uint8)
+    # Find the bounding box of the non-zero mask region for ROI-only blending.
+    # This avoids processing the entire frame when the face occupies a small area.
+    rows_any = np.any(inv_mask[:, :, 0] > 0, axis=1)
+    cols_any = np.any(inv_mask[:, :, 0] > 0, axis=0)
+
+    if not np.any(rows_any):
+        # Mask is all zeros — nothing to blend
+        return frame
+
+    row_indices = np.where(rows_any)[0]
+    col_indices = np.where(cols_any)[0]
+    y1, y2 = int(row_indices[0]), int(row_indices[-1]) + 1
+    x1, x2 = int(col_indices[0]), int(col_indices[-1]) + 1
+
+    # Blend only within the ROI
+    result = frame.copy()
+    roi_mask = inv_mask[y1:y2, x1:x2]
+    result[y1:y2, x1:x2] = np.clip(
+        result[y1:y2, x1:x2].astype(np.float32) * (1.0 - roi_mask)
+        + inv_restored[y1:y2, x1:x2].astype(np.float32) * roi_mask,
+        0, 255,
+    ).astype(np.uint8)
+    return result
 
 
 def _preprocess_face(aligned_face: np.ndarray) -> np.ndarray:
