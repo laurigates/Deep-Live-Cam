@@ -172,3 +172,62 @@ def test_paste_back_empty_mask_returns_frame():
     result = _paste_back(frame, enhanced, affine, 64)
     # When mask is all zeros, should return original frame unchanged
     np.testing.assert_array_equal(result, frame)
+
+
+# --- IOBinding integration tests ---
+
+
+def _make_mock_session_and_face():
+    """Helper: mock session + mock face for enhance_face tests."""
+    mock_face = MagicMock()
+    mock_face.kps = np.array(
+        [[10, 10], [20, 10], [15, 20], [10, 25], [20, 25]], dtype=np.float32
+    )
+
+    mock_session = MagicMock()
+    mock_input = MagicMock()
+    mock_input.name = "input"
+    mock_input.shape = [1, 3, 512, 512]
+    mock_input.type = "tensor(float)"
+    mock_session.get_inputs.return_value = [mock_input]
+
+    mock_output = MagicMock()
+    mock_output.name = "output"
+    mock_output.shape = [1, 3, 512, 512]
+    mock_output.type = "tensor(float)"
+    mock_session.get_outputs.return_value = [mock_output]
+    mock_session.run.return_value = [np.zeros((1, 3, 512, 512), dtype=np.float32)]
+
+    return mock_session, mock_face
+
+
+def test_enhance_face_uses_iobinding_when_available():
+    """enhance_face should use IOBinding context.run() when available."""
+    from modules.processors.frame import face_enhancer
+
+    mock_session, mock_face = _make_mock_session_and_face()
+    frame = np.zeros((480, 640, 3), dtype=np.uint8)
+
+    mock_ctx = MagicMock()
+    mock_ctx.run.return_value = [np.zeros((1, 3, 512, 512), dtype=np.float32)]
+
+    with patch("modules.processors.frame.face_enhancer.get_many_faces", return_value=[mock_face]):
+        with patch("modules.processors.frame.face_enhancer.get_face_enhancer", return_value=mock_session):
+            with patch("modules.processors.frame.face_enhancer._get_iobinding", return_value=mock_ctx):
+                face_enhancer.enhance_face(frame)
+                mock_ctx.run.assert_called()
+                mock_session.run.assert_not_called()
+
+
+def test_enhance_face_falls_back_without_iobinding():
+    """enhance_face should fall back to session.run() when IOBinding is None."""
+    from modules.processors.frame import face_enhancer
+
+    mock_session, mock_face = _make_mock_session_and_face()
+    frame = np.zeros((480, 640, 3), dtype=np.uint8)
+
+    with patch("modules.processors.frame.face_enhancer.get_many_faces", return_value=[mock_face]):
+        with patch("modules.processors.frame.face_enhancer.get_face_enhancer", return_value=mock_session):
+            with patch("modules.processors.frame.face_enhancer._get_iobinding", return_value=None):
+                face_enhancer.enhance_face(frame)
+                mock_session.run.assert_called()

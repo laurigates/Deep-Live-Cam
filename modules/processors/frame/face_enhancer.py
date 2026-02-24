@@ -12,6 +12,7 @@ import onnxruntime
 import modules.globals
 import modules.processors.frame.core
 from modules.core import update_status
+from modules.iobinding import create_iobinding_context
 from modules.face_analyser import get_many_faces
 from modules.paths import MODELS_DIR
 from modules.typing import Frame, Face
@@ -28,6 +29,23 @@ THREAD_LOCK = threading.Lock()
 NAME = "DLC.FACE-ENHANCER"
 
 FACE_ENHANCER = None
+
+# Per-thread IOBinding context for CUDA GPU buffer reuse
+_THREAD_LOCAL = threading.local()
+
+
+def _get_iobinding(session):
+    """Return a per-thread IOBindingContext, creating one on first call.
+
+    Returns None if the provider doesn't support IOBinding (e.g. CoreML, CPU).
+    """
+    ctx = getattr(_THREAD_LOCAL, "iobinding_ctx", None)
+    if ctx is not None:
+        return ctx
+    ctx = create_iobinding_context(session)
+    _THREAD_LOCAL.iobinding_ctx = ctx
+    return ctx
+
 
 # Cache for the feathered blending mask — keyed by output_size.
 # The mask is deterministic for a given size so we build it once and reuse.
@@ -355,7 +373,11 @@ def enhance_face(temp_frame: Frame, faces=None) -> Frame:
         try:
             with THREAD_SEMAPHORE:
                 input_tensor = _preprocess_face(aligned_face)
-                output_tensor = session.run(None, {input_name: input_tensor})[0]
+                iobinding_ctx = _get_iobinding(session)
+                if iobinding_ctx is not None:
+                    output_tensor = iobinding_ctx.run({input_name: input_tensor})[0]
+                else:
+                    output_tensor = session.run(None, {input_name: input_tensor})[0]
                 enhanced_bgr = _postprocess_face(output_tensor)
 
             # The model may output at a different resolution than its input
