@@ -20,6 +20,7 @@ from modules.utilities import (
     has_image_extension,
 )
 from modules.gettext import LanguageManager
+from modules.ui_tooltip import ToolTip
 import platform
 
 if platform.system() == "Windows":
@@ -284,6 +285,7 @@ def _add_top_frame(root: ctk.CTk) -> None:
         command=lambda: select_source_path(),
     )
     select_face_button.grid(row=1, column=0, pady=(0, 5), sticky="ew", padx=10)
+    ToolTip(select_face_button, _("Choose the source face image to swap onto the target"))
 
     # Swap button
     swap_faces_button = ctk.CTkButton(
@@ -291,6 +293,7 @@ def _add_top_frame(root: ctk.CTk) -> None:
         command=lambda: swap_faces_paths(),
     )
     swap_faces_button.grid(row=0, column=1, padx=5)
+    ToolTip(swap_faces_button, _("Swap source and target images"))
 
     # Target column
     target_frame = ctk.CTkFrame(top_frame, fg_color="transparent")
@@ -305,12 +308,14 @@ def _add_top_frame(root: ctk.CTk) -> None:
         command=lambda: select_target_path(),
     )
     select_target_button.grid(row=1, column=0, pady=(0, 2), sticky="ew", padx=10)
+    ToolTip(select_target_button, _("Choose the target image or video to apply face swap to"))
 
     capture_target_button = ctk.CTkButton(
         target_frame, text=_("Capture from camera"), cursor="hand2",
         command=lambda: capture_target_from_camera(),
     )
     capture_target_button.grid(row=2, column=0, pady=(0, 5), sticky="ew", padx=10)
+    ToolTip(capture_target_button, _("Take a photo from your webcam to use as target"))
 
 
 # --- Data-driven switch definitions ---
@@ -318,34 +323,50 @@ def _add_top_frame(root: ctk.CTk) -> None:
 def _get_switch_defs():
     """Return switch definitions grouped by tab.
 
-    Each definition: (label, global_attr_or_tumbler, default_value)
+    Each definition: (label, global_attr_or_tumbler, default_value, tooltip)
     - If global_attr_or_tumbler starts with "fp_ui:", it's a tumbler key
     - Otherwise it's a modules.globals attribute name
     """
     return {
         "Processing": [
-            (_("Mouth Mask"), "mouth_mask", False),
-            (_("Show Mouth Mask Box"), "show_mouth_mask_box", False),
-            (_("Many faces"), "many_faces", False),
-            (_("Map faces"), "map_faces", False),
-            (_("Poisson Blend"), "poisson_blend", False),
+            (_("Mouth Mask"), "mouth_mask", False,
+             _("Preserve original mouth movement in the swapped face")),
+            (_("Show Mask Outline"), "show_mouth_mask_box", False,
+             _("Display the mouth mask boundary for debugging")),
+            (_("Swap All Faces"), "many_faces", False,
+             _("Swap every detected face, not just the primary one")),
+            (_("Map Faces"), "map_faces", False,
+             _("Manually assign which source face maps to which target face")),
+            (_("Seamless Blend"), "poisson_blend", False,
+             _("Blend face edges smoothly into the target using Poisson blending")),
         ],
         "Enhancement": [
-            (_("Face Enhancer"), "fp_ui:face_enhancer", False),
-            (_("GPEN-256"), "fp_ui:face_enhancer_gpen256", False),
-            (_("GPEN-512"), "fp_ui:face_enhancer_gpen512", False),
+            (_("GFPGAN Enhancer"), "fp_ui:face_enhancer", False,
+             _("Improve face quality using the GFPGAN restoration model")),
+            (_("GPEN-256"), "fp_ui:face_enhancer_gpen256", False,
+             _("Use GPEN face enhancement model at 256px resolution (faster)")),
+            (_("GPEN-512"), "fp_ui:face_enhancer_gpen512", False,
+             _("Use GPEN face enhancement model at 512px resolution (higher quality)")),
         ],
         "Output": [
-            (_("Keep fps"), "keep_fps", True),
-            (_("Keep audio"), "keep_audio", True),
-            (_("Keep frames"), "keep_frames", False),
-            (_("RIFE Interpolation"), "rife_enabled", False),
+            (_("Preserve Frame Rate"), "keep_fps", True,
+             _("Output video keeps the original frame rate")),
+            (_("Preserve Audio"), "keep_audio", True,
+             _("Copy audio track from the source video to output")),
+            (_("Save Temp Frames"), "keep_frames", False,
+             _("Keep extracted frames on disk after processing (uses disk space)")),
+            (_("RIFE Interpolation"), "rife_enabled", False,
+             _("Generate intermediate frames for smoother video (2x or 4x)")),
         ],
         "Live Mode": [
-            (_("Fix Blueish Cam"), "color_correction", False),
-            (_("Show FPS"), "show_fps", False),
-            (_("Virtual Camera"), "virtual_cam", False),
-            (_("Half-Rate Processing"), "half_rate_processing", False),
+            (_("Color Correction"), "color_correction", False,
+             _("Fix blue/green color cast from some webcams")),
+            (_("Show FPS"), "show_fps", False,
+             _("Display frames-per-second counter on the live preview")),
+            (_("Virtual Camera"), "virtual_cam", False,
+             _("Output to a virtual camera device for use in Zoom, Meet, etc.")),
+            (_("Skip Frames"), "half_rate_processing", False,
+             _("Process every other frame for better performance at the cost of smoothness")),
         ],
     }
 
@@ -357,7 +378,9 @@ def _get_switch_value(attr: str) -> bool:
     return getattr(modules.globals, attr, False)
 
 
-def _create_switch(parent: ctk.CTkFrame, label: str, attr: str) -> ctk.CTkSwitch:
+def _create_switch(
+    parent: ctk.CTkFrame, label: str, attr: str, tooltip: str = "",
+) -> ctk.CTkSwitch:
     value_var = ctk.BooleanVar(value=_get_switch_value(attr))
 
     if attr.startswith("fp_ui:"):
@@ -381,6 +404,8 @@ def _create_switch(parent: ctk.CTkFrame, label: str, attr: str) -> ctk.CTkSwitch
     switch = ctk.CTkSwitch(
         parent, text=label, variable=value_var, cursor="hand2", command=command,
     )
+    if tooltip:
+        ToolTip(switch, tooltip)
     return switch
 
 
@@ -395,10 +420,10 @@ def _add_settings_tabview(root: ctk.CTk, live_button: ctk.CTkButton) -> None:
         tab.columnconfigure(0, weight=1)
         tab.columnconfigure(1, weight=1)
 
-        for i, (label, attr, _default) in enumerate(switches):
+        for i, (label, attr, _default, tooltip) in enumerate(switches):
             row = i // 2
             col = i % 2
-            sw = _create_switch(tab, label, attr)
+            sw = _create_switch(tab, label, attr, tooltip)
             sw.grid(row=row, column=col, sticky="w", padx=15, pady=8)
 
     # Enhancement tab: add sliders
@@ -448,6 +473,7 @@ def _add_sliders_to_tab(tab: ctk.CTkFrame, num_switches: int) -> None:
     transparency_slider.grid(
         row=start_row, column=1, sticky="ew", padx=(0, 15), pady=(15, 2),
     )
+    ToolTip(transparency_slider, _("Blend between original and swapped face (0% = original, 100% = fully swapped)"))
 
     sharpness_var = ctk.DoubleVar(value=0.0)
 
@@ -468,6 +494,7 @@ def _add_sliders_to_tab(tab: ctk.CTkFrame, num_switches: int) -> None:
     sharpness_slider.grid(
         row=start_row + 1, column=1, sticky="ew", padx=(0, 15), pady=2,
     )
+    ToolTip(sharpness_slider, _("Sharpen the enhanced face output"))
 
 
 def _add_rife_controls_to_tab(tab: ctk.CTkFrame, num_switches: int) -> None:
@@ -494,6 +521,7 @@ def _add_rife_controls_to_tab(tab: ctk.CTkFrame, num_switches: int) -> None:
     model_optionmenu.grid(
         row=start_row, column=1, sticky="ew", padx=(0, 15), pady=(15, 2),
     )
+    ToolTip(model_optionmenu, _("Choose RIFE interpolation model (lite = faster, full = better quality)"))
 
     # Multiplier selector
     multiplier_label = ctk.CTkLabel(tab, text="RIFE Multiplier:")
@@ -515,6 +543,7 @@ def _add_rife_controls_to_tab(tab: ctk.CTkFrame, num_switches: int) -> None:
     multiplier_optionmenu.grid(
         row=start_row + 1, column=1, sticky="ew", padx=(0, 15), pady=2,
     )
+    ToolTip(multiplier_optionmenu, _("Frame rate multiplication factor"))
 
 
 def _add_half_rate_controls_to_tab(tab: ctk.CTkFrame, num_switches: int) -> None:
@@ -543,6 +572,7 @@ def _add_half_rate_controls_to_tab(tab: ctk.CTkFrame, num_switches: int) -> None
     interval_optionmenu.grid(
         row=start_row, column=1, sticky="ew", padx=(0, 15), pady=(8, 2),
     )
+    ToolTip(interval_optionmenu, _("Process a full detection every N frames (higher = faster, lower = more accurate)"))
 
 
 def _add_camera_to_tab(
@@ -561,6 +591,7 @@ def _add_camera_to_tab(
     camera_optionmenu.grid(
         row=start_row, column=1, sticky="ew", padx=(0, 15), pady=(15, 5),
     )
+    ToolTip(camera_optionmenu, _("Select which camera to use for live mode"))
 
     camera_indices: list = []
     camera_names: list = []
@@ -640,24 +671,28 @@ def _add_action_buttons(root: ctk.CTk, start: Callable, destroy: Callable) -> ct
         command=lambda: analyze_target(start, root),
     )
     start_button.grid(row=0, column=0, sticky="ew", padx=5)
+    ToolTip(start_button, _("Begin processing the target image/video with selected face"))
 
     stop_button = ctk.CTkButton(
         action_frame, text=_("Destroy"), cursor="hand2",
         command=lambda: destroy(),
     )
     stop_button.grid(row=0, column=1, sticky="ew", padx=5)
+    ToolTip(stop_button, _("Stop processing and close the application"))
 
     preview_button = ctk.CTkButton(
         action_frame, text=_("Preview"), cursor="hand2",
         command=lambda: toggle_preview(),
     )
     preview_button.grid(row=0, column=2, sticky="ew", padx=5)
+    ToolTip(preview_button, _("Show/hide a preview of the processed output"))
 
     # Live button — command and state wired up by _add_camera_to_tab after detection
     live_button = ctk.CTkButton(
         action_frame, text=_("Live"), cursor="hand2", state="disabled",
     )
     live_button.grid(row=0, column=3, sticky="ew", padx=5)
+    ToolTip(live_button, _("Start real-time face swap using webcam"))
 
     return live_button
 
