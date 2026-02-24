@@ -1,6 +1,7 @@
-from typing import Any, List, Optional
+from typing import Any, List, Optional, Tuple
 import cv2
 import insightface
+import logging
 import threading
 import numpy as np
 import platform
@@ -240,6 +241,171 @@ def _apply_poisson_blend(swapped: Frame, target_face: Face, original: Frame, pre
     return swapped
 
 
+logger = logging.getLogger(NAME)
+
+# Track whether batch inference fallback warning has been issued
+_batch_fallback_warned = False
+
+
+def _paste_back(bgr_fake: np.ndarray, aimg: np.ndarray, M: np.ndarray, target_img: np.ndarray) -> np.ndarray:
+    """Paste an aligned face crop back onto the target image using inverse affine warp and blending.
+
+    Replicates the INSwapper paste_back logic so it can be reused by both
+    single-face and batch paths.
+    """
+    fake_diff = np.abs(bgr_fake.astype(np.float32) - aimg.astype(np.float32)).mean(axis=2)
+    fake_diff[:2, :] = 0
+    fake_diff[-2:, :] = 0
+    fake_diff[:, :2] = 0
+    fake_diff[:, -2:] = 0
+
+    IM = cv2.invertAffineTransform(M)
+    img_white = np.full((aimg.shape[0], aimg.shape[1]), 255, dtype=np.float32)
+
+    bgr_fake = cv2.warpAffine(bgr_fake, IM, (target_img.shape[1], target_img.shape[0]), borderValue=0.0)
+    img_white = cv2.warpAffine(img_white, IM, (target_img.shape[1], target_img.shape[0]), borderValue=0.0)
+    fake_diff = cv2.warpAffine(fake_diff, IM, (target_img.shape[1], target_img.shape[0]), borderValue=0.0)
+
+    img_white[img_white > 20] = 255
+    fthresh = 10
+    fake_diff[fake_diff < fthresh] = 0
+    fake_diff[fake_diff >= fthresh] = 255
+
+    img_mask = img_white
+    mask_h_inds, mask_w_inds = np.where(img_mask == 255)
+    if len(mask_h_inds) == 0 or len(mask_w_inds) == 0:
+        return target_img
+    mask_h = np.max(mask_h_inds) - np.min(mask_h_inds)
+    mask_w = np.max(mask_w_inds) - np.min(mask_w_inds)
+    mask_size = int(np.sqrt(mask_h * mask_w))
+    k = max(mask_size // 10, 10)
+    kernel = np.ones((k, k), np.uint8)
+    img_mask = cv2.erode(img_mask, kernel, iterations=1)
+    kernel = np.ones((2, 2), np.uint8)
+    fake_diff = cv2.dilate(fake_diff, kernel, iterations=1)
+    k = max(mask_size // 20, 5)
+    kernel_size = (k, k)
+    blur_size = tuple(2 * i + 1 for i in kernel_size)
+    img_mask = cv2.GaussianBlur(img_mask, blur_size, 0)
+    k = 5
+    kernel_size = (k, k)
+    blur_size = tuple(2 * i + 1 for i in kernel_size)
+    fake_diff = cv2.GaussianBlur(fake_diff, blur_size, 0)
+    img_mask /= 255
+    fake_diff /= 255
+    img_mask = np.reshape(img_mask, [img_mask.shape[0], img_mask.shape[1], 1])
+    fake_merged = img_mask * bgr_fake + (1 - img_mask) * target_img.astype(np.float32)
+    return fake_merged.astype(np.uint8)
+
+
+def batch_swap_faces(
+    source_faces: List[Face],
+    target_faces: List[Face],
+    temp_frame: Frame,
+) -> Frame:
+    """Swap multiple faces in a single ONNX inference call.
+
+    Pre/post-processing is per-face (alignment and inverse warp are face-specific),
+    but the expensive model inference is batched into one session.run() call.
+
+    Falls back to sequential swap_face() calls if session.run() raises an error
+    (e.g., CoreML with RequireStaticShapes rejecting dynamic batch).
+    """
+    from insightface.utils import face_align
+
+    global _batch_fallback_warned
+
+    face_swapper = get_face_swapper()
+    if face_swapper is None:
+        return temp_frame
+
+    session = face_swapper.session
+    emap = face_swapper.emap
+    input_size = face_swapper.input_size
+    input_mean = face_swapper.input_mean
+    input_std = face_swapper.input_std
+
+    # Collect per-face pre-processing results
+    blobs = []
+    latents = []
+    aligned_imgs = []
+    affine_matrices = []
+    valid_indices = []  # indices into source_faces/target_faces for valid pairs
+
+    for i, (source_face, target_face) in enumerate(zip(source_faces, target_faces)):
+        if source_face is None or target_face is None:
+            continue
+        if not hasattr(source_face, 'normed_embedding') or source_face.normed_embedding is None:
+            continue
+
+        aimg, M = face_align.norm_crop2(temp_frame, target_face.kps, input_size[0])
+        blob = cv2.dnn.blobFromImage(
+            aimg, 1.0 / input_std, input_size,
+            (input_mean, input_mean, input_mean), swapRB=True
+        )
+        latent = source_face.normed_embedding.reshape((1, -1))
+        latent = np.dot(latent, emap)
+        latent /= np.linalg.norm(latent)
+
+        blobs.append(blob)
+        latents.append(latent)
+        aligned_imgs.append(aimg)
+        affine_matrices.append(M)
+        valid_indices.append(i)
+
+    if not blobs:
+        return temp_frame
+
+    # Attempt batched inference
+    try:
+        batch_blob = np.concatenate(blobs, axis=0).astype(np.float32)  # (N, 3, 128, 128)
+        batch_latent = np.concatenate(latents, axis=0).astype(np.float32)  # (N, 512)
+
+        preds = session.run(
+            face_swapper.output_names,
+            {face_swapper.input_names[0]: batch_blob, face_swapper.input_names[1]: batch_latent},
+        )[0]  # (N, 3, 128, 128)
+    except Exception as e:
+        if not _batch_fallback_warned:
+            logger.warning("Batch inference failed (%s), falling back to sequential swap", e)
+            _batch_fallback_warned = True
+        # Fallback: sequential swap_face calls
+        result = temp_frame.copy()
+        for source_face, target_face in zip(source_faces, target_faces):
+            result = swap_face(source_face, target_face, result)
+        return result
+
+    # Post-processing: paste each face back onto the frame
+    opacity = getattr(modules.globals, "opacity", 1.0)
+    opacity = max(0.0, min(1.0, opacity))
+    original_frame = temp_frame if opacity >= 1.0 else temp_frame.copy()
+    result = temp_frame.copy()
+
+    for j, idx in enumerate(valid_indices):
+        target_face = target_faces[idx]
+        aimg = aligned_imgs[j]
+        M = affine_matrices[j]
+
+        # Denormalize prediction
+        img_fake = preds[j].transpose((1, 2, 0))
+        bgr_fake = np.clip(255 * img_fake, 0, 255).astype(np.uint8)[:, :, ::-1]
+
+        # Paste back onto result frame
+        result = _paste_back(bgr_fake, aimg, M, result)
+
+        # Apply mouth mask and Poisson blend per-face
+        result = _apply_mouth_mask(result, target_face, temp_frame)
+        result = _apply_poisson_blend(result, target_face, temp_frame, original_frame)
+
+    if opacity < 1.0:
+        result = gpu_add_weighted(
+            original_frame.astype(np.uint8), 1 - opacity,
+            result.astype(np.uint8), opacity, 0,
+        )
+
+    return np.clip(result, 0, 255).astype(np.uint8)
+
+
 def swap_face(source_face: Face, target_face: Face, temp_frame: Frame) -> Frame:
     """Optimized face swapping with better memory management and performance."""
     face_swapper = get_face_swapper()
@@ -452,12 +618,14 @@ def process_frame(source_face: Face, temp_frame: Frame) -> Frame:
     if modules.globals.many_faces:
         many_faces = get_many_faces(processed_frame)
         if many_faces:
-            current_swap_target = processed_frame.copy() # Apply swaps sequentially on a copy
-            for target_face in many_faces:
-                current_swap_target = swap_face(source_face, target_face, current_swap_target)
-                if target_face is not None and hasattr(target_face, "bbox") and target_face.bbox is not None:
-                    swapped_face_bboxes.append(target_face.bbox.astype(int))
-            processed_frame = current_swap_target # Assign the final result after all swaps
+            for face in many_faces:
+                if face is not None and hasattr(face, "bbox") and face.bbox is not None:
+                    swapped_face_bboxes.append(face.bbox.astype(int))
+            if len(many_faces) >= 2:
+                source_faces = [source_face] * len(many_faces)
+                processed_frame = batch_swap_faces(source_faces, many_faces, processed_frame)
+            else:
+                processed_frame = swap_face(source_face, many_faces[0], processed_frame)
     else:
         target_face = get_one_face(processed_frame)
         if target_face:
@@ -580,13 +748,18 @@ def process_frame_v2(temp_frame: Frame, temp_frame_path: str = "") -> Frame:
 
 
     # Perform swaps based on the collected pairs
-    current_swap_target = processed_frame.copy() # Apply swaps sequentially
-    for source_face, target_face in source_target_pairs:
-        if source_face and target_face:
-            current_swap_target = swap_face(source_face, target_face, current_swap_target)
-            if target_face is not None and hasattr(target_face, "bbox") and target_face.bbox is not None:
-                swapped_face_bboxes.append(target_face.bbox.astype(int))
-    processed_frame = current_swap_target # Assign final result
+    valid_pairs = [(s, t) for s, t in source_target_pairs if s and t]
+    for _, target_face in valid_pairs:
+        if target_face is not None and hasattr(target_face, "bbox") and target_face.bbox is not None:
+            swapped_face_bboxes.append(target_face.bbox.astype(int))
+
+    if len(valid_pairs) >= 2:
+        source_list = [s for s, _ in valid_pairs]
+        target_list = [t for _, t in valid_pairs]
+        processed_frame = batch_swap_faces(source_list, target_list, processed_frame)
+    elif len(valid_pairs) == 1:
+        source_face, target_face = valid_pairs[0]
+        processed_frame = swap_face(source_face, target_face, processed_frame)
 
 
     # Apply sharpening and interpolation
