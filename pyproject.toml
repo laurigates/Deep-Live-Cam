@@ -65,4 +65,5 @@ rife = ["rife-ncnn-vulkan-python-tntwise>=1.4.0"]
 [dependency-groups]
 dev = [
     "pytest>=9.0.2",
+    "onnxconverter-common>=1.14.0",
 ]

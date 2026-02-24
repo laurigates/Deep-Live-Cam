@@ -44,7 +44,10 @@ FFHQ_TEMPLATE_512 = np.array(
 
 
 def pre_check() -> bool:
-    model_path = os.path.join(MODELS_DIR, "gfpgan-1024.onnx")
+    # Prefer FP16 model for faster inference if available
+    fp16_path = os.path.join(MODELS_DIR, "gfpgan-1024-fp16.onnx")
+    fp32_path = os.path.join(MODELS_DIR, "gfpgan-1024.onnx")
+    model_path = fp16_path if os.path.exists(fp16_path) else fp32_path
     if not os.path.exists(model_path):
         update_status("Downloading gfpgan-1024.onnx...", NAME)
         conditional_download(
@@ -81,7 +84,10 @@ def get_face_enhancer() -> onnxruntime.InferenceSession:
 
     with THREAD_LOCK:
         if FACE_ENHANCER is None:
-            model_path = os.path.join(MODELS_DIR, "gfpgan-1024.onnx")
+            # Prefer FP16 model for faster inference if available
+            fp16_path = os.path.join(MODELS_DIR, "gfpgan-1024-fp16.onnx")
+            fp32_path = os.path.join(MODELS_DIR, "gfpgan-1024.onnx")
+            model_path = fp16_path if os.path.exists(fp16_path) else fp32_path
 
             if not os.path.exists(model_path):
                 conditional_download(
