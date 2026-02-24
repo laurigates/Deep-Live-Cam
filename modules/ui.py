@@ -218,6 +218,9 @@ def load_switch_states():
         saved_target = switch_states.get("target_path")
         if saved_target and os.path.isfile(saved_target):
             modules.globals.target_path = saved_target
+        # Rebuild frame_processors from restored fp_ui so toggled enhancers
+        # are included even if they weren't in the CLI --frame-processor list.
+        _sync_enhancer_frame_processors()
     except FileNotFoundError:
         pass
 
@@ -757,8 +760,32 @@ def update_status(text: str) -> None:
     ROOT.after(0, lambda t=text: status_label.configure(text=_(t)))
 
 
+# Enhancer processor names — keys in fp_ui and corresponding frame_processor names
+_ENHANCER_KEYS = ('face_enhancer', 'face_enhancer_gpen256', 'face_enhancer_gpen512')
+
+# Map from processor NAME constant to fp_ui key for live-mode gating
+_ENHANCER_NAME_TO_UI_KEY = {
+    "DLC.FACE-ENHANCER": "face_enhancer",
+    "DLC.FACE-ENHANCER-GPEN256": "face_enhancer_gpen256",
+    "DLC.FACE-ENHANCER-GPEN512": "face_enhancer_gpen512",
+}
+
+
+def _sync_enhancer_frame_processors() -> None:
+    """Keep modules.globals.frame_processors in sync with fp_ui enhancer toggles.
+
+    Non-enhancer processors (face_swapper, face_masking, etc.) are preserved;
+    the enhancer slots are rebuilt from the current fp_ui state.
+    """
+    non_enhancers = [p for p in modules.globals.frame_processors if p not in _ENHANCER_KEYS]
+    enabled = [k for k in _ENHANCER_KEYS if modules.globals.fp_ui.get(k, False)]
+    modules.globals.frame_processors = non_enhancers + enabled
+
+
 def update_tumbler(var: str, value: bool) -> None:
     modules.globals.fp_ui[var] = value
+    if var in _ENHANCER_KEYS:
+        _sync_enhancer_frame_processors()
     save_switch_states()
     if PREVIEW.state() == "normal":
         global frame_processors
@@ -1147,8 +1174,9 @@ def _processing_thread_func(capture_queue, processed_queue, stop_event):
                     cached_many_faces = None
 
             for frame_processor in frame_processors:
-                if frame_processor.NAME == "DLC.FACE-ENHANCER":
-                    if modules.globals.fp_ui["face_enhancer"]:
+                ui_key = _ENHANCER_NAME_TO_UI_KEY.get(frame_processor.NAME)
+                if ui_key is not None:
+                    if modules.globals.fp_ui.get(ui_key):
                         temp_frame = frame_processor.process_frame(None, temp_frame, live_mode=True)
                 elif frame_processor.NAME == "DLC.FACE-SWAPPER":
                     # Use cached face positions to skip redundant detection
@@ -1171,8 +1199,9 @@ def _processing_thread_func(capture_queue, processed_queue, stop_event):
         else:
             modules.globals.target_path = None
             for frame_processor in frame_processors:
-                if frame_processor.NAME == "DLC.FACE-ENHANCER":
-                    if modules.globals.fp_ui["face_enhancer"]:
+                ui_key = _ENHANCER_NAME_TO_UI_KEY.get(frame_processor.NAME)
+                if ui_key is not None:
+                    if modules.globals.fp_ui.get(ui_key):
                         temp_frame = frame_processor.process_frame_v2(temp_frame, live_mode=True)
                 else:
                     temp_frame = frame_processor.process_frame_v2(temp_frame)

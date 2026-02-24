@@ -9,7 +9,7 @@ import numpy as np
 import modules.globals
 import modules.processors.frame.core
 from modules.core import update_status
-from modules.face_analyser import get_one_face
+from modules.face_analyser import get_one_face, get_many_faces
 from modules.model_loader import ModelHolder
 from modules.paths import MODELS_DIR
 from modules.typing import Frame, Face
@@ -84,14 +84,18 @@ def enhance_face(temp_frame: Frame, face: Face) -> Frame:
         return temp_frame
 
 
-def process_frame(source_face: Face | None, temp_frame: Frame, faces=None) -> Frame:
-    if faces:
-        target_face = min(faces, key=lambda x: x.bbox[0])
-    else:
-        target_face = get_one_face(temp_frame)
-    if target_face is None:
-        return temp_frame
-    return enhance_face(temp_frame, target_face)
+def process_frame(
+    source_face: Face | None,
+    temp_frame: Frame,
+    faces=None,
+    live_mode: bool = False,
+) -> Frame:
+    if faces is None:
+        faces = get_many_faces(temp_frame) if modules.globals.many_faces else [get_one_face(temp_frame)]
+    for face in faces:
+        if face is not None:
+            temp_frame = enhance_face(temp_frame, face)
+    return temp_frame
 
 
 def process_frames(
@@ -118,11 +122,10 @@ def process_video(source_path: str | None, temp_frame_paths: List[str]) -> None:
     modules.processors.frame.core.process_video(source_path, temp_frame_paths, process_frames)
 
 
-def process_frame_v2(temp_frame: Frame, faces=None) -> Frame:
-    if faces:
-        target_face = min(faces, key=lambda x: x.bbox[0])
-    else:
-        target_face = get_one_face(temp_frame)
-    if target_face:
-        temp_frame = enhance_face(temp_frame, target_face)
+def process_frame_v2(temp_frame: Frame, faces=None, live_mode: bool = False) -> Frame:
+    if faces is None:
+        faces = get_many_faces(temp_frame) if modules.globals.many_faces else [get_one_face(temp_frame)]
+    for face in faces:
+        if face is not None:
+            temp_frame = enhance_face(temp_frame, face)
     return temp_frame
