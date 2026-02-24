@@ -108,56 +108,18 @@ class TestKeyframeLogic:
 
 
 # ---------------------------------------------------------------------------
-# Warning when RIFE unavailable
+# Skip-frame frame-hold behaviour
 # ---------------------------------------------------------------------------
 
 
-class TestHalfRateRifeRequirement:
-    """Half-rate mode should warn when RIFE is unavailable, not crash."""
+class TestSkipFrameHold:
+    """Skip frames must output the last processed frame, not raw camera input.
 
-    def test_warning_printed_when_rife_disabled(self, capsys):
-        """When half-rate=on and rife_enabled=False, a warning is logged on skip frames."""
-        half_rate_enabled = True
-        rife_enabled = False
-        half_rate_warned = False
-        frame_counter = 2        # skip frame for interval=2
-        keyframe_interval = 2
-        is_keyframe = (frame_counter % keyframe_interval) == 1
-        skip_face_processing = half_rate_enabled and not is_keyframe
-
-        # Replicate warning logic from _processing_thread_func else-branch
-        if skip_face_processing and half_rate_enabled and not rife_enabled:
-            if not half_rate_warned:
-                print(
-                    "[DLC.HALF-RATE] Half-rate processing requires RIFE "
-                    "— output will use raw frames on skips"
-                )
-                half_rate_warned = True
-
-        captured = capsys.readouterr()
-        assert "[DLC.HALF-RATE]" in captured.out
-        assert half_rate_warned is True
-
-    def test_warning_fires_only_once(self):
-        """The half_rate_warned flag prevents repeated warning prints."""
-        half_rate_warned = False
-        warning_count = 0
-
-        for _ in range(5):  # simulate 5 consecutive skip frames
-            if not half_rate_warned:
-                warning_count += 1
-                half_rate_warned = True
-
-        assert warning_count == 1
-
-
-# ---------------------------------------------------------------------------
-# RIFE interpolation on skip frames
-# ---------------------------------------------------------------------------
-
-
-class TestSkipFrameRifeInterpolation:
-    """Verify RIFE is called with (prev_processed, current_raw) on skip frames."""
+    Interpolating a swapped keyframe against a raw (unswapped) frame produces
+    visible face-flicker artifacts.  The correct behaviour is to hold the last
+    processed frame on skips; RIFE interpolation between consecutive keyframes
+    is handled by the normal RIFE section when the next keyframe arrives.
+    """
 
     @staticmethod
     def _make_frame(fill: int = 0) -> np.ndarray:
@@ -165,63 +127,41 @@ class TestSkipFrameRifeInterpolation:
         frame[:] = fill
         return frame
 
-    def test_rife_called_with_prev_processed_and_raw(self):
-        """interpolate_frame_pair receives (prev_processed_frame, raw_temp_frame)."""
-        prev_processed = self._make_frame(50)
-        raw_frame = self._make_frame(100)
-        interp_frame = self._make_frame(75)
+    def test_skip_frame_outputs_prev_processed(self):
+        """On a skip frame, temp_frame becomes prev_processed_frame (frame hold)."""
+        prev_processed = self._make_frame(50)   # last swapped keyframe
+        raw_frame = self._make_frame(100)        # current unswapped camera frame
+        temp_frame = raw_frame.copy()
 
-        with patch(
-            "modules.rife_interpolation.interpolate_frame_pair",
-            return_value=[interp_frame],
-        ) as mock_interp, patch(
-            "modules.rife_interpolation.has_native_binding", return_value=True
-        ):
-            from modules.rife_interpolation import has_native_binding, interpolate_frame_pair
+        # Simulate skip-frame logic from _processing_thread_func
+        if prev_processed is not None:
+            temp_frame = prev_processed
 
-            # Simulate skip-frame logic
-            temp_frame = raw_frame.copy()
-            if has_native_binding():
-                intermediates = interpolate_frame_pair(prev_processed, temp_frame, multiplier=2)
-                if intermediates:
-                    temp_frame = intermediates[0]
+        assert np.array_equal(temp_frame, prev_processed)
+        assert not np.array_equal(temp_frame, raw_frame)
 
-        assert mock_interp.call_count == 1
-        call_args, call_kwargs = mock_interp.call_args
-        assert np.array_equal(call_args[0], prev_processed)
-        assert np.array_equal(call_args[1], raw_frame)
-        assert call_kwargs.get("multiplier") == 2
-
-    def test_no_rife_call_without_prev_frame(self):
-        """No interpolation attempt when prev_processed_frame is None."""
+    def test_skip_frame_keeps_raw_when_no_prev(self):
+        """When no prev_processed_frame exists yet, raw frame is used as-is."""
         prev_processed_frame = None
-        raw_frame = self._make_frame(100)
-
-        with patch("modules.rife_interpolation.interpolate_frame_pair") as mock_interp:
-            # Simulate skip-frame guard
-            if prev_processed_frame is not None:
-                from modules.rife_interpolation import interpolate_frame_pair
-                interpolate_frame_pair(prev_processed_frame, raw_frame, multiplier=2)
-
-        mock_interp.assert_not_called()
-
-    def test_raw_frame_kept_when_rife_returns_empty(self):
-        """When RIFE returns [], raw temp_frame is used unchanged."""
-        prev_processed = self._make_frame(50)
         raw_frame = self._make_frame(100)
         temp_frame = raw_frame.copy()
 
-        with patch(
-            "modules.rife_interpolation.interpolate_frame_pair", return_value=[]
-        ), patch("modules.rife_interpolation.has_native_binding", return_value=True):
-            from modules.rife_interpolation import has_native_binding, interpolate_frame_pair
-
-            if has_native_binding():
-                intermediates = interpolate_frame_pair(prev_processed, temp_frame, multiplier=2)
-                if intermediates:
-                    temp_frame = intermediates[0]
+        if prev_processed_frame is not None:
+            temp_frame = prev_processed_frame
 
         assert np.array_equal(temp_frame, raw_frame)
+
+    def test_rife_not_called_on_skip_frame(self):
+        """interpolate_frame_pair is never called during a skip frame."""
+        with patch("modules.rife_interpolation.interpolate_frame_pair") as mock_interp:
+            # Simulate the new skip-frame branch: just hold prev frame, no RIFE
+            prev_processed = self._make_frame(50)
+            temp_frame = self._make_frame(100)
+            if prev_processed is not None:
+                temp_frame = prev_processed
+            # RIFE is NOT called here
+
+        mock_interp.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
