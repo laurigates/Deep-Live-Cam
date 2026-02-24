@@ -326,7 +326,7 @@ def enhance_face(temp_frame: Frame, faces=None) -> Frame:
                 enhanced_bgr = cv2.resize(
                     enhanced_bgr,
                     (align_size, align_size),
-                    interpolation=cv2.INTER_LANCZOS4,
+                    interpolation=cv2.INTER_AREA,
                 )
 
             # Paste enhanced face back onto the frame
