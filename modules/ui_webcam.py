@@ -176,24 +176,17 @@ def _processing_thread_func(capture_queue, processed_queue, stop_event,
                     else:
                         temp_frame = frame_processor.process_frame(None, temp_frame)
         else:
-            # Skip frame: use RIFE to interpolate between the last keyframe and current raw frame
-            rife_for_skip = getattr(modules.globals, "rife_enabled", False)
-            if half_rate_enabled and not rife_for_skip:
-                if not half_rate_warned:
-                    print("[DLC.HALF-RATE] Half-rate processing requires RIFE — output will use raw frames on skips")
-                    half_rate_warned = True
-            elif rife_for_skip and prev_processed_frame is not None:
-                if not has_native_binding():
-                    if not half_rate_warned:
-                        print("[DLC.HALF-RATE] RIFE native binding not available — skip frames will use raw camera input")
-                        half_rate_warned = True
-                else:
-                    intermediates = interpolate_frame_pair(prev_processed_frame, temp_frame, multiplier=2)
-                    if intermediates:
-                        temp_frame = intermediates[0]
+            # Skip frame: hold the last processed frame to avoid blending swapped/raw content.
+            # Interpolating against a raw (unswapped) frame produces visible face-flicker artifacts.
+            # When RIFE is enabled, the normal RIFE section below will generate smooth intermediates
+            # between consecutive keyframes as they arrive (keyframe N → keyframe N+interval).
+            if prev_processed_frame is not None:
+                temp_frame = prev_processed_frame
 
         # RIFE frame interpolation: emit intermediate frames between consecutive keyframes.
-        # Suppressed on half-rate skip frames (those are handled in the else-branch above).
+        # In half-rate mode this fires on keyframes, bridging the gap since the previous keyframe
+        # (which may be keyframe_interval camera frames back). Skip frames are held above and
+        # never reach this block.
         rife_enabled = getattr(modules.globals, "rife_enabled", False)
         if rife_enabled and prev_processed_frame is not None and not skip_face_processing:
             if not rife_warned and not has_native_binding():
