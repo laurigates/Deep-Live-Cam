@@ -1,4 +1,4 @@
-<h1 align="center">Deep-Live-Cam 2.0.5c</h1>
+<h1 align="center">Deep-Live-Cam</h1>
 
 <p align="center">
   Real-time face swap and video deepfake with a single click and only a single image.
@@ -12,39 +12,28 @@
   <img src="media/demo.gif" alt="Demo GIF" width="800">
 </p>
 
-##  Disclaimer
+## Disclaimer
 
 This deepfake software is designed to be a productive tool for the AI-generated media industry. It can assist artists in animating custom characters, creating engaging content, and even using models for clothing design.
 
 We are aware of the potential for unethical applications and are committed to preventative measures. A built-in check prevents the program from processing inappropriate media (nudity, graphic content, sensitive material like war footage, etc.). We will continue to develop this project responsibly, adhering to the law and ethics. We may shut down the project or add watermarks if legally required.
 
-- Ethical Use: Users are expected to use this software responsibly and legally. If using a real person's face, obtain their consent and clearly label any output as a deepfake when sharing online.
-
-- Content Restrictions: The software includes built-in checks to prevent processing inappropriate media, such as nudity, graphic content, or sensitive material.
-
-- Legal Compliance: We adhere to all relevant laws and ethical guidelines. If legally required, we may shut down the project or add watermarks to the output.
-
-- User Responsibility: We are not responsible for end-user actions. Users must ensure their use of the software aligns with ethical standards and legal requirements.
+- **Ethical Use**: Users are expected to use this software responsibly and legally. If using a real person's face, obtain their consent and clearly label any output as a deepfake when sharing online.
+- **Content Restrictions**: The software includes built-in checks to prevent processing inappropriate media, such as nudity, graphic content, or sensitive material.
+- **Legal Compliance**: We adhere to all relevant laws and ethical guidelines. If legally required, we may shut down the project or add watermarks to the output.
+- **User Responsibility**: We are not responsible for end-user actions. Users must ensure their use of the software aligns with ethical standards and legal requirements.
 
 By using this software, you agree to these terms and commit to using it in a manner that respects the rights and dignity of others.
 
-Users are expected to use this software responsibly and legally. If using a real person's face, obtain their consent and clearly label any output as a deepfake when sharing online. We are not responsible for end-user actions.
+## Quick Demo
 
-## Exclusive v2.6d Quick Start - Pre-built (Windows/Mac Silicon)
-
-  <a href="https://deeplivecam.net/index.php/quickstart"> <img src="media/Download.png" width="285" height="77" />
-
-##### This is the fastest build you can get if you have a discrete NVIDIA or AMD GPU or Mac Silicon, And you'll receive special priority support.
- 
-###### These Pre-builts are perfect for non-technical users or those who don't have time to, or can't manually install all the requirements. Just a heads-up: this is an open-source project, so you can also install it manually. 
-
-## TLDR; Live Deepfake in just 3 Clicks
 ![easysteps](https://github.com/user-attachments/assets/af825228-852c-411b-b787-ffd9aac72fc6)
+
 1. Select a face
 2. Select which camera to use
 3. Press live!
 
-## Features & Uses - Everything is in real-time
+## Features
 
 ### Mouth Mask
 
@@ -83,307 +72,149 @@ Users are expected to use this software responsibly and legally. If using a real
 **Create Your Most Viral Meme Yet**
 
 <p align="center">
-  <img src="media/meme.gif" alt="show" width="450"> 
+  <img src="media/meme.gif" alt="show" width="450">
   <br>
   <sub>Created using Many Faces feature in Deep-Live-Cam</sub>
 </p>
 
-### Omegle
+## Installation
 
-**Surprise people on Omegle**
+### Prerequisites
 
-<p align="center">
-  <video src="https://github.com/user-attachments/assets/2e9b9b82-fa04-4b70-9f56-b1f68e7672d0" width="450" controls></video>
-</p>
+- **Python 3.10** (managed via [mise](https://mise.jdx.dev/) or installed manually)
+- **ffmpeg** on PATH
+- **git**
 
-## Installation (Manual)
-
-**Please be aware that the installation requires technical skills and is not for beginners. Consider downloading the quickstart version.**
-
-<details>
-<summary>Click to see the process</summary>
-
-### Installation
-
-This is more likely to work on your computer but will be slower as it utilizes the CPU.
-
-**1. Set up Your Platform**
-
--   Python (3.11 recommended)
--   pip
--   git
--   [ffmpeg](https://www.youtube.com/watch?v=OlNWCpFdVMA) - ```iex (irm ffmpeg.tc.ht)```
--   [Visual Studio 2022 Runtimes (Windows)](https://visualstudio.microsoft.com/visual-cpp-build-tools/)
-
-**2. Clone the Repository**
+### Setup
 
 ```bash
 git clone https://github.com/hacksider/Deep-Live-Cam.git
 cd Deep-Live-Cam
+just setup    # installs dependencies (uv sync) + downloads models
 ```
 
-**3. Download the Models**
+> If you don't have `just`, install it via `brew install just`, `cargo install just`, or see [just installation](https://github.com/casey/just#installation). Alternatively, run `uv sync` and download models manually into `models/`.
 
-1. [GFPGANv1.4](https://huggingface.co/hacksider/deep-live-cam/resolve/main/GFPGANv1.4.onnx)
-2. [inswapper\_128\_fp16.onnx](https://huggingface.co/hacksider/deep-live-cam/resolve/main/inswapper_128_fp16.onnx)
+### GPU Providers
 
-Place these files in the "**models**" folder.
+| Platform | Provider | How to run |
+|----------|----------|------------|
+| macOS ARM (M1/M2/M3/M4) | CoreML | `just start` (auto-detected) |
+| NVIDIA | CUDA | `just start` (auto-detected) |
+| AMD | ROCm | `just start-with rocm` |
+| Intel | OpenVINO | `just start-with openvino` |
+| Windows (any GPU) | DirectML | `just start-with directml` |
+| CPU only | - | `just start-cpu` |
 
-**4. Install Dependencies**
-
-We highly recommend using a `venv` to avoid issues.
-
-
-For Windows:
-```bash
-python -m venv venv
-venv\Scripts\activate
-pip install -r requirements.txt
-```
-For Linux:
-```bash
-# Ensure you use the installed Python 3.10
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-```
-
-**For macOS:**
-
-Apple Silicon (M1/M2/M3) requires specific setup:
-
-```bash
-# Install Python 3.11 (specific version is important)
-brew install python@3.11
-
-# Install tkinter package (required for the GUI)
-brew install python-tk@3.10
-
-# Create and activate virtual environment with Python 3.11
-python3.11 -m venv venv
-source venv/bin/activate
-
-# Install dependencies
-pip install -r requirements.txt
-```
-
-** In case something goes wrong and you need to reinstall the virtual environment **
-
-```bash
-# Deactivate the virtual environment
-rm -rf venv
-
-# Reinstall the virtual environment
-python -m venv venv
-source venv/bin/activate
-
-# install the dependencies again
-pip install -r requirements.txt
-
-# gfpgan and basicsrs issue fix
-pip install git+https://github.com/xinntao/BasicSR.git@master
-pip uninstall gfpgan -y
-pip install git+https://github.com/TencentARC/GFPGAN.git@master
-```
-
-**Run:** If you don't have a GPU, you can run Deep-Live-Cam using `python run.py`. Note that initial execution will download models (~300MB).
-
-### GPU Acceleration
-
-**CUDA Execution Provider (Nvidia)**
-
-1. Install [CUDA Toolkit 12.8.0](https://developer.nvidia.com/cuda-12-8-0-download-archive)
-2. Install [cuDNN v8.9.7 for CUDA 12.x](https://developer.nvidia.com/rdp/cudnn-archive) (required for onnxruntime-gpu):
-   - Download cuDNN v8.9.7 for CUDA 12.x
-   - Make sure the cuDNN bin directory is in your system PATH
-3. Install dependencies:
-
-```bash
-pip install -U torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128
-pip uninstall onnxruntime onnxruntime-gpu
-pip install onnxruntime-gpu==1.21.0
-```
-
-3. Usage:
-
-```bash
-python run.py --execution-provider cuda
-```
-
-**CoreML Execution Provider (Apple Silicon)**
-
-Apple Silicon (M1/M2/M3) specific installation:
-
-1. Make sure you've completed the macOS setup above using Python 3.10.
-2. Install dependencies:
-
-```bash
-pip uninstall onnxruntime onnxruntime-silicon
-pip install onnxruntime-silicon==1.13.1
-```
-
-3. Usage (important: specify Python 3.10):
-
-```bash
-python3.10 run.py --execution-provider coreml
-```
-
-**Important Notes for macOS:**
-- You **must** use Python 3.10, not newer versions like 3.11 or 3.13
-- Always run with `python3.10` command not just `python` if you have multiple Python versions installed
-- If you get error about `_tkinter` missing, reinstall the tkinter package: `brew reinstall python-tk@3.10`
-- If you get model loading errors, check that your models are in the correct folder
-- If you encounter conflicts with other Python versions, consider uninstalling them:
-  ```bash
-  # List all installed Python versions
-  brew list | grep python
-  
-  # Uninstall conflicting versions if needed
-  brew uninstall --ignore-dependencies python@3.11 python@3.13
-  
-  # Keep only Python 3.11
-  brew cleanup
-  ```
-
-**CoreML Execution Provider (Apple Legacy)**
-
-1. Install dependencies:
-
-```bash
-pip uninstall onnxruntime onnxruntime-coreml
-pip install onnxruntime-coreml==1.21.0
-```
-
-2. Usage:
-
-```bash
-python run.py --execution-provider coreml
-```
-
-**DirectML Execution Provider (Windows)**
-
-1. Install dependencies:
-
-```bash
-pip uninstall onnxruntime onnxruntime-directml
-pip install onnxruntime-directml==1.21.0
-```
-
-2. Usage:
-
-```bash
-python run.py --execution-provider directml
-```
-
-**OpenVINO™ Execution Provider (Intel)**
-
-1. Install dependencies:
-
-```bash
-pip uninstall onnxruntime onnxruntime-openvino
-pip install onnxruntime-openvino==1.21.0
-```
-
-2. Usage:
-
-```bash
-python run.py --execution-provider openvino
-```
-</details>
+GPU-specific ONNX runtimes are handled automatically by `pyproject.toml` platform markers. For CUDA, ensure [CUDA Toolkit](https://developer.nvidia.com/cuda-toolkit) and [cuDNN](https://developer.nvidia.com/cudnn) are installed.
 
 ## Usage
 
-**1. Image/Video Mode**
+### GUI (Live Webcam)
 
--   Execute `python run.py`.
--   Choose a source face image and a target image/video.
--   Click "Start".
--   The output will be saved in a directory named after the target video.
-
-**2. Webcam Mode**
-
--   Execute `python run.py`.
--   Select a source face image.
--   Click "Live".
--   Wait for the preview to appear (10-30 seconds).
--   Use a screen capture tool like OBS to stream, or enable the Virtual Camera toggle (see below).
--   To change the face, select a new source image.
-
-**3. Virtual Camera Mode**
-
-Send the face-swapped output directly to a virtual camera device that Zoom, Google Meet, Discord, and other apps can select — no OBS screen capture needed.
-
--   **Setup (one-time)**:
-    -   macOS: Install OBS 30+, open it, click Start Virtual Camera, then Stop, then close OBS.
-    -   Linux: `sudo apt install v4l2loopback-dkms && sudo modprobe v4l2loopback devices=1`
-    -   Windows: Install OBS 26+.
--   **Usage**: Enable the "Virtual Camera" toggle in the Live Mode settings tab, then start Live preview. In your video call app, select "OBS Virtual Camera" as the camera input.
--   **CLI**: `python run.py --virtual-cam --execution-provider coreml`
-
-## Command Line Arguments (Unmaintained)
-
-```
-options:
-  -h, --help                                               show this help message and exit
-  -s SOURCE_PATH, --source SOURCE_PATH                     select a source image
-  -t TARGET_PATH, --target TARGET_PATH                     select a target image or video
-  -o OUTPUT_PATH, --output OUTPUT_PATH                     select output file or directory
-  --frame-processor FRAME_PROCESSOR [FRAME_PROCESSOR ...]  frame processors (choices: face_swapper, face_enhancer, ...)
-  --keep-fps                                               keep original fps
-  --keep-audio                                             keep original audio
-  --keep-frames                                            keep temporary frames
-  --many-faces                                             process every face
-  --map-faces                                              map source target faces
-  --mouth-mask                                             mask the mouth region
-  --video-encoder {libx264,libx265,libvpx-vp9}             adjust output video encoder
-  --video-quality [0-51]                                   adjust output video quality
-  --live-mirror                                            the live camera display as you see it in the front-facing camera frame
-  --live-resizable                                         the live camera frame is resizable
-  --virtual-cam                                            output to virtual camera device
-  --max-memory MAX_MEMORY                                  maximum amount of RAM in GB
-  --execution-provider {cpu} [{cpu} ...]                   available execution provider (choices: cpu, ...)
-  --execution-threads EXECUTION_THREADS                    number of execution threads
-  -v, --version                                            show program's version number and exit
+```bash
+just start              # launch GUI with platform-default GPU
 ```
 
-Looking for a CLI mode? Using the -s/--source argument will make the run program in cli mode.
+Select a source face image, choose your camera, and click **Live**.
+
+### Headless (Image/Video)
+
+```bash
+uv run run.py -s source.jpg -t target.mp4 -o output.mp4
+uv run run.py -s source.jpg -t target.jpg -o output.jpg --frame-processor face_swapper face_enhancer
+```
+
+### Virtual Camera
+
+Send processed output directly to Zoom, Google Meet, Discord — no screen capture needed.
+
+```bash
+just start-virtualcam
+```
+
+**One-time setup**: macOS — install OBS 30+, start/stop virtual camera once. Linux — `sudo apt install v4l2loopback-dkms && sudo modprobe v4l2loopback devices=1`. Windows — install OBS 26+.
+
+## Command Line Arguments
+
+<!-- CLI_ARGS_START -->
+*Deep-Live-Cam v2.0.3c* — run `uv run run.py --help` for latest options.
+
+| Flag | Description | Default | Choices |
+|------|-------------|---------|---------|
+| `-s, --source` | select an source image |  |  |
+| `-t, --target` | select an target image or video |  |  |
+| `-o, --output` | select output file or directory |  |  |
+| `--frame-processor` | pipeline of frame processors | `'face_swapper'` | `'face_swapper', 'face_enhancer', 'face_enhancer_gpen256', 'face_enhancer_gpen512'` |
+| `--keep-fps` | keep original fps | `False` |  |
+| `--keep-audio` | keep original audio | `True` |  |
+| `--keep-frames` | keep temporary frames | `False` |  |
+| `--many-faces` | process every face | `False` |  |
+| `--nsfw-filter` | filter the NSFW image or video | `False` |  |
+| `--map-faces` | map source target faces | `False` |  |
+| `--mouth-mask` | mask the mouth region | `False` |  |
+| `--video-encoder` | adjust output video encoder | `'libx264'` | `'libx264', 'libx265', 'libvpx-vp9'` |
+| `--video-quality` | adjust output video quality | `18` | `0-51` |
+| `-l, --lang` | Ui language | `'en'` |  |
+| `--live-mirror` | The live camera display as you see it in the front-facing camera frame | `False` |  |
+| `--live-resizable` | The live camera frame is resizable | `False` |  |
+| `--virtual-cam` | output to virtual camera device | `False` |  |
+| `--rife` | enable RIFE frame interpolation for video output | `False` |  |
+| `--rife-model` | RIFE model to use | `'rife-v4.25-lite'` | `'rife-v4.25', 'rife-v4.25-lite'` |
+| `--rife-multiplier` | RIFE frame rate multiplier (2=double, 4=quadruple) | `2` | `2, 4` |
+| `--half-rate` | enable half-rate face processing with RIFE interpolation for live mode | `False` |  |
+| `--keyframe-interval` | process every Nth frame in half-rate mode (2-10) | `2` | `2-10` |
+| `--max-memory` | maximum amount of RAM in GB | `(auto)` |  |
+| `--execution-provider` | execution provider | `'cpu'` | `(auto)` |
+| `--execution-threads` | number of execution threads | `(auto)` |  |
+<!-- CLI_ARGS_END -->
+
+Using `-s`/`--source` triggers headless (CLI) mode — no GUI window opens.
+
+## Development
+
+```bash
+just --list             # see all available recipes
+just test-quick         # fast unit tests
+just test               # full test suite
+just test-cov           # tests with coverage report
+```
+
+See [CLAUDE.md](CLAUDE.md) for full developer documentation.
 
 ## Press
 
-**We are always open to criticism and are ready to improve, that's why we didn't cherry-pick anything.**
-
- - [*"Deep-Live-Cam goes viral, allowing anyone to become a digital doppelganger"*](https://arstechnica.com/information-technology/2024/08/new-ai-tool-enables-real-time-face-swapping-on-webcams-raising-fraud-concerns/) - Ars Technica
- - [*"Thanks Deep Live Cam, shapeshifters are among us now"*](https://dataconomy.com/2024/08/15/what-is-deep-live-cam-github-deepfake/) - Dataconomy
- - [*"This free AI tool lets you become anyone during video-calls"*](https://www.newsbytesapp.com/news/science/deep-live-cam-ai-impersonation-tool-goes-viral/story) - NewsBytes
- - [*"OK, this viral AI live stream software is truly terrifying"*](https://www.creativebloq.com/ai/ok-this-viral-ai-live-stream-software-is-truly-terrifying) - Creative Bloq
- - [*"Deepfake AI Tool Lets You Become Anyone in a Video Call With Single Photo"*](https://petapixel.com/2024/08/14/deep-live-cam-deepfake-ai-tool-lets-you-become-anyone-in-a-video-call-with-single-photo-mark-zuckerberg-jd-vance-elon-musk/) - PetaPixel
- - [*"Deep-Live-Cam Uses AI to Transform Your Face in Real-Time, Celebrities Included"*](https://www.techeblog.com/deep-live-cam-ai-transform-face/) - TechEBlog
- - [*"An AI tool that "makes you look like anyone" during a video call is going viral online"*](https://telegrafi.com/en/a-tool-that-makes-you-look-like-anyone-during-a-video-call-is-going-viral-on-the-Internet/) - Telegrafi
- - [*"This Deepfake Tool Turning Images Into Livestreams is Topping the GitHub Charts"*](https://decrypt.co/244565/this-deepfake-tool-turning-images-into-livestreams-is-topping-the-github-charts) - Emerge
- - [*"New Real-Time Face-Swapping AI Allows Anyone to Mimic Famous Faces"*](https://www.digitalmusicnews.com/2024/08/15/face-swapping-ai-real-time-mimic/) - Digital Music News
- - [*"This real-time webcam deepfake tool raises alarms about the future of identity theft"*](https://www.diyphotography.net/this-real-time-webcam-deepfake-tool-raises-alarms-about-the-future-of-identity-theft/) - DIYPhotography
- - [*"That's Crazy, Oh God. That's Fucking Freaky Dude... That's So Wild Dude"*](https://www.youtube.com/watch?time_continue=1074&v=py4Tc-Y8BcY) - SomeOrdinaryGamers
- - [*"Alright look look look, now look chat, we can do any face we want to look like chat"*](https://www.youtube.com/live/mFsCe7AIxq8?feature=shared&t=2686) - IShowSpeed
- - [*"They do a pretty good job matching poses, expression and even the lighting"*](https://www.youtube.com/watch?v=wnCghLjqv3s&t=551s) - TechLinked (LTT)
- - [*"Als Sean Connery an der Redaktionskonferenz teilnahm"*](https://www.golem.de/news/deepfakes-als-sean-connery-an-der-redaktionskonferenz-teilnahm-2408-188172.html) - Golem.de (German)
- - [*"What the F***! Why do I look like Vinny Jr? I look exactly like Vinny Jr!? No, this shit is crazy! Bro This is F*** Crazy! "*](https://youtu.be/JbUPRmXRUtE?t=3964) - IShowSpeed
-
+- [*"Deep-Live-Cam goes viral, allowing anyone to become a digital doppelganger"*](https://arstechnica.com/information-technology/2024/08/new-ai-tool-enables-real-time-face-swapping-on-webcams-raising-fraud-concerns/) - Ars Technica
+- [*"Thanks Deep Live Cam, shapeshifters are among us now"*](https://dataconomy.com/2024/08/15/what-is-deep-live-cam-github-deepfake/) - Dataconomy
+- [*"This free AI tool lets you become anyone during video-calls"*](https://www.newsbytesapp.com/news/science/deep-live-cam-ai-impersonation-tool-goes-viral/story) - NewsBytes
+- [*"OK, this viral AI live stream software is truly terrifying"*](https://www.creativebloq.com/ai/ok-this-viral-ai-live-stream-software-is-truly-terrifying) - Creative Bloq
+- [*"Deepfake AI Tool Lets You Become Anyone in a Video Call With Single Photo"*](https://petapixel.com/2024/08/14/deep-live-cam-deepfake-ai-tool-lets-you-become-anyone-in-a-video-call-with-single-photo-mark-zuckerberg-jd-vance-elon-musk/) - PetaPixel
+- [*"Deep-Live-Cam Uses AI to Transform Your Face in Real-Time, Celebrities Included"*](https://www.techeblog.com/deep-live-cam-ai-transform-face/) - TechEBlog
+- [*"An AI tool that "makes you look like anyone" during a video call is going viral online"*](https://telegrafi.com/en/a-tool-that-makes-you-look-like-anyone-during-a-video-call-is-going-viral-on-the-Internet/) - Telegrafi
+- [*"This Deepfake Tool Turning Images Into Livestreams is Topping the GitHub Charts"*](https://decrypt.co/244565/this-deepfake-tool-turning-images-into-livestreams-is-topping-the-github-charts) - Emerge
+- [*"New Real-Time Face-Swapping AI Allows Anyone to Mimic Famous Faces"*](https://www.digitalmusicnews.com/2024/08/15/face-swapping-ai-real-time-mimic/) - Digital Music News
+- [*"This real-time webcam deepfake tool raises alarms about the future of identity theft"*](https://www.diyphotography.net/this-real-time-webcam-deepfake-tool-raises-alarms-about-the-future-of-identity-theft/) - DIYPhotography
+- [*"That's Crazy, Oh God. That's Fucking Freaky Dude... That's So Wild Dude"*](https://www.youtube.com/watch?time_continue=1074&v=py4Tc-Y8BcY) - SomeOrdinaryGamers
+- [*"Alright look look look, now look chat, we can do any face we want to look like chat"*](https://www.youtube.com/live/mFsCe7AIxq8?feature=shared&t=2686) - IShowSpeed
+- [*"They do a pretty good job matching poses, expression and even the lighting"*](https://www.youtube.com/watch?v=wnCghLjqv3s&t=551s) - TechLinked (LTT)
+- [*"Als Sean Connery an der Redaktionskonferenz teilnahm"*](https://www.golem.de/news/deepfakes-als-sean-connery-an-der-redaktionskonferenz-teilnahm-2408-188172.html) - Golem.de (German)
+- [*"What the F***! Why do I look like Vinny Jr? I look exactly like Vinny Jr!? No, this shit is crazy! Bro This is F*** Crazy! "*](https://youtu.be/JbUPRmXRUtE?t=3964) - IShowSpeed
 
 ## Credits
 
--   [ffmpeg](https://ffmpeg.org/): for making video-related operations easy
--   [Henry](https://github.com/henryruhs): One of the major contributor in this repo
--   [deepinsight](https://github.com/deepinsight): for their [insightface](https://github.com/deepinsight/insightface) project which provided a well-made library and models. Please be reminded that the [use of the model is for non-commercial research purposes only](https://github.com/deepinsight/insightface?tab=readme-ov-file#license).
--   [havok2-htwo](https://github.com/havok2-htwo): for sharing the code for webcam
--   [GosuDRM](https://github.com/GosuDRM): for the open version of roop
--   [pereiraroland26](https://github.com/pereiraroland26): Multiple faces support
--   [vic4key](https://github.com/vic4key): For supporting/contributing to this project
--   [kier007](https://github.com/kier007): for improving the user experience
--   [qitianai](https://github.com/qitianai): for multi-lingual support
--   [laurigates](https://github.com/laurigates): Decoupling stuffs to make everything faster!
--   and [all developers](https://github.com/hacksider/Deep-Live-Cam/graphs/contributors) behind libraries used in this project.
--   Footnote: Please be informed that the base author of the code is [s0md3v](https://github.com/s0md3v/roop)
--   All the wonderful users who helped make this project go viral by starring the repo ❤️
+- [ffmpeg](https://ffmpeg.org/): for making video-related operations easy
+- [Henry](https://github.com/henryruhs): One of the major contributor in this repo
+- [deepinsight](https://github.com/deepinsight): for their [insightface](https://github.com/deepinsight/insightface) project which provided a well-made library and models. Please be reminded that the [use of the model is for non-commercial research purposes only](https://github.com/deepinsight/insightface?tab=readme-ov-file#license).
+- [havok2-htwo](https://github.com/havok2-htwo): for sharing the code for webcam
+- [GosuDRM](https://github.com/GosuDRM): for the open version of roop
+- [pereiraroland26](https://github.com/pereiraroland26): Multiple faces support
+- [vic4key](https://github.com/vic4key): For supporting/contributing to this project
+- [kier007](https://github.com/kier007): for improving the user experience
+- [qitianai](https://github.com/qitianai): for multi-lingual support
+- [laurigates](https://github.com/laurigates): Decoupling stuffs to make everything faster!
+- and [all developers](https://github.com/hacksider/Deep-Live-Cam/graphs/contributors) behind libraries used in this project.
+- Footnote: Please be informed that the base author of the code is [s0md3v](https://github.com/s0md3v/roop)
+- All the wonderful users who helped make this project go viral by starring the repo
 
 [![Stargazers](https://reporoster.com/stars/hacksider/Deep-Live-Cam)](https://github.com/hacksider/Deep-Live-Cam/stargazers)
 
@@ -391,7 +222,7 @@ Looking for a CLI mode? Using the -s/--source argument will make the run program
 
 ![Alt](https://repobeats.axiom.co/api/embed/fec8e29c45dfdb9c5916f3a7830e1249308d20e1.svg "Repobeats analytics image")
 
-## Stars to the Moon 🚀
+## Stars
 
 <a href="https://star-history.com/#hacksider/deep-live-cam&Date">
  <picture>

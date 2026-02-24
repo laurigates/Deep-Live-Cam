@@ -196,6 +196,16 @@ test-blas:
 # Maintenance
 ##########
 
+# Regenerate CLI args table in README.md from modules/core.py
+[group: "maintenance"]
+generate-cli-docs:
+    uv run scripts/generate_cli_docs.py
+
+# Check if README.md CLI args section is up to date (exits non-zero if stale)
+[group: "maintenance"]
+check-cli-docs:
+    uv run scripts/generate_cli_docs.py --check
+
 # Clean up virtual environment and lock file
 [group: "maintenance"]
 [confirm("Remove virtual environment?")]
