@@ -92,6 +92,62 @@ def _detection_thread_func(latest_frame_holder, detection_result, detection_lock
                 detection_result['many_faces'] = None
 
 
+def _swap_thread_func(swap_input, swap_output, swap_lock, stop_event):
+    """Swap thread: runs face swap ONNX inference asynchronously.
+
+    Follows the same single-slot holder pattern as detection and enhancement.
+    Reads from swap_input[0], writes to swap_output[0].
+    Input holder dict: {'frame', 'source_face', 'target_face', 'many_faces',
+                        'processor', 'map_faces', 'seq'}
+    Output holder dict: {'frame', 'seq'}
+    """
+    last_processed_seq = -1
+
+    while not stop_event.is_set():
+        with swap_lock:
+            inp = swap_input[0]
+
+        if inp is None:
+            time.sleep(0.005)
+            continue
+
+        seq = inp['seq']
+        if seq == last_processed_seq:
+            time.sleep(0.005)
+            continue
+
+        frame = inp['frame']
+        processor = inp['processor']
+
+        if inp['map_faces']:
+            frame = processor.process_frame(None, frame)
+        else:
+            source_face = inp['source_face']
+            many_faces_list = inp['many_faces']
+            target_face = inp['target_face']
+
+            swapped_bboxes = []
+            if many_faces_list:
+                opacity = getattr(modules.globals, "opacity", 1.0)
+                result = frame if opacity >= 1.0 else frame.copy()
+                for t_face in many_faces_list:
+                    result = processor.swap_face(source_face, t_face, result)
+                    if hasattr(t_face, 'bbox') and t_face.bbox is not None:
+                        swapped_bboxes.append(t_face.bbox.astype(int))
+                frame = result
+            elif target_face is not None:
+                frame = processor.swap_face(source_face, target_face, frame)
+                if hasattr(target_face, 'bbox') and target_face.bbox is not None:
+                    swapped_bboxes.append(target_face.bbox.astype(int))
+
+            frame = processor.apply_post_processing(frame, swapped_bboxes)
+
+        last_processed_seq = seq
+
+        with swap_lock:
+            swap_output[0] = {'frame': frame, 'seq': seq}
+
+
 def _enhancement_thread_func(enhancement_input, enhancement_output,
                               enhancement_lock, stop_event):
     """Enhancement thread: runs face enhancement (GFPGAN/GPEN) asynchronously.
@@ -134,6 +190,7 @@ def _enhancement_thread_func(enhancement_input, enhancement_output,
 
 def _processing_thread_func(capture_queue, processed_queue, stop_event,
                              latest_frame_holder, detection_result, detection_lock,
+                             swap_input, swap_output, swap_lock,
                              enhancement_input, enhancement_output, enhancement_lock):
     """Processing thread (consumer): takes raw frames from capture_queue,
     reads the latest detection result from the shared detection_result dict,
@@ -154,6 +211,9 @@ def _processing_thread_func(capture_queue, processed_queue, stop_event,
     half_rate_warned = False
     frame_counter = 0
     enhancer_frame_counter = 0
+    swap_seq = 0
+    last_consumed_swap_seq = -1
+    latest_swapped_frame = None
     enhancement_seq = 0
     last_consumed_enh_seq = -1
     latest_enhanced_frame = None
@@ -230,22 +290,24 @@ def _processing_thread_func(capture_queue, processed_queue, stop_event,
                                 enhancement_input[0] = None
                                 enhancement_output[0] = None
                     elif frame_processor.NAME == "DLC.FACE-SWAPPER":
-                        # Use cached face positions to skip redundant detection
-                        swapped_bboxes = []
-                        if modules.globals.many_faces and cached_many_faces:
-                            opacity = getattr(modules.globals, "opacity", 1.0)
-                            result = temp_frame if opacity >= 1.0 else temp_frame.copy()
-                            for t_face in cached_many_faces:
-                                result = frame_processor.swap_face(source_image, t_face, result)
-                                if hasattr(t_face, 'bbox') and t_face.bbox is not None:
-                                    swapped_bboxes.append(t_face.bbox.astype(int))
-                            temp_frame = result
-                        elif cached_target_face is not None:
-                            temp_frame = frame_processor.swap_face(source_image, cached_target_face, temp_frame)
-                            if hasattr(cached_target_face, 'bbox') and cached_target_face.bbox is not None:
-                                swapped_bboxes.append(cached_target_face.bbox.astype(int))
-                        # Apply post-processing (sharpening, interpolation)
-                        temp_frame = frame_processor.apply_post_processing(temp_frame, swapped_bboxes)
+                        swap_seq += 1
+                        with swap_lock:
+                            swap_input[0] = {
+                                'frame': temp_frame.copy(),
+                                'source_face': source_image,
+                                'target_face': cached_target_face,
+                                'many_faces': cached_many_faces if modules.globals.many_faces else None,
+                                'processor': frame_processor,
+                                'map_faces': False,
+                                'seq': swap_seq,
+                            }
+                        with swap_lock:
+                            swap_out = swap_output[0]
+                        if swap_out is not None and swap_out['seq'] != last_consumed_swap_seq:
+                            last_consumed_swap_seq = swap_out['seq']
+                            latest_swapped_frame = swap_out['frame']
+                        if latest_swapped_frame is not None:
+                            temp_frame = latest_swapped_frame
                     else:
                         temp_frame = frame_processor.process_frame(source_image, temp_frame)
             else:
@@ -281,6 +343,25 @@ def _processing_thread_func(capture_queue, processed_queue, stop_event,
                             with enhancement_lock:
                                 enhancement_input[0] = None
                                 enhancement_output[0] = None
+                    elif frame_processor.NAME == "DLC.FACE-SWAPPER":
+                        swap_seq += 1
+                        with swap_lock:
+                            swap_input[0] = {
+                                'frame': temp_frame.copy(),
+                                'source_face': None,
+                                'target_face': None,
+                                'many_faces': None,
+                                'processor': frame_processor,
+                                'map_faces': True,
+                                'seq': swap_seq,
+                            }
+                        with swap_lock:
+                            swap_out = swap_output[0]
+                        if swap_out is not None and swap_out['seq'] != last_consumed_swap_seq:
+                            last_consumed_swap_seq = swap_out['seq']
+                            latest_swapped_frame = swap_out['frame']
+                        if latest_swapped_frame is not None:
+                            temp_frame = latest_swapped_frame
                     else:
                         temp_frame = frame_processor.process_frame(None, temp_frame)
         else:
@@ -403,6 +484,11 @@ def create_webcam_preview(camera_index: int):
     latest_frame_holder = [None]  # one-element list so inner functions can rebind
     detection_result = {'target_face': None, 'many_faces': None}
 
+    # Shared state for the async swap pipeline.
+    swap_lock = threading.Lock()
+    swap_input = [None]          # single-slot holder for swap requests
+    swap_output = [None]         # single-slot holder for swap results
+
     # Shared state for the async enhancement pipeline.
     enhancement_lock = threading.Lock()
     enhancement_input = [None]   # single-slot holder for enhancement requests
@@ -425,6 +511,15 @@ def create_webcam_preview(camera_index: int):
     )
     det_thread.start()
 
+    # Start swap thread — runs face swap ONNX inference asynchronously so the
+    # processing thread never blocks on swap computation.
+    swap_thread = threading.Thread(
+        target=_swap_thread_func,
+        args=(swap_input, swap_output, swap_lock, stop_event),
+        daemon=True,
+    )
+    swap_thread.start()
+
     # Start enhancement thread — runs face enhancement asynchronously so the
     # processing thread never blocks on expensive GFPGAN/GPEN inference.
     enh_thread = threading.Thread(
@@ -439,6 +534,7 @@ def create_webcam_preview(camera_index: int):
         target=_processing_thread_func,
         args=(capture_queue, processed_queue, stop_event,
               latest_frame_holder, detection_result, detection_lock,
+              swap_input, swap_output, swap_lock,
               enhancement_input, enhancement_output, enhancement_lock),
         daemon=True,
     )
@@ -448,6 +544,7 @@ def create_webcam_preview(camera_index: int):
         stop_event.set()
         cap_thread.join(timeout=2.0)
         det_thread.join(timeout=2.0)
+        swap_thread.join(timeout=2.0)
         enh_thread.join(timeout=2.0)
         proc_thread.join(timeout=2.0)
         cap.release()
