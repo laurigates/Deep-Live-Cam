@@ -552,16 +552,23 @@ def create_webcam_preview(camera_index: int):
     proc_thread.start()
 
     def _cleanup():
+        # Signal threads and hide the window immediately so the UI stays
+        # responsive.  Blocking operations (join/release/det-size reset) run
+        # on a daemon thread so the main thread is never stalled.
         stop_event.set()
-        cap_thread.join(timeout=2.0)
-        det_thread.join(timeout=2.0)
-        swap_thread.join(timeout=2.0)
-        enh_thread.join(timeout=2.0)
-        proc_thread.join(timeout=2.0)
-        cap.release()
-        virtual_cam.stop()
-        set_det_size(_DEFAULT_DET_SIZE)
         PREVIEW.withdraw()
+
+        def _background_cleanup():
+            cap_thread.join(timeout=2.0)
+            det_thread.join(timeout=2.0)
+            swap_thread.join(timeout=2.0)
+            enh_thread.join(timeout=2.0)
+            proc_thread.join(timeout=2.0)
+            cap.release()
+            virtual_cam.stop()
+            set_det_size(_DEFAULT_DET_SIZE)
+
+        threading.Thread(target=_background_cleanup, daemon=True).start()
 
     def _display_next_frame():
         """Non-blocking display step — reschedules itself via ROOT.after()."""
