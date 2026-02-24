@@ -29,6 +29,11 @@ NAME = "DLC.FACE-ENHANCER"
 
 FACE_ENHANCER = None
 
+# Cache for the feathered blending mask — keyed by output_size.
+# The mask is deterministic for a given size so we build it once and reuse.
+_MASK_CACHE: dict[int, np.ndarray] = {}
+_MASK_CACHE_LOCK = threading.Lock()
+
 # Standard FFHQ 5-point face template for 512x512 resolution
 # Points: left_eye, right_eye, nose, left_mouth, right_mouth
 FFHQ_TEMPLATE_512 = np.array(
@@ -179,6 +184,35 @@ def _align_face(
     return aligned_face, affine_matrix
 
 
+def _get_feathered_mask(output_size: int) -> np.ndarray:
+    """Return a cached 3-channel feathered blending mask for the given size."""
+    mask = _MASK_CACHE.get(output_size)
+    if mask is not None:
+        return mask
+
+    with _MASK_CACHE_LOCK:
+        # Double-check after acquiring lock
+        mask = _MASK_CACHE.get(output_size)
+        if mask is not None:
+            return mask
+
+        face_mask = np.ones((output_size, output_size), dtype=np.float32)
+        border = max(1, int(output_size * 0.05))
+        ramp_up = np.linspace(0.0, 1.0, border, dtype=np.float32)
+        ramp_down = np.linspace(1.0, 0.0, border, dtype=np.float32)
+
+        face_mask[:border, :] *= ramp_up[:, None]
+        face_mask[-border:, :] *= ramp_down[:, None]
+        face_mask[:, :border] *= ramp_up[None, :]
+        face_mask[:, -border:] *= ramp_down[None, :]
+
+        mask = np.stack([face_mask] * 3, axis=-1)
+        # Make immutable to prevent accidental modification
+        mask.flags.writeable = False
+        _MASK_CACHE[output_size] = mask
+        return mask
+
+
 def _paste_back(
     frame: Frame,
     enhanced_face: np.ndarray,
@@ -201,23 +235,7 @@ def _paste_back(
         borderValue=(0, 0, 0),
     )
 
-    # Build a soft feathered mask in aligned space for edge blending
-    face_mask = np.ones((output_size, output_size), dtype=np.float32)
-
-    # Feather the border (5 % of the size on each edge)
-    border = max(1, int(output_size * 0.05))
-    ramp_up = np.linspace(0.0, 1.0, border, dtype=np.float32)
-    ramp_down = np.linspace(1.0, 0.0, border, dtype=np.float32)
-
-    # Top / bottom rows
-    face_mask[:border, :] *= ramp_up[:, None]
-    face_mask[-border:, :] *= ramp_down[:, None]
-    # Left / right columns
-    face_mask[:, :border] *= ramp_up[None, :]
-    face_mask[:, -border:] *= ramp_down[None, :]
-
-    # Expand to 3-channel
-    face_mask_3c = np.stack([face_mask] * 3, axis=-1)
+    face_mask_3c = _get_feathered_mask(output_size)
 
     # Warp mask back to original frame space
     inv_mask = cv2.warpAffine(

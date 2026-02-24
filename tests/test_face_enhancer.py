@@ -86,3 +86,54 @@ def test_enhance_face_uses_inter_area_for_downscale():
                         assert kwargs["interpolation"] == cv2.INTER_AREA, (
                             f"Expected INTER_AREA, got {kwargs['interpolation']}"
                         )
+
+
+# --- Feathered mask cache tests ---
+
+
+def test_get_feathered_mask_shape():
+    """Cached mask should have correct shape (output_size, output_size, 3)."""
+    from modules.processors.frame.face_enhancer import _get_feathered_mask, _MASK_CACHE
+    _MASK_CACHE.clear()
+    mask = _get_feathered_mask(512)
+    assert mask.shape == (512, 512, 3)
+    assert mask.dtype == np.float32
+
+
+def test_get_feathered_mask_cache_identity():
+    """Second call should return the exact same object (cache hit)."""
+    from modules.processors.frame.face_enhancer import _get_feathered_mask, _MASK_CACHE
+    _MASK_CACHE.clear()
+    mask1 = _get_feathered_mask(512)
+    mask2 = _get_feathered_mask(512)
+    assert mask1 is mask2
+
+
+def test_get_feathered_mask_border_values():
+    """Border pixels should be feathered (less than 1.0), center should be 1.0."""
+    from modules.processors.frame.face_enhancer import _get_feathered_mask, _MASK_CACHE
+    _MASK_CACHE.clear()
+    mask = _get_feathered_mask(100)
+    # Center should be 1.0
+    assert mask[50, 50, 0] == 1.0
+    # Top-left corner should be close to 0.0
+    assert mask[0, 0, 0] < 0.1
+
+
+def test_get_feathered_mask_immutable():
+    """Cached mask should be read-only to prevent accidental modification."""
+    from modules.processors.frame.face_enhancer import _get_feathered_mask, _MASK_CACHE
+    _MASK_CACHE.clear()
+    mask = _get_feathered_mask(256)
+    assert not mask.flags.writeable
+
+
+def test_get_feathered_mask_different_sizes():
+    """Different sizes should produce different cache entries."""
+    from modules.processors.frame.face_enhancer import _get_feathered_mask, _MASK_CACHE
+    _MASK_CACHE.clear()
+    mask256 = _get_feathered_mask(256)
+    mask512 = _get_feathered_mask(512)
+    assert mask256 is not mask512
+    assert mask256.shape == (256, 256, 3)
+    assert mask512.shape == (512, 512, 3)
