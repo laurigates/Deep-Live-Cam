@@ -97,4 +97,7 @@ rife_multiplier: int = 2              # Frame rate multiplier: 2 = double fps, 4
 half_rate_processing: bool = False    # Process every Nth frame; use RIFE to fill skipped frames
 keyframe_interval: int = 2            # Run face processing every Nth frame (2-10)
 
+# --- Enhancer Skip-Frame ---
+enhancer_skip_interval: int = 1      # Enhance every Nth frame (1=every, 2=every other, etc.)
+
 # --- END OF FILE globals.py ---

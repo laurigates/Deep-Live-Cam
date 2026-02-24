@@ -19,6 +19,26 @@ from modules.video_capture import VideoCapturer
 # own dedicated thread.
 DETECT_EVERY_N = 2
 
+# Enhancer processor names for skip-frame logic
+_ENHANCER_NAMES = frozenset({
+    "DLC.FACE-ENHANCER",
+    "DLC.FACE-ENHANCER-GPEN256",
+    "DLC.FACE-ENHANCER-GPEN512",
+})
+
+# Map from processor NAME to fp_ui toggle key
+_ENHANCER_UI_KEYS = {
+    "DLC.FACE-ENHANCER": "face_enhancer",
+    "DLC.FACE-ENHANCER-GPEN256": "face_enhancer_gpen256",
+    "DLC.FACE-ENHANCER-GPEN512": "face_enhancer_gpen512",
+}
+
+
+def _is_enhancer_enabled(processor) -> bool:
+    """Check if an enhancer processor is toggled on in the UI."""
+    key = _ENHANCER_UI_KEYS.get(processor.NAME)
+    return key is not None and modules.globals.fp_ui.get(key, False)
+
 
 def _capture_thread_func(cap, capture_queue, stop_event):
     """Capture thread: reads frames from camera and puts them into the queue.
@@ -92,6 +112,8 @@ def _processing_thread_func(capture_queue, processed_queue, stop_event,
     rife_warned = False
     half_rate_warned = False
     frame_counter = 0
+    enhancer_frame_counter = 0
+    prev_enhanced_frame = None
 
     while not stop_event.is_set():
         try:
@@ -134,16 +156,19 @@ def _processing_thread_func(capture_queue, processed_queue, stop_event,
                 elif cached_target_face is not None:
                     cached_faces_list = [cached_target_face]
 
+                # Enhancer skip-frame: compute once per frame whether to skip enhancement
+                enhancer_frame_counter += 1
+                enh_interval = max(1, getattr(modules.globals, "enhancer_skip_interval", 1))
+                skip_enhancer = enh_interval > 1 and (enhancer_frame_counter % enh_interval) != 1
+
                 for frame_processor in frame_processors:
-                    if frame_processor.NAME == "DLC.FACE-ENHANCER":
-                        if modules.globals.fp_ui.get("face_enhancer"):
-                            temp_frame = frame_processor.process_frame(None, temp_frame, faces=cached_faces_list)
-                    elif frame_processor.NAME == "DLC.FACE-ENHANCER-GPEN256":
-                        if modules.globals.fp_ui.get("face_enhancer_gpen256"):
-                            temp_frame = frame_processor.process_frame(None, temp_frame, faces=cached_faces_list)
-                    elif frame_processor.NAME == "DLC.FACE-ENHANCER-GPEN512":
-                        if modules.globals.fp_ui.get("face_enhancer_gpen512"):
-                            temp_frame = frame_processor.process_frame(None, temp_frame, faces=cached_faces_list)
+                    if frame_processor.NAME in _ENHANCER_NAMES:
+                        if _is_enhancer_enabled(frame_processor):
+                            if skip_enhancer and prev_enhanced_frame is not None:
+                                temp_frame = prev_enhanced_frame
+                            else:
+                                temp_frame = frame_processor.process_frame(None, temp_frame, faces=cached_faces_list)
+                                prev_enhanced_frame = temp_frame.copy()
                     elif frame_processor.NAME == "DLC.FACE-SWAPPER":
                         # Use cached face positions to skip redundant detection
                         swapped_bboxes = []
@@ -165,14 +190,20 @@ def _processing_thread_func(capture_queue, processed_queue, stop_event,
                         temp_frame = frame_processor.process_frame(source_image, temp_frame)
             else:
                 modules.globals.target_path = None
+
+                # Enhancer skip-frame for map_faces path
+                enhancer_frame_counter += 1
+                enh_interval = max(1, getattr(modules.globals, "enhancer_skip_interval", 1))
+                skip_enhancer = enh_interval > 1 and (enhancer_frame_counter % enh_interval) != 1
+
                 for frame_processor in frame_processors:
-                    if frame_processor.NAME == "DLC.FACE-ENHANCER":
-                        if modules.globals.fp_ui.get("face_enhancer"):
-                            temp_frame = frame_processor.process_frame_v2(temp_frame)
-                    elif frame_processor.NAME in ("DLC.FACE-ENHANCER-GPEN256", "DLC.FACE-ENHANCER-GPEN512"):
-                        fp_key = "face_enhancer_gpen256" if "256" in frame_processor.NAME else "face_enhancer_gpen512"
-                        if modules.globals.fp_ui.get(fp_key):
-                            temp_frame = frame_processor.process_frame_v2(temp_frame)
+                    if frame_processor.NAME in _ENHANCER_NAMES:
+                        if _is_enhancer_enabled(frame_processor):
+                            if skip_enhancer and prev_enhanced_frame is not None:
+                                temp_frame = prev_enhanced_frame
+                            else:
+                                temp_frame = frame_processor.process_frame_v2(temp_frame)
+                                prev_enhanced_frame = temp_frame.copy()
                     else:
                         temp_frame = frame_processor.process_frame(None, temp_frame)
         else:
