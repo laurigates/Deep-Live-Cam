@@ -64,6 +64,8 @@ def parse_args() -> None:
     program.add_argument('--rife', help='enable RIFE frame interpolation for video output', dest='rife_enabled', action='store_true', default=False)
     program.add_argument('--rife-model', help='RIFE model to use', dest='rife_model', default='rife-v4.25-lite', choices=['rife-v4.25', 'rife-v4.25-lite'])
     program.add_argument('--rife-multiplier', help='RIFE frame rate multiplier (2=double, 4=quadruple)', dest='rife_multiplier', type=int, default=2, choices=[2, 4])
+    program.add_argument('--half-rate', help='enable half-rate face processing with RIFE interpolation for live mode', dest='half_rate_processing', action='store_true', default=False)
+    program.add_argument('--keyframe-interval', help='process every Nth frame in half-rate mode (2-10)', dest='keyframe_interval', type=int, default=2, choices=range(2, 11))
     program.add_argument('--max-memory', help='maximum amount of RAM in GB', dest='max_memory', type=int, default=suggest_max_memory())
     program.add_argument('--execution-provider', help='execution provider', dest='execution_provider', default=['cpu'], choices=suggest_execution_providers(), nargs='+')
     program.add_argument('--execution-threads', help='number of execution threads', dest='execution_threads', type=int, default=suggest_execution_threads())
@@ -101,6 +103,8 @@ def parse_args() -> None:
     modules.globals.rife_enabled = args.rife_enabled
     modules.globals.rife_model = args.rife_model
     modules.globals.rife_multiplier = args.rife_multiplier
+    modules.globals.half_rate_processing = args.half_rate_processing
+    modules.globals.keyframe_interval = args.keyframe_interval
 
     #for ENHANCER tumblers:
     for enhancer_key in ('face_enhancer', 'face_enhancer_gpen256', 'face_enhancer_gpen512'):
