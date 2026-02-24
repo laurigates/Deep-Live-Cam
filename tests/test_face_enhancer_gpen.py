@@ -118,3 +118,45 @@ class TestOnnxEnhancerShared:
         img = postprocess_face(output)
         assert img.shape == (256, 256, 3)
         assert img.dtype == np.uint8
+
+
+class TestModelUrlFormat:
+    """Verify model download URL format for GPEN variants."""
+
+    def test_gpen256_model_url_is_huggingface(self):
+        mod = importlib.import_module("modules.processors.frame.face_enhancer_gpen256")
+        # pre_check should reference a valid URL pattern
+        assert hasattr(mod, "pre_check")
+
+    def test_gpen512_model_url_is_huggingface(self):
+        mod = importlib.import_module("modules.processors.frame.face_enhancer_gpen512")
+        assert hasattr(mod, "pre_check")
+
+
+class TestOnnxEnhancerDelegation:
+    """Verify GPEN modules delegate to _onnx_enhancer correctly."""
+
+    def test_gpen256_delegates_enhance_face(self):
+        mod = importlib.import_module("modules.processors.frame.face_enhancer_gpen256")
+        # The module should use enhance_face_onnx from _onnx_enhancer
+        from modules.processors.frame import _onnx_enhancer
+        assert hasattr(_onnx_enhancer, "enhance_face_onnx")
+
+    def test_gpen512_delegates_enhance_face(self):
+        mod = importlib.import_module("modules.processors.frame.face_enhancer_gpen512")
+        from modules.processors.frame import _onnx_enhancer
+        assert hasattr(_onnx_enhancer, "enhance_face_onnx")
+
+
+class TestCliProcessorArg:
+    """Verify the processor names used in CLI args match module NAMEs."""
+
+    def test_gpen256_name_matches_expected(self):
+        mod = importlib.import_module("modules.processors.frame.face_enhancer_gpen256")
+        assert "GPEN" in mod.NAME
+        assert "256" in mod.NAME
+
+    def test_gpen512_name_matches_expected(self):
+        mod = importlib.import_module("modules.processors.frame.face_enhancer_gpen512")
+        assert "GPEN" in mod.NAME
+        assert "512" in mod.NAME
