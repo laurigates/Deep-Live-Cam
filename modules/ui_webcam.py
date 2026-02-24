@@ -8,7 +8,7 @@ import customtkinter as ctk
 import modules.globals
 from modules import virtual_cam
 from modules.gpu_processing import gpu_cvt_color, gpu_flip
-from modules.face_analyser import get_one_face, get_many_faces, set_det_size, _LIVE_DET_SIZE, _DEFAULT_DET_SIZE
+from modules.face_analyser import get_one_face, get_many_faces, set_det_size, _LIVE_DET_SIZE, _DEFAULT_DET_SIZE, faces_are_similar
 from modules.processors.frame.core import get_frame_processors_modules
 from modules.rife_interpolation import has_native_binding, interpolate_frame_pair
 from modules.video_capture import VideoCapturer
@@ -211,6 +211,7 @@ def _processing_thread_func(capture_queue, processed_queue, stop_event,
     half_rate_warned = False
     frame_counter = 0
     enhancer_frame_counter = 0
+    prev_enhanced_faces = None  # faces from the last submitted enhancement frame
     swap_seq = 0
     last_consumed_swap_seq = -1
     latest_swapped_frame = None
@@ -259,16 +260,25 @@ def _processing_thread_func(capture_queue, processed_queue, stop_event,
                 elif cached_target_face is not None:
                     cached_faces_list = [cached_target_face]
 
-                # Enhancer skip-frame: compute once per frame whether to skip enhancement
-                enhancer_frame_counter += 1
-                enh_interval = max(1, getattr(modules.globals, "enhancer_skip_interval", 1))
-                skip_enhancer = enh_interval > 1 and (enhancer_frame_counter % enh_interval) != 1
+                # Enhancer skip-frame: motion-adaptive or fixed-interval
+                motion_adaptive = getattr(modules.globals, 'motion_adaptive_enhancement', False)
+                iou_thresh = getattr(modules.globals, 'motion_adaptive_iou_threshold', 0.9)
+                cos_thresh = getattr(modules.globals, 'motion_adaptive_cosine_threshold', 0.95)
+                if motion_adaptive and cached_faces_list is not None:
+                    skip_enhancer = faces_are_similar(
+                        cached_faces_list, prev_enhanced_faces, iou_thresh, cos_thresh
+                    )
+                else:
+                    enhancer_frame_counter += 1
+                    enh_interval = max(1, getattr(modules.globals, "enhancer_skip_interval", 1))
+                    skip_enhancer = enh_interval > 1 and (enhancer_frame_counter % enh_interval) != 1
 
                 for frame_processor in frame_processors:
                     if frame_processor.NAME in _ENHANCER_NAMES:
                         if _is_enhancer_enabled(frame_processor):
                             if not skip_enhancer:
                                 enhancement_seq += 1
+                                prev_enhanced_faces = cached_faces_list
                                 with enhancement_lock:
                                     enhancement_input[0] = {
                                         'frame': temp_frame.copy(),
@@ -286,6 +296,7 @@ def _processing_thread_func(capture_queue, processed_queue, stop_event,
                                 temp_frame = latest_enhanced_frame
                         else:
                             latest_enhanced_frame = None
+                            prev_enhanced_faces = None
                             with enhancement_lock:
                                 enhancement_input[0] = None
                                 enhancement_output[0] = None

@@ -100,4 +100,9 @@ keyframe_interval: int = 2            # Run face processing every Nth frame (2-1
 # --- Enhancer Skip-Frame ---
 enhancer_skip_interval: int = 1      # Enhance every Nth frame (1=every, 2=every other, etc.)
 
+# --- Motion-Adaptive Enhancement ---
+motion_adaptive_enhancement: bool = False    # Skip enhancement when face hasn't moved significantly
+motion_adaptive_iou_threshold: float = 0.9   # Min bbox IoU to reuse previous enhanced result
+motion_adaptive_cosine_threshold: float = 0.95  # Min embedding cosine to reuse previous enhanced result
+
 # --- END OF FILE globals.py ---

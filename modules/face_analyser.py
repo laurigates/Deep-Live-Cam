@@ -234,6 +234,62 @@ def default_target_face():
                         }
 
 
+def compute_bbox_iou(bbox1: np.ndarray, bbox2: np.ndarray) -> float:
+    """Compute IoU between two bounding boxes in [x1, y1, x2, y2] format."""
+    x1 = max(float(bbox1[0]), float(bbox2[0]))
+    y1 = max(float(bbox1[1]), float(bbox2[1]))
+    x2 = min(float(bbox1[2]), float(bbox2[2]))
+    y2 = min(float(bbox1[3]), float(bbox2[3]))
+    intersection = max(0.0, x2 - x1) * max(0.0, y2 - y1)
+    if intersection == 0.0:
+        return 0.0
+    area1 = (float(bbox1[2]) - float(bbox1[0])) * (float(bbox1[3]) - float(bbox1[1]))
+    area2 = (float(bbox2[2]) - float(bbox2[0])) * (float(bbox2[3]) - float(bbox2[1]))
+    union = area1 + area2 - intersection
+    return intersection / union if union > 0.0 else 0.0
+
+
+def compute_embedding_cosine(emb1: np.ndarray, emb2: np.ndarray) -> float:
+    """Compute cosine similarity between two face embeddings.
+
+    InsightFace ``normed_embedding`` is already L2-normalised, so the dot
+    product equals the cosine similarity directly.
+    """
+    return float(np.dot(emb1, emb2))
+
+
+def faces_are_similar(
+    faces: list,
+    prev_faces: list,
+    iou_threshold: float = 0.9,
+    cosine_threshold: float = 0.95,
+) -> bool:
+    """Return True if every face in *faces* matches the corresponding face in
+    *prev_faces* within the given bbox IoU and embedding cosine thresholds.
+
+    Falls back to False (force re-enhance) when:
+    - Either list is empty or None
+    - Face counts differ (new or lost faces)
+    - Any face lacks a bbox
+    """
+    if not faces or not prev_faces or len(faces) != len(prev_faces):
+        return False
+    for face, prev_face in zip(faces, prev_faces):
+        if not hasattr(face, 'bbox') or face.bbox is None:
+            return False
+        if not hasattr(prev_face, 'bbox') or prev_face.bbox is None:
+            return False
+        if compute_bbox_iou(face.bbox, prev_face.bbox) < iou_threshold:
+            return False
+        if (
+            hasattr(face, 'normed_embedding') and face.normed_embedding is not None
+            and hasattr(prev_face, 'normed_embedding') and prev_face.normed_embedding is not None
+        ):
+            if compute_embedding_cosine(face.normed_embedding, prev_face.normed_embedding) < cosine_threshold:
+                return False
+    return True
+
+
 def dump_faces(centroids: Any, frame_face_embeddings: list):
     temp_directory_path = get_temp_directory_path(modules.globals.target_path)
 
