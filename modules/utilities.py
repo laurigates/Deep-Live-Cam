@@ -17,6 +17,22 @@ import modules.globals
 TEMP_FILE = "temp.mp4"
 TEMP_DIRECTORY = "temp"
 
+# Module-level download progress callback.
+# Signature: (filename: str, downloaded: int, total: int) -> None
+_download_progress_callback = None
+
+
+def set_download_progress_callback(cb) -> None:
+    """Register a callback to receive download progress updates."""
+    global _download_progress_callback
+    _download_progress_callback = cb
+
+
+def clear_download_progress_callback() -> None:
+    """Remove the download progress callback."""
+    global _download_progress_callback
+    _download_progress_callback = None
+
 
 def _compute_sha256(file_path: str) -> str:
     """Compute SHA-256 hash of a file, reading in 1 MiB chunks to handle large models."""
@@ -303,23 +319,36 @@ def conditional_download(download_directory_path: str, urls: List[str], expected
     if not os.path.exists(download_directory_path):
         os.makedirs(download_directory_path)
     for url in urls:
-        download_file_path = os.path.join(
-            download_directory_path, os.path.basename(url)
-        )
+        filename = os.path.basename(url)
+        download_file_path = os.path.join(download_directory_path, filename)
         if not os.path.exists(download_file_path):
             ssl_context = ssl.create_default_context()
             request = urllib.request.urlopen(url, context=ssl_context)  # type: ignore[attr-defined]
             total = int(request.headers.get("Content-Length", 0))
+            downloaded = [0]  # mutable for closure access
+
+            if _download_progress_callback:
+                _download_progress_callback(filename, 0, total)
+
+            def _reporthook(count, block_size, total_size):
+                progress.update(block_size)
+                downloaded[0] += block_size
+                if _download_progress_callback:
+                    _download_progress_callback(filename, min(downloaded[0], total_size), total_size)
+
             with tqdm(
                 total=total,
-                desc="Downloading",
+                desc=f"Downloading {filename}",
                 unit="B",
                 unit_scale=True,
                 unit_divisor=1024,
             ) as progress:
-                urllib.request.urlretrieve(url, download_file_path, reporthook=lambda count, block_size, total_size: progress.update(block_size))  # type: ignore[attr-defined]
+                urllib.request.urlretrieve(url, download_file_path, reporthook=_reporthook)  # type: ignore[attr-defined]
+
+            if _download_progress_callback:
+                _download_progress_callback(filename, total, total)
+
             # Verify checksum if one was registered for this file
-            filename = os.path.basename(url)
             if expected_checksums and filename in expected_checksums:
                 expected = expected_checksums[filename]
                 actual = _compute_sha256(download_file_path)

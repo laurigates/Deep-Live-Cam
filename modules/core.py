@@ -18,7 +18,7 @@ import modules.globals
 import modules.metadata
 import modules.ui as ui
 from modules.processors.frame.core import get_frame_processors_modules
-from modules.utilities import has_image_extension, is_image, is_video, detect_fps, create_video, extract_frames, get_temp_frame_paths, restore_audio, create_temp, move_temp, clean_temp, normalize_output_path
+from modules.utilities import has_image_extension, is_image, is_video, detect_fps, create_video, extract_frames, get_temp_frame_paths, restore_audio, create_temp, move_temp, clean_temp, normalize_output_path, set_download_progress_callback
 from modules.blas_check import check_apple_silicon_blas
 
 # Lazy-loaded heavy imports — deferred until actually needed to save 3-5s startup.
@@ -369,6 +369,7 @@ def run() -> None:
         # then download any missing models in the background.  Each processor's
         # process_frame/swap_face already returns the original frame when its
         # model is not yet loaded, so the live feed stays smooth during download.
+        set_download_progress_callback(ui.download_progress_callback)
         threading.Thread(target=_run_processor_pre_checks, daemon=True, name="model-downloader").start()
         window = ui.init(start, destroy, modules.globals.lang)
         window.mainloop()

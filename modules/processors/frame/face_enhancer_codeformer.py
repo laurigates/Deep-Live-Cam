@@ -63,7 +63,13 @@ def _get_fidelity() -> float:
 
 
 def pre_check() -> bool:
+    model_path = os.path.join(MODELS_DIR, MODEL_FILE)
+    if not os.path.exists(model_path):
+        update_status(f"Downloading {MODEL_FILE}...", NAME)
     conditional_download(MODELS_DIR, [MODEL_URL])
+    if not os.path.exists(model_path):
+        update_status(f"Model not found at {model_path}. Download may have failed.", NAME)
+        return False
     return True
 
 

@@ -62,6 +62,10 @@ def pre_check() -> bool:
         print(f"{NAME}: Failed to create directory {download_directory_path}: {e}")
         return False
 
+    model_file = "inswapper_128_fp16.onnx"
+    model_path = os.path.join(download_directory_path, model_file)
+    if not os.path.exists(model_path):
+        update_status(f"Downloading {model_file}...", NAME)
     # Use the direct download URL from Hugging Face
     conditional_download(
         download_directory_path,
@@ -69,6 +73,9 @@ def pre_check() -> bool:
             "https://huggingface.co/hacksider/deep-live-cam/resolve/main/inswapper_128_fp16.onnx"
         ],
     )
+    if not os.path.exists(model_path):
+        update_status(f"Model not found at {model_path}. Download may have failed.", NAME)
+        return False
     return True
 
 
