@@ -66,7 +66,11 @@ fp_ui: Dict[str, bool] = {
     "face_enhancer": False,
     "face_enhancer_gpen256": False,
     "face_enhancer_gpen512": False,
+    "face_enhancer_codeformer": False,
 }
+
+# CodeFormer fidelity weight (0.0 = max quality, 1.0 = max fidelity to source)
+codeformer_fidelity: float = 0.7
 
 # Face Swapper Specific Options
 face_swapper_enabled: bool = True # General toggle for the swapper processor

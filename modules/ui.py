@@ -350,6 +350,8 @@ def _get_switch_defs():
              _("Use GPEN face enhancement model at 256px resolution (faster)")),
             (_("GPEN-512"), "fp_ui:face_enhancer_gpen512", False,
              _("Use GPEN face enhancement model at 512px resolution (higher quality)")),
+            (_("CodeFormer"), "fp_ui:face_enhancer_codeformer", False,
+             _("Transformer-based face restoration with adjustable fidelity (best quality)")),
         ],
         "Output": [
             (_("Preserve Frame Rate"), "keep_fps", True,
@@ -761,13 +763,14 @@ def update_status(text: str) -> None:
 
 
 # Enhancer processor names — keys in fp_ui and corresponding frame_processor names
-_ENHANCER_KEYS = ('face_enhancer', 'face_enhancer_gpen256', 'face_enhancer_gpen512')
+_ENHANCER_KEYS = ('face_enhancer', 'face_enhancer_gpen256', 'face_enhancer_gpen512', 'face_enhancer_codeformer')
 
 # Map from processor NAME constant to fp_ui key for live-mode gating
 _ENHANCER_NAME_TO_UI_KEY = {
     "DLC.FACE-ENHANCER": "face_enhancer",
     "DLC.FACE-ENHANCER-GPEN256": "face_enhancer_gpen256",
     "DLC.FACE-ENHANCER-GPEN512": "face_enhancer_gpen512",
+    "DLC.FACE-ENHANCER-CODEFORMER": "face_enhancer_codeformer",
 }
 
 
