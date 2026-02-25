@@ -48,6 +48,7 @@ name = "pytorch-cu128"
 explicit = true
 
 [tool.uv]
+python-preference = "system"
 no-binary-package = ["numpy"]
 
 [tool.uv.sources]

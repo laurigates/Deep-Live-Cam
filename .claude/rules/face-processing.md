@@ -46,6 +46,24 @@ Derived from recurring fix commits: None embeddings crash (PR #980), source_targ
 - Wrap enhancement in a semaphore to prevent concurrent VRAM exhaustion on multi-face frames
 - Enhancement is optional; the pipeline must work correctly with it disabled
 
+## Async Enhancement Thread
+
+Enhancement runs on a dedicated thread (`_enhancement_thread_func`) decoupled from the
+swap+masking processing thread — do not move enhancement back into the processing loop.
+
+- **Submit protocol**: processing thread writes `{frame, faces, map_faces, processor, seq}` to
+  `enhancement_input[0]` under `enhancement_lock`; seq is a monotonically incrementing int
+- **Read protocol**: processing thread reads `enhancement_output[0]` and compares `seq` against
+  `last_consumed_enh_seq`; only update `latest_enhanced_frame` when seq is new
+- **Skip-frame split**: on skip frames, suppress *submission* but still read and display the
+  latest output — this keeps display smooth during sparse inference
+- **Toggle-off cleanup**: when the enhancer is disabled, clear all shared state:
+  `latest_enhanced_frame = None`, `enhancement_input[0] = None`, `enhancement_output[0] = None`
+- **First-frame latency**: the first ~100-200ms after enabling enhancement, frames display
+  swapped-but-unenhanced — this is expected and not a bug
+- Use `process_frame(None, frame, faces=faces)` for normal mode,
+  `process_frame_v2(frame)` for map_faces mode
+
 ## Mouth Masking
 
 - Use face landmarks for mouth region coordinates; do not use fixed pixel offsets

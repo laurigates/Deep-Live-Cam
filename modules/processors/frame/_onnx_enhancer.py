@@ -39,7 +39,6 @@ def create_onnx_session(model_path: str) -> onnxruntime.InferenceSession:
                     "SpecializationStrategy": "FastPrediction",
                     "AllowLowPrecisionAccumulationOnGPU": 1,
                     "EnableOnSubgraphs": 1,
-                    "RequireStaticShapes": 1,
                     "MaximumCacheSize": 1024 * 1024 * 512,
                     "ModelCacheDirectory": coreml_cache_dir,
                 },

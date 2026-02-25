@@ -18,6 +18,8 @@ Usage
 
 from __future__ import annotations
 
+import platform
+import sys
 import cv2
 import numpy as np
 from typing import Tuple, Optional
@@ -26,6 +28,10 @@ from typing import Tuple, Optional
 # CUDA availability detection (evaluated once at import time)
 # ---------------------------------------------------------------------------
 CUDA_AVAILABLE: bool = False
+
+# On macOS ARM, OpenCV ships a cv2.cuda stub without actual CUDA functions —
+# this is expected; CoreML handles GPU inference so no CUDA OpenCV is needed.
+_ON_MACOS_ARM = sys.platform == "darwin" and platform.machine() == "arm64"
 
 try:
     # cv2.cuda.GpuMat is only present when OpenCV is compiled with CUDA
@@ -37,7 +43,7 @@ try:
     if _has_gauss and _has_resize and _has_cvt:
         CUDA_AVAILABLE = True
         print("[gpu_processing] OpenCV CUDA support detected – GPU-accelerated processing enabled.")
-    else:
+    elif not _ON_MACOS_ARM:
         missing = []
         if not _has_gauss:
             missing.append("createGaussianFilter")
@@ -47,7 +53,8 @@ try:
             missing.append("cvtColor")
         print(f"[gpu_processing] cv2.cuda.GpuMat exists but missing: {', '.join(missing)} – falling back to CPU.")
 except Exception:
-    print("[gpu_processing] OpenCV CUDA not available – using CPU fallback for all operations.")
+    if not _ON_MACOS_ARM:
+        print("[gpu_processing] OpenCV CUDA not available – using CPU fallback for all operations.")
 
 
 # ---------------------------------------------------------------------------

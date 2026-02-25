@@ -113,7 +113,6 @@ def get_face_swapper() -> Any:
                                     "SpecializationStrategy": "FastPrediction",
                                     "AllowLowPrecisionAccumulationOnGPU": 1,
                                     "EnableOnSubgraphs": 1,
-                                    "RequireStaticShapes": 1,
                                     "MaximumCacheSize": 1024 * 1024 * 512,  # 512MB cache
                                     "ModelCacheDirectory": coreml_cache_dir,
                                 }
@@ -309,7 +308,7 @@ def batch_swap_faces(
     but the expensive model inference is batched into one session.run() call.
 
     Falls back to sequential swap_face() calls if session.run() raises an error
-    (e.g., CoreML with RequireStaticShapes rejecting dynamic batch).
+    (e.g., CoreML rejecting dynamic batch).
     """
     from insightface.utils import face_align
 
