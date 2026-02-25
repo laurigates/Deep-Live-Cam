@@ -1,5 +1,4 @@
 import os
-import platform
 import shutil
 from typing import Any, Tuple
 import insightface
@@ -13,14 +12,14 @@ from modules.typing import Frame
 from modules.cluster_analysis import find_cluster_centroids, find_closest_centroid
 from modules.utilities import get_temp_directory_path, create_temp, extract_frames, clean_temp, get_temp_frame_paths
 from pathlib import Path
+from modules.platform_info import IS_APPLE_SILICON
 
 FACE_ANALYSER = None
 FACE_ANALYSER_LOCK = threading.Lock()
 _CURRENT_DET_SIZE: Tuple[int, int] = (320, 320)
-_IS_APPLE_SILICON = platform.system() == 'Darwin' and platform.machine() == 'arm64'
 
 # Smaller detection size for Apple Silicon live mode (~4x fewer FLOPs)
-_LIVE_DET_SIZE = (160, 160) if _IS_APPLE_SILICON else (320, 320)
+_LIVE_DET_SIZE = (160, 160) if IS_APPLE_SILICON else (320, 320)
 _DEFAULT_DET_SIZE = (320, 320)
 
 
@@ -93,6 +92,17 @@ def get_many_faces(frame: Frame) -> Any:
         return _detect_all_faces(frame)
     except IndexError:
         return None
+
+
+def detect_faces(frame: Frame) -> list:
+    """Return detected faces based on the current many_faces setting."""
+    if modules.globals.many_faces:
+        faces = get_many_faces(frame)
+        return faces if faces else []
+    else:
+        face = get_one_face(frame)
+        return [face] if face is not None else []
+
 
 def has_valid_map() -> bool:
     for face_map in modules.globals.source_target_map:

@@ -18,9 +18,11 @@ def gpen_module(request):
 
 @pytest.fixture
 def mock_no_face(gpen_module):
-    """Patch get_one_face to return None in the given gpen module."""
-    target = f"modules.processors.frame.{gpen_module.__name__.split('.')[-1]}.get_one_face"
-    with patch(target, return_value=None):
+    """Patch detect_faces to return empty list (no faces detected)."""
+    with patch(
+        "modules.processors.frame._onnx_enhancer_factory.detect_faces",
+        return_value=[],
+    ):
         yield
 
 

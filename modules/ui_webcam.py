@@ -11,6 +11,7 @@ from modules.gpu_processing import gpu_cvt_color, gpu_flip
 from modules.face_analyser import get_one_face, get_many_faces, set_det_size, _LIVE_DET_SIZE, _DEFAULT_DET_SIZE, faces_are_similar
 from modules.processors.frame.core import get_frame_processors_modules
 from modules.rife_interpolation import has_native_binding, interpolate_frame_pair
+from modules.single_slot_worker import single_slot_worker_loop
 from modules.video_capture import VideoCapturer
 
 
@@ -92,100 +93,64 @@ def _detection_thread_func(latest_frame_holder, detection_result, detection_lock
                 detection_result['many_faces'] = None
 
 
+def _swap_process_fn(inp):
+    """Process a single swap request (called by single_slot_worker_loop)."""
+    frame = inp['frame']
+    processor = inp['processor']
+
+    if inp['map_faces']:
+        frame = processor.process_frame(None, frame)
+    else:
+        source_face = inp['source_face']
+        many_faces_list = inp['many_faces']
+        target_face = inp['target_face']
+
+        swapped_bboxes = []
+        if many_faces_list:
+            opacity = getattr(modules.globals, "opacity", 1.0)
+            result = frame if opacity >= 1.0 else frame.copy()
+            for t_face in many_faces_list:
+                result = processor.swap_face(source_face, t_face, result)
+                if hasattr(t_face, 'bbox') and t_face.bbox is not None:
+                    swapped_bboxes.append(t_face.bbox.astype(int))
+            frame = result
+        elif target_face is not None:
+            frame = processor.swap_face(source_face, target_face, frame)
+            if hasattr(target_face, 'bbox') and target_face.bbox is not None:
+                swapped_bboxes.append(target_face.bbox.astype(int))
+
+        frame = processor.apply_post_processing(frame, swapped_bboxes)
+
+    return {'frame': frame, 'seq': inp['seq']}
+
+
 def _swap_thread_func(swap_input, swap_output, swap_lock, stop_event):
-    """Swap thread: runs face swap ONNX inference asynchronously.
+    """Swap thread: runs face swap ONNX inference asynchronously."""
+    single_slot_worker_loop(swap_input, swap_output, swap_lock, stop_event,
+                            _swap_process_fn)
 
-    Follows the same single-slot holder pattern as detection and enhancement.
-    Reads from swap_input[0], writes to swap_output[0].
-    Input holder dict: {'frame', 'source_face', 'target_face', 'many_faces',
-                        'processor', 'map_faces', 'seq'}
-    Output holder dict: {'frame', 'seq'}
-    """
-    last_processed_seq = -1
 
-    while not stop_event.is_set():
-        with swap_lock:
-            inp = swap_input[0]
+def _enhancement_process_fn(inp):
+    """Process a single enhancement request (called by single_slot_worker_loop)."""
+    processor = inp['processor']
+    frame = inp['frame']
+    faces = inp['faces']
+    map_faces = inp['map_faces']
 
-        if inp is None:
-            time.sleep(0.005)
-            continue
+    if map_faces:
+        enhanced = processor.process_frame_v2(frame)
+    else:
+        enhanced = processor.process_frame(None, frame, faces=faces)
 
-        seq = inp['seq']
-        if seq == last_processed_seq:
-            time.sleep(0.005)
-            continue
-
-        frame = inp['frame']
-        processor = inp['processor']
-
-        if inp['map_faces']:
-            frame = processor.process_frame(None, frame)
-        else:
-            source_face = inp['source_face']
-            many_faces_list = inp['many_faces']
-            target_face = inp['target_face']
-
-            swapped_bboxes = []
-            if many_faces_list:
-                opacity = getattr(modules.globals, "opacity", 1.0)
-                result = frame if opacity >= 1.0 else frame.copy()
-                for t_face in many_faces_list:
-                    result = processor.swap_face(source_face, t_face, result)
-                    if hasattr(t_face, 'bbox') and t_face.bbox is not None:
-                        swapped_bboxes.append(t_face.bbox.astype(int))
-                frame = result
-            elif target_face is not None:
-                frame = processor.swap_face(source_face, target_face, frame)
-                if hasattr(target_face, 'bbox') and target_face.bbox is not None:
-                    swapped_bboxes.append(target_face.bbox.astype(int))
-
-            frame = processor.apply_post_processing(frame, swapped_bboxes)
-
-        last_processed_seq = seq
-
-        with swap_lock:
-            swap_output[0] = {'frame': frame, 'seq': seq}
+    return {'frame': enhanced, 'seq': inp['seq']}
 
 
 def _enhancement_thread_func(enhancement_input, enhancement_output,
                               enhancement_lock, stop_event):
-    """Enhancement thread: runs face enhancement (GFPGAN/GPEN) asynchronously.
-
-    Follows the same single-slot holder pattern as the detection thread.
-    Reads from enhancement_input[0], writes to enhancement_output[0].
-    Input holder dict: {'frame', 'faces', 'map_faces', 'processor', 'seq'}
-    Output holder dict: {'frame', 'seq'}
-    """
-    last_processed_seq = -1
-
-    while not stop_event.is_set():
-        with enhancement_lock:
-            inp = enhancement_input[0]
-
-        if inp is None:
-            time.sleep(0.005)
-            continue
-
-        seq = inp['seq']
-        if seq == last_processed_seq:
-            time.sleep(0.005)
-            continue
-
-        processor = inp['processor']
-        frame = inp['frame']
-        faces = inp['faces']
-        map_faces = inp['map_faces']
-
-        if map_faces:
-            enhanced = processor.process_frame_v2(frame)
-        else:
-            enhanced = processor.process_frame(None, frame, faces=faces)
-
-        last_processed_seq = seq
-
-        with enhancement_lock:
-            enhancement_output[0] = {'frame': enhanced, 'seq': seq}
+    """Enhancement thread: runs face enhancement (GFPGAN/GPEN) asynchronously."""
+    single_slot_worker_loop(enhancement_input, enhancement_output,
+                            enhancement_lock, stop_event,
+                            _enhancement_process_fn)
 
 
 def _processing_thread_func(capture_queue, processed_queue, stop_event,
