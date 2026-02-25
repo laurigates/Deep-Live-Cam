@@ -38,8 +38,25 @@ Apply optimizations incrementally, per component:
 1. Profile first — identify the actual bottleneck (face detection, swap, enhancement, I/O)
 2. Optimize one component per PR; measure FPS before and after
 3. Accepted benchmarking protocol: average FPS over 300 frames, report peak VRAM
-4. GPU-accelerated OpenCV (`cv2.cuda`) is available for image ops — prefer it over CPU NumPy
-   when the GPU provider is active
+4. GPU-accelerated OpenCV (`cv2.cuda`) is available for image ops on NVIDIA/CUDA — prefer it
+   over CPU NumPy when the CUDA provider is active. On macOS ARM, `cv2.cuda.GpuMat` exists as
+   a stub but processing functions (`createGaussianFilter`, `resize`, `cvtColor`) are absent;
+   do not use `cv2.cuda` ops there, and suppress the resulting import-time warning with an
+   `_ON_MACOS_ARM` guard (CoreML handles GPU inference instead)
+
+## CoreML Provider Options
+
+When configuring `CoreMLExecutionProvider` options, unknown keys cause a **silent** fallback to
+`CPUExecutionProvider` — the EP Error banner prints but the session continues on CPU with no
+further indication that GPU inference is not running.
+
+- Always validate options against the installed `onnxruntime-silicon` version before adding them
+- `RequireStaticShapes` is **not** a valid option in onnxruntime-silicon ≤1.24.2 — remove it
+- Valid options in 1.24.x: `ModelFormat`, `MLComputeUnits`, `SpecializationStrategy`,
+  `AllowLowPrecisionAccumulationOnGPU`, `EnableOnSubgraphs`, `MaximumCacheSize`,
+  `ModelCacheDirectory`
+- After adding a new CoreML option, verify in startup logs that `CoreMLExecutionProvider`
+  appears in "Applied providers" (not just `CPUExecutionProvider`)
 
 ## Face Analyzer Performance
 

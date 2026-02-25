@@ -63,6 +63,22 @@ pygrabber dependency, Linux camera enumeration, macOS Tcl/Tk path issues (2024-2
 - Use `-hwaccel_output_format cuda` only on NVIDIA; omit on other platforms
 - Always verify ffmpeg is on PATH in `pre_check()` before starting any video processing
 
+## OpenCV CUDA on macOS ARM
+
+- `cv2.cuda.GpuMat()` is constructible on macOS ARM (OpenCV ships a stub), but CUDA processing
+  functions (`createGaussianFilter`, `resize`, `cvtColor`) are absent — `hasattr(cv2.cuda, ...)``
+  returns `False` for all of them
+- Do NOT use `cv2.cuda` processing ops on macOS ARM — they will never be available regardless of
+  OpenCV version; CoreML handles GPU inference instead
+- Suppress import-time warnings about missing CUDA functions on macOS ARM using an
+  `_ON_MACOS_ARM` guard:
+  ```python
+  _ON_MACOS_ARM = sys.platform == "darwin" and platform.machine() == "arm64"
+  # ... in detection block:
+  elif not _ON_MACOS_ARM:
+      print("cv2.cuda missing functions ...")
+  ```
+
 ## ONNX Runtime Variants
 
 - A single environment must have exactly one ONNX Runtime variant installed
