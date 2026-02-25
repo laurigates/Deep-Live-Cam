@@ -112,16 +112,13 @@ def get_face_enhancer() -> onnxruntime.InferenceSession:
             fp32_path = os.path.join(MODELS_DIR, "gfpgan-1024.onnx")
             model_path = fp16_path if os.path.exists(fp16_path) else fp32_path
 
-            if not os.path.exists(model_path):
-                conditional_download(
-                    MODELS_DIR,
-                    [
-                        "https://huggingface.co/hacksider/deep-live-cam/resolve/main/gfpgan-1024.onnx"
-                    ],
-                )
+            # Do NOT download here — that would block the video thread.
+            # Model download is handled asynchronously by _run_processor_pre_checks
+            # (GUI mode) or synchronously by pre_check() (headless mode).
             if not os.path.exists(model_path):
                 raise FileNotFoundError(
-                    f"{NAME}: Model not found at {model_path}"
+                    f"{NAME}: Model not found at {model_path}. "
+                    "It will be downloaded automatically — please wait and try again."
                 )
 
             try:

@@ -5,6 +5,7 @@ if any(arg.startswith('--execution-provider') for arg in sys.argv):
     os.environ['OMP_NUM_THREADS'] = '1'
 # reduce tensorflow log level
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+import threading
 import warnings
 from typing import List
 import platform
@@ -17,7 +18,7 @@ import modules.globals
 import modules.metadata
 import modules.ui as ui
 from modules.processors.frame.core import get_frame_processors_modules
-from modules.utilities import has_image_extension, is_image, is_video, detect_fps, create_video, extract_frames, get_temp_frame_paths, restore_audio, create_temp, move_temp, clean_temp, normalize_output_path
+from modules.utilities import has_image_extension, is_image, is_video, detect_fps, create_video, extract_frames, get_temp_frame_paths, restore_audio, create_temp, move_temp, clean_temp, normalize_output_path, set_download_progress_callback
 from modules.blas_check import check_apple_silicon_blas
 
 # Lazy-loaded heavy imports — deferred until actually needed to save 3-5s startup.
@@ -47,7 +48,7 @@ def parse_args() -> None:
     program.add_argument('-s', '--source', help='select an source image', dest='source_path')
     program.add_argument('-t', '--target', help='select an target image or video', dest='target_path')
     program.add_argument('-o', '--output', help='select output file or directory', dest='output_path')
-    program.add_argument('--frame-processor', help='pipeline of frame processors', dest='frame_processor', default=['face_swapper'], choices=['face_swapper', 'face_enhancer', 'face_enhancer_gpen256', 'face_enhancer_gpen512'], nargs='+')
+    program.add_argument('--frame-processor', help='pipeline of frame processors', dest='frame_processor', default=['face_swapper'], choices=['face_swapper', 'face_enhancer', 'face_enhancer_gpen256', 'face_enhancer_gpen512', 'face_enhancer_codeformer'], nargs='+')
     program.add_argument('--keep-fps', help='keep original fps', dest='keep_fps', action='store_true', default=False)
     program.add_argument('--keep-audio', help='keep original audio', dest='keep_audio', action='store_true', default=True)
     program.add_argument('--keep-frames', help='keep temporary frames', dest='keep_frames', action='store_true', default=False)
@@ -109,7 +110,7 @@ def parse_args() -> None:
     modules.globals.live_enhance_size = args.live_enhance_size
 
     #for ENHANCER tumblers:
-    for enhancer_key in ('face_enhancer', 'face_enhancer_gpen256', 'face_enhancer_gpen512'):
+    for enhancer_key in ('face_enhancer', 'face_enhancer_gpen256', 'face_enhancer_gpen512', 'face_enhancer_codeformer'):
         modules.globals.fp_ui[enhancer_key] = enhancer_key in args.frame_processor
 
     # translate deprecated args
@@ -334,21 +335,41 @@ def destroy(to_quit=True) -> None:
     if to_quit: quit()
 
 
+def _run_processor_pre_checks() -> None:
+    """Download missing models in a background thread (GUI mode only).
+
+    Runs each frame processor's pre_check() sequentially so tqdm progress bars
+    don't interleave. Status messages are posted to the UI via update_status().
+    RIFE pre_check runs last since it depends on the frame processors being ready.
+    """
+    for frame_processor in get_frame_processors_modules(modules.globals.frame_processors):
+        frame_processor.pre_check()
+    if modules.globals.rife_enabled:
+        from modules.rife_interpolation import pre_check as rife_pre_check
+        rife_pre_check()
+
+
 def run() -> None:
     parse_args()
     if not pre_check():
         return
-    for frame_processor in get_frame_processors_modules(modules.globals.frame_processors):
-        if not frame_processor.pre_check():
-            return
-    # Check RIFE interpolation requirements if enabled
-    if modules.globals.rife_enabled:
-        from modules.rife_interpolation import pre_check as rife_pre_check
-        if not rife_pre_check():
-            return
     limit_resources()
     if modules.globals.headless:
+        # Headless: run pre_checks synchronously before processing starts.
+        for frame_processor in get_frame_processors_modules(modules.globals.frame_processors):
+            if not frame_processor.pre_check():
+                return
+        if modules.globals.rife_enabled:
+            from modules.rife_interpolation import pre_check as rife_pre_check
+            if not rife_pre_check():
+                return
         start()
     else:
+        # GUI mode: start the UI immediately so the webcam preview is responsive,
+        # then download any missing models in the background.  Each processor's
+        # process_frame/swap_face already returns the original frame when its
+        # model is not yet loaded, so the live feed stays smooth during download.
+        set_download_progress_callback(ui.download_progress_callback)
+        threading.Thread(target=_run_processor_pre_checks, daemon=True, name="model-downloader").start()
         window = ui.init(start, destroy, modules.globals.lang)
         window.mainloop()

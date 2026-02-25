@@ -2,7 +2,7 @@ import cv2
 import time
 import queue
 import threading
-from PIL import Image
+from PIL import Image, ImageDraw
 import customtkinter as ctk
 
 import modules.globals
@@ -191,7 +191,8 @@ def _enhancement_thread_func(enhancement_input, enhancement_output,
 def _processing_thread_func(capture_queue, processed_queue, stop_event,
                              latest_frame_holder, detection_result, detection_lock,
                              swap_input, swap_output, swap_lock,
-                             enhancement_input, enhancement_output, enhancement_lock):
+                             enhancement_input, enhancement_output, enhancement_lock,
+                             tick_rate_holder):
     """Processing thread (consumer): takes raw frames from capture_queue,
     reads the latest detection result from the shared detection_result dict,
     applies face swap/enhancement, and puts results into processed_queue.
@@ -202,10 +203,9 @@ def _processing_thread_func(capture_queue, processed_queue, stop_event,
     frame_processors = get_frame_processors_modules(modules.globals.frame_processors)
     source_image = None
     last_source_path = None
-    prev_time = time.time()
-    fps_update_interval = 0.5
-    frame_count = 0
-    fps = 0
+    tick_count = 0
+    tick_prev_time = time.time()
+    tick_update_interval = 0.5
     prev_processed_frame = None
     rife_warned = False
     half_rate_warned = False
@@ -398,7 +398,7 @@ def _processing_thread_func(capture_queue, processed_queue, stop_event,
                     prev_processed_frame, temp_frame, multiplier=multiplier
                 )
                 for interp_frame in intermediates:
-                    frame_count += 1
+                    tick_count += 1
                     if modules.globals.virtual_cam:
                         virtual_cam.send(interp_frame)
                     try:
@@ -421,24 +421,13 @@ def _processing_thread_func(capture_queue, processed_queue, stop_event,
                 prev_processed_frame = None
         # else (skip frame): prev_processed_frame stays set to the last keyframe output
 
-        # Calculate and display FPS
-        current_time = time.time()
-        frame_count += 1
-        if current_time - prev_time >= fps_update_interval:
-            fps = frame_count / (current_time - prev_time)
-            frame_count = 0
-            prev_time = current_time
-
-        if modules.globals.show_fps:
-            cv2.putText(
-                temp_frame,
-                f"FPS: {fps:.1f}",
-                (10, 30),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                1,
-                (0, 255, 0),
-                2,
-            )
+        # Track processing tick rate (written to shared holder; read by display loop)
+        tick_count += 1
+        tick_now = time.time()
+        if tick_now - tick_prev_time >= tick_update_interval:
+            tick_rate_holder[0] = tick_count / (tick_now - tick_prev_time)
+            tick_count = 0
+            tick_prev_time = tick_now
 
         # Send full-resolution processed frame to virtual camera if enabled
         if modules.globals.virtual_cam:
@@ -486,6 +475,12 @@ def create_webcam_preview(camera_index: int):
     capture_queue = queue.Queue(maxsize=2)
     processed_queue = queue.Queue(maxsize=4)
     stop_event = threading.Event()
+
+    # Shared state for display overlay: processing tick rate written by the
+    # processing thread, display FPS tracked in the display loop.
+    tick_rate_holder = [0.0]   # frames/sec produced by processing thread
+    latest_display_frame = [None]  # last frame shown; held when queue is empty
+    display_fps_state = [0, time.time(), 0.0]  # [frame_count, prev_time, fps]
 
     # Shared state for the producer-consumer detection pipeline.
     # latest_frame_holder[0] is the most recent raw frame for the detection
@@ -546,7 +541,8 @@ def create_webcam_preview(camera_index: int):
         args=(capture_queue, processed_queue, stop_event,
               latest_frame_holder, detection_result, detection_lock,
               swap_input, swap_output, swap_lock,
-              enhancement_input, enhancement_output, enhancement_lock),
+              enhancement_input, enhancement_output, enhancement_lock,
+              tick_rate_holder),
         daemon=True,
     )
     proc_thread.start()
@@ -571,26 +567,48 @@ def create_webcam_preview(camera_index: int):
         threading.Thread(target=_background_cleanup, daemon=True).start()
 
     def _display_next_frame():
-        """Non-blocking display step — reschedules itself via ROOT.after()."""
+        """Non-blocking display step — reschedules itself via ROOT.after().
+
+        Tracks actual displayed FPS independently of the processing tick rate.
+        Holds the last known frame when the queue is empty so the display rate
+        is decoupled from the camera input rate.
+        """
         if stop_event.is_set() or PREVIEW.state() == "withdrawn":
             _cleanup()
             return
 
-
         try:
-            temp_frame = processed_queue.get_nowait()
+            frame = processed_queue.get_nowait()
+            latest_display_frame[0] = frame
+            # Only count unique new frames toward display FPS
+            display_fps_state[0] += 1
+            now = time.time()
+            if now - display_fps_state[1] >= 0.5:
+                display_fps_state[2] = display_fps_state[0] / (now - display_fps_state[1])
+                display_fps_state[0] = 0
+                display_fps_state[1] = now
         except queue.Empty:
+            frame = latest_display_frame[0]
+
+        if frame is None:
             ROOT.after(16, _display_next_frame)
             return
 
         if modules.globals.live_resizable:
-            temp_frame = fit_image_to_size(
-                temp_frame, PREVIEW.winfo_width(), PREVIEW.winfo_height()
+            frame = fit_image_to_size(
+                frame, PREVIEW.winfo_width(), PREVIEW.winfo_height()
             )
         # live_resizable=False: display at native camera resolution
 
-        image = gpu_cvt_color(temp_frame, cv2.COLOR_BGR2RGB)
-        image = Image.fromarray(image)
+        image = Image.fromarray(gpu_cvt_color(frame, cv2.COLOR_BGR2RGB))
+
+        if modules.globals.show_fps:
+            draw = ImageDraw.Draw(image)
+            overlay = f"FPS: {display_fps_state[2]:.1f}  Tick: {tick_rate_holder[0]:.1f}"
+            # Shadow for readability on any background
+            draw.text((11, 11), overlay, fill=(0, 0, 0))
+            draw.text((10, 10), overlay, fill=(0, 255, 0))
+
         image = ctk.CTkImage(image, size=image.size)
         preview_label.configure(image=image)
 

@@ -1,6 +1,7 @@
 import os
 import queue
 import threading
+import time
 import webbrowser
 import customtkinter as ctk
 from typing import Callable, Tuple
@@ -124,6 +125,8 @@ preview_slider = None
 source_label = None
 target_label = None
 status_label = None
+_download_progress_bar = None
+_last_progress_update = 0.0
 
 img_ft, vid_ft = modules.globals.file_types
 
@@ -350,6 +353,8 @@ def _get_switch_defs():
              _("Use GPEN face enhancement model at 256px resolution (faster)")),
             (_("GPEN-512"), "fp_ui:face_enhancer_gpen512", False,
              _("Use GPEN face enhancement model at 512px resolution (higher quality)")),
+            (_("CodeFormer"), "fp_ui:face_enhancer_codeformer", False,
+             _("Transformer-based face restoration with adjustable fidelity (best quality)")),
         ],
         "Output": [
             (_("Preserve Frame Rate"), "keep_fps", True,
@@ -701,7 +706,7 @@ def _add_action_buttons(root: ctk.CTk, start: Callable, destroy: Callable) -> ct
 
 
 def _add_status_bar(root: ctk.CTk) -> None:
-    global status_label
+    global status_label, _download_progress_bar
 
     status_frame = ctk.CTkFrame(root, fg_color="transparent")
     status_frame.grid(row=3, column=0, sticky="ew", padx=10, pady=(0, 5))
@@ -710,6 +715,11 @@ def _add_status_bar(root: ctk.CTk) -> None:
 
     status_label = ctk.CTkLabel(status_frame, text=None, justify="left")
     status_label.grid(row=0, column=0, sticky="w")
+
+    _download_progress_bar = ctk.CTkProgressBar(status_frame, width=300)
+    _download_progress_bar.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(2, 0))
+    _download_progress_bar.set(0)
+    _download_progress_bar.grid_remove()
 
     donate_label = ctk.CTkLabel(
         status_frame, text="Deep Live Cam", justify="right", cursor="hand2",
@@ -760,14 +770,47 @@ def update_status(text: str) -> None:
     ROOT.after(0, lambda t=text: status_label.configure(text=_(t)))
 
 
+def download_progress_callback(filename: str, downloaded: int, total: int) -> None:
+    """Called from background download thread. Throttles UI updates to ~10 Hz."""
+    global _last_progress_update
+    now = time.monotonic()
+    if now - _last_progress_update < 0.1 and downloaded < total and downloaded > 0:
+        return
+    _last_progress_update = now
+
+    if total > 0 and downloaded < total:
+        progress_value = downloaded / total
+        ROOT.after(0, lambda f=filename, v=progress_value: _show_download_progress(f, v))
+    else:
+        ROOT.after(0, _hide_download_progress)
+
+
+def _show_download_progress(filename: str, value: float) -> None:
+    """Show and update the download progress bar (main thread only)."""
+    if _download_progress_bar is None:
+        return
+    _download_progress_bar.set(value)
+    _download_progress_bar.grid()
+    pct = int(value * 100)
+    status_label.configure(text=f"Downloading {filename}... {pct}%")
+
+
+def _hide_download_progress() -> None:
+    """Hide the download progress bar (main thread only)."""
+    if _download_progress_bar is None:
+        return
+    _download_progress_bar.grid_remove()
+
+
 # Enhancer processor names — keys in fp_ui and corresponding frame_processor names
-_ENHANCER_KEYS = ('face_enhancer', 'face_enhancer_gpen256', 'face_enhancer_gpen512')
+_ENHANCER_KEYS = ('face_enhancer', 'face_enhancer_gpen256', 'face_enhancer_gpen512', 'face_enhancer_codeformer')
 
 # Map from processor NAME constant to fp_ui key for live-mode gating
 _ENHANCER_NAME_TO_UI_KEY = {
     "DLC.FACE-ENHANCER": "face_enhancer",
     "DLC.FACE-ENHANCER-GPEN256": "face_enhancer_gpen256",
     "DLC.FACE-ENHANCER-GPEN512": "face_enhancer_gpen512",
+    "DLC.FACE-ENHANCER-CODEFORMER": "face_enhancer_codeformer",
 }
 
 

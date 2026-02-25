@@ -27,20 +27,18 @@ MODEL_FILE = "GPEN-BFR-512.onnx"
 
 _model = ModelHolder()
 _load_error_logged = False
-_download_failed = False   # set to True after a confirmed download failure to stop retry spam
 
 
 def _load_model() -> Any:
-    global _download_failed
     model_path = os.path.join(MODELS_DIR, MODEL_FILE)
+    # Do NOT download here — that would block the video thread.
+    # Model download is handled asynchronously by _run_processor_pre_checks
+    # (GUI mode) or synchronously by pre_check() (headless mode).
     if not os.path.isfile(model_path):
-        if _download_failed:
-            raise FileNotFoundError(f"Model file not found: {model_path} (previous download failed)")
-        print(f"{NAME}: Model not found, downloading...")
-        conditional_download(MODELS_DIR, [MODEL_URL])
-    if not os.path.isfile(model_path):
-        _download_failed = True
-        raise FileNotFoundError(f"Model file not found: {model_path}")
+        raise FileNotFoundError(
+            f"{NAME}: Model not found at {model_path}. "
+            "It will be downloaded automatically — please wait and try again."
+        )
     print(f"{NAME}: Loading ONNX model from {model_path}")
     session = create_onnx_session(model_path)
     print(f"{NAME}: Model loaded successfully.")
@@ -57,7 +55,13 @@ def get_enhancer() -> Any:
 
 
 def pre_check() -> bool:
+    model_path = os.path.join(MODELS_DIR, MODEL_FILE)
+    if not os.path.exists(model_path):
+        update_status(f"Downloading {MODEL_FILE}...", NAME)
     conditional_download(MODELS_DIR, [MODEL_URL])
+    if not os.path.exists(model_path):
+        update_status(f"Model not found at {model_path}. Download may have failed.", NAME)
+        return False
     return True
 
 

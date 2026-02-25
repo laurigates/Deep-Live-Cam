@@ -139,6 +139,7 @@ def enhance_face_onnx(
     face: Any,
     session: onnxruntime.InferenceSession,
     input_size: int,
+    extra_inputs: Optional[dict] = None,
 ) -> np.ndarray:
     """Enhance a single face in the frame using an ONNX face restoration model.
 
@@ -158,8 +159,11 @@ def enhance_face_onnx(
 
     # Preprocess and run inference
     blob = preprocess_face(face_crop, input_size)
+    input_feed = {session.get_inputs()[0].name: blob}
+    if extra_inputs:
+        input_feed.update(extra_inputs)
     with THREAD_SEMAPHORE:
-        output = session.run(None, {session.get_inputs()[0].name: blob})[0]
+        output = session.run(None, input_feed)[0]
     enhanced = postprocess_face(output)
 
     # Create mask for blending (feathered edges)

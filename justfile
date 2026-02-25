@@ -95,8 +95,14 @@ start-virtualcam:
     uv run run.py --execution-provider {{ default_provider }} --virtual-cam
 
 ##########
-# Setup (Virtual Camera)
+# Setup (Optional Dependencies)
 ##########
+
+# Install RIFE frame interpolation optional dependency
+[group: "setup"]
+setup-rife:
+    uv sync --extra rife
+    @echo "RIFE interpolation installed. Use --rife flag or toggle in UI."
 
 # Install pyvirtualcam optional dependency and show platform setup instructions
 [group: "setup"]

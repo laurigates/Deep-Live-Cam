@@ -1,4 +1,10 @@
-"""GPEN-BFR-256 face enhancer — ONNX-based face restoration at 256×256."""
+"""CodeFormer face enhancer — ONNX-based face restoration at 512×512.
+
+CodeFormer uses a transformer + VQ-codebook architecture with an adjustable
+fidelity weight ``w`` (0.0 = max quality, 1.0 = max fidelity to source).
+Unlike GPEN/GFPGAN which take a single image input, CodeFormer's ONNX model
+expects two inputs: ``x`` (image) and ``w`` (fidelity scalar).
+"""
 
 from typing import Any, List
 import os
@@ -20,10 +26,11 @@ from modules.processors.frame._onnx_enhancer import (
     enhance_face_onnx,
 )
 
-NAME = "DLC.FACE-ENHANCER-GPEN256"
-INPUT_SIZE = 256
-MODEL_URL = "https://github.com/harisreedhar/Face-Upscalers-ONNX/releases/download/Models/GPEN-BFR-256.onnx"
-MODEL_FILE = "GPEN-BFR-256.onnx"
+NAME = "DLC.FACE-ENHANCER-CODEFORMER"
+INPUT_SIZE = 512
+DEFAULT_FIDELITY = 0.7
+MODEL_URL = "https://huggingface.co/facefusion/models-3.0.0/resolve/main/codeformer.onnx"
+MODEL_FILE = "codeformer.onnx"
 
 _model = ModelHolder()
 _load_error_logged = False
@@ -31,9 +38,6 @@ _load_error_logged = False
 
 def _load_model() -> Any:
     model_path = os.path.join(MODELS_DIR, MODEL_FILE)
-    # Do NOT download here — that would block the video thread.
-    # Model download is handled asynchronously by _run_processor_pre_checks
-    # (GUI mode) or synchronously by pre_check() (headless mode).
     if not os.path.isfile(model_path):
         raise FileNotFoundError(
             f"{NAME}: Model not found at {model_path}. "
@@ -52,6 +56,10 @@ def _warmup(session: Any) -> None:
 
 def get_enhancer() -> Any:
     return _model.get(loader_fn=_load_model, warmup_fn=_warmup)
+
+
+def _get_fidelity() -> float:
+    return getattr(modules.globals, "codeformer_fidelity", DEFAULT_FIDELITY)
 
 
 def pre_check() -> bool:
@@ -82,7 +90,11 @@ def enhance_face(temp_frame: Frame, face: Face) -> Frame:
             _load_error_logged = True
         return temp_frame
     try:
-        return enhance_face_onnx(temp_frame, face, session, INPUT_SIZE)
+        w = np.array([_get_fidelity()], dtype=np.float32)
+        return enhance_face_onnx(
+            temp_frame, face, session, INPUT_SIZE,
+            extra_inputs={"w": w},
+        )
     except Exception as e:
         print(f"{NAME}: Error during face enhancement: {e}")
         return temp_frame
