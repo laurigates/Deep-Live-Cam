@@ -5,6 +5,7 @@ if any(arg.startswith('--execution-provider') for arg in sys.argv):
     os.environ['OMP_NUM_THREADS'] = '1'
 # reduce tensorflow log level
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+import threading
 import warnings
 from typing import List
 import platform
@@ -334,21 +335,40 @@ def destroy(to_quit=True) -> None:
     if to_quit: quit()
 
 
+def _run_processor_pre_checks() -> None:
+    """Download missing models in a background thread (GUI mode only).
+
+    Runs each frame processor's pre_check() sequentially so tqdm progress bars
+    don't interleave. Status messages are posted to the UI via update_status().
+    RIFE pre_check runs last since it depends on the frame processors being ready.
+    """
+    for frame_processor in get_frame_processors_modules(modules.globals.frame_processors):
+        frame_processor.pre_check()
+    if modules.globals.rife_enabled:
+        from modules.rife_interpolation import pre_check as rife_pre_check
+        rife_pre_check()
+
+
 def run() -> None:
     parse_args()
     if not pre_check():
         return
-    for frame_processor in get_frame_processors_modules(modules.globals.frame_processors):
-        if not frame_processor.pre_check():
-            return
-    # Check RIFE interpolation requirements if enabled
-    if modules.globals.rife_enabled:
-        from modules.rife_interpolation import pre_check as rife_pre_check
-        if not rife_pre_check():
-            return
     limit_resources()
     if modules.globals.headless:
+        # Headless: run pre_checks synchronously before processing starts.
+        for frame_processor in get_frame_processors_modules(modules.globals.frame_processors):
+            if not frame_processor.pre_check():
+                return
+        if modules.globals.rife_enabled:
+            from modules.rife_interpolation import pre_check as rife_pre_check
+            if not rife_pre_check():
+                return
         start()
     else:
+        # GUI mode: start the UI immediately so the webcam preview is responsive,
+        # then download any missing models in the background.  Each processor's
+        # process_frame/swap_face already returns the original frame when its
+        # model is not yet loaded, so the live feed stays smooth during download.
+        threading.Thread(target=_run_processor_pre_checks, daemon=True, name="model-downloader").start()
         window = ui.init(start, destroy, modules.globals.lang)
         window.mainloop()
