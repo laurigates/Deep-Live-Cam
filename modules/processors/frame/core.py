@@ -12,6 +12,7 @@ import modules
 import modules.globals
 
 FRAME_PROCESSORS_MODULES: List[ModuleType] = []
+_PROCESSORS_LOCK = threading.Lock()  # Protects FRAME_PROCESSORS_MODULES from concurrent access
 FRAME_PROCESSORS_INTERFACE = [
     'pre_check',
     'pre_start',
@@ -19,6 +20,16 @@ FRAME_PROCESSORS_INTERFACE = [
     'process_image',
     'process_video'
 ]
+
+
+def _get_processors_snapshot() -> List[ModuleType]:
+    """Return a thread-safe snapshot of FRAME_PROCESSORS_MODULES.
+
+    Acquires the lock to ensure a consistent view of the list,
+    returning a shallow copy to prevent external mutations.
+    """
+    with _PROCESSORS_LOCK:
+        return list(FRAME_PROCESSORS_MODULES)
 
 
 def load_frame_processor_module(frame_processor: str) -> Any:
@@ -35,46 +46,50 @@ def load_frame_processor_module(frame_processor: str) -> Any:
 def get_frame_processors_modules(frame_processors: List[str]) -> List[ModuleType]:
     global FRAME_PROCESSORS_MODULES
 
-    if not FRAME_PROCESSORS_MODULES:
-        for frame_processor in frame_processors:
-            frame_processor_module = load_frame_processor_module(frame_processor)
-            FRAME_PROCESSORS_MODULES.append(frame_processor_module)
+    with _PROCESSORS_LOCK:
+        if not FRAME_PROCESSORS_MODULES:
+            for frame_processor in frame_processors:
+                frame_processor_module = load_frame_processor_module(frame_processor)
+                FRAME_PROCESSORS_MODULES.append(frame_processor_module)
+
     set_frame_processors_modules_from_ui(frame_processors)
-    return FRAME_PROCESSORS_MODULES
+    return _get_processors_snapshot()
 
 def set_frame_processors_modules_from_ui(frame_processors: List[str]) -> None:
     global FRAME_PROCESSORS_MODULES
-    current_processor_names = [proc.__name__.split('.')[-1] for proc in FRAME_PROCESSORS_MODULES]
 
-    for frame_processor, state in modules.globals.fp_ui.items():
-        if state == True and frame_processor not in current_processor_names:
-            try:
-                frame_processor_module = load_frame_processor_module(frame_processor)
-                FRAME_PROCESSORS_MODULES.append(frame_processor_module)
-                if frame_processor not in modules.globals.frame_processors:
-                     modules.globals.frame_processors.append(frame_processor)
-                # Trigger model download in the background so the UI
-                # stays responsive.  pre_check() is normally only called
-                # at startup for initially-enabled processors.
-                threading.Thread(
-                    target=frame_processor_module.pre_check,
-                    daemon=True,
-                    name=f"dl-{frame_processor}",
-                ).start()
-            except SystemExit:
-                 print(f"Warning: Failed to load frame processor {frame_processor} requested by UI state.")
-            except Exception as e:
-                 print(f"Warning: Error loading frame processor {frame_processor} requested by UI state: {e}")
+    with _PROCESSORS_LOCK:
+        current_processor_names = [proc.__name__.split('.')[-1] for proc in FRAME_PROCESSORS_MODULES]
 
-        elif state == False and frame_processor in current_processor_names:
-            try:
-                module_to_remove = next((mod for mod in FRAME_PROCESSORS_MODULES if mod.__name__.endswith(f'.{frame_processor}')), None)
-                if module_to_remove:
-                    FRAME_PROCESSORS_MODULES.remove(module_to_remove)
-                if frame_processor in modules.globals.frame_processors:
-                    modules.globals.frame_processors.remove(frame_processor)
-            except Exception as e:
-                 print(f"Warning: Error removing frame processor {frame_processor}: {e}")
+        for frame_processor, state in modules.globals.fp_ui.items():
+            if state == True and frame_processor not in current_processor_names:
+                try:
+                    frame_processor_module = load_frame_processor_module(frame_processor)
+                    FRAME_PROCESSORS_MODULES.append(frame_processor_module)
+                    if frame_processor not in modules.globals.frame_processors:
+                         modules.globals.frame_processors.append(frame_processor)
+                    # Trigger model download in the background so the UI
+                    # stays responsive.  pre_check() is normally only called
+                    # at startup for initially-enabled processors.
+                    threading.Thread(
+                        target=frame_processor_module.pre_check,
+                        daemon=True,
+                        name=f"dl-{frame_processor}",
+                    ).start()
+                except SystemExit:
+                     print(f"Warning: Failed to load frame processor {frame_processor} requested by UI state.")
+                except Exception as e:
+                     print(f"Warning: Error loading frame processor {frame_processor} requested by UI state: {e}")
+
+            elif state == False and frame_processor in current_processor_names:
+                try:
+                    module_to_remove = next((mod for mod in FRAME_PROCESSORS_MODULES if mod.__name__.endswith(f'.{frame_processor}')), None)
+                    if module_to_remove:
+                        FRAME_PROCESSORS_MODULES.remove(module_to_remove)
+                    if frame_processor in modules.globals.frame_processors:
+                        modules.globals.frame_processors.remove(frame_processor)
+                except Exception as e:
+                     print(f"Warning: Error removing frame processor {frame_processor}: {e}")
 
 def multi_process_frame(source_path: str, temp_frame_paths: List[str], process_frames: Callable[[str, List[str], Any], None], progress: Any = None) -> None:
     """Process video frames in parallel using ProcessPoolExecutor.
