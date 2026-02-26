@@ -332,7 +332,14 @@ def start() -> None:
 def destroy(to_quit=True) -> None:
     if modules.globals.target_path:
         clean_temp(modules.globals.target_path)
-    if to_quit: quit()
+    if to_quit:
+        try:
+            import modules.ui as ui
+            if ui.ROOT is not None:
+                ui.ROOT.quit()
+        except Exception:
+            pass
+        raise SystemExit(0)
 
 
 def _run_processor_pre_checks() -> None:

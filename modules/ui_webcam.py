@@ -416,8 +416,9 @@ def create_webcam_preview(camera_index: int):
     from modules.ui import (
         preview_label, PREVIEW, ROOT,
         PREVIEW_DEFAULT_WIDTH, PREVIEW_DEFAULT_HEIGHT,
-        update_status, fit_image_to_size,
+        update_status, fit_image_to_size, toggle_preview,
     )
+    from modules.core import destroy
 
     set_det_size(_LIVE_DET_SIZE)
 
@@ -428,6 +429,8 @@ def create_webcam_preview(camera_index: int):
         return
 
     preview_label.configure(width=PREVIEW_DEFAULT_WIDTH, height=PREVIEW_DEFAULT_HEIGHT)
+    # During live mode the preview window IS the app — X should quit entirely.
+    PREVIEW.protocol("WM_DELETE_WINDOW", destroy)
     PREVIEW.deiconify()
 
     # Start virtual camera if enabled
@@ -517,6 +520,7 @@ def create_webcam_preview(camera_index: int):
         # responsive.  Blocking operations (join/release/det-size reset) run
         # on a daemon thread so the main thread is never stalled.
         stop_event.set()
+        PREVIEW.protocol("WM_DELETE_WINDOW", toggle_preview)
         PREVIEW.withdraw()
 
         def _background_cleanup():
