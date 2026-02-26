@@ -1,6 +1,7 @@
 import os
 import sys
 import importlib
+import threading
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, as_completed
 from types import ModuleType
 from typing import Any, List, Callable
@@ -52,6 +53,14 @@ def set_frame_processors_modules_from_ui(frame_processors: List[str]) -> None:
                 FRAME_PROCESSORS_MODULES.append(frame_processor_module)
                 if frame_processor not in modules.globals.frame_processors:
                      modules.globals.frame_processors.append(frame_processor)
+                # Trigger model download in the background so the UI
+                # stays responsive.  pre_check() is normally only called
+                # at startup for initially-enabled processors.
+                threading.Thread(
+                    target=frame_processor_module.pre_check,
+                    daemon=True,
+                    name=f"dl-{frame_processor}",
+                ).start()
             except SystemExit:
                  print(f"Warning: Failed to load frame processor {frame_processor} requested by UI state.")
             except Exception as e:
