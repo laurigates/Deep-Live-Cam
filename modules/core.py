@@ -303,7 +303,7 @@ def start() -> None:
         update_status(f'Creating video with {fps} fps...')
         create_video(modules.globals.target_path, fps)
     else:
-        adjusted_fps = modules.globals.FPS_CAP * rife_multiplier
+        adjusted_fps = 30.0 * rife_multiplier
         update_status(f'Creating video with {adjusted_fps:.1f} fps...')
         create_video(modules.globals.target_path, adjusted_fps)
     encoding_time = time.time() - encoding_start

@@ -12,6 +12,6 @@ def test_globals_mask_size_attributes():
     assert isinstance(modules.globals.eyebrows_mask_size, float)
 
 
-def test_globals_fps_cap_is_float():
+def test_globals_live_max_fps_is_int():
     import modules.globals
-    assert isinstance(modules.globals.FPS_CAP, float)
+    assert isinstance(modules.globals.live_max_fps, int)
