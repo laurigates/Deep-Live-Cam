@@ -27,7 +27,7 @@ def test_coreml_on_apple_silicon_returns_tuple(mock_makedirs):
     assert opts["SpecializationStrategy"] == "FastPrediction"
     assert opts["AllowLowPrecisionAccumulationOnGPU"] == 1
     assert opts["EnableOnSubgraphs"] == 1
-    assert opts["MaximumCacheSize"] == 1024 * 1024 * 512
+    assert "MaximumCacheSize" not in opts  # rejected by onnxruntime-silicon 1.24.2
     assert "ModelCacheDirectory" in opts
     mock_makedirs.assert_called_once()
 
@@ -74,7 +74,6 @@ def test_options_dict_has_all_expected_keys(mock_makedirs):
         "SpecializationStrategy",
         "AllowLowPrecisionAccumulationOnGPU",
         "EnableOnSubgraphs",
-        "MaximumCacheSize",
         "ModelCacheDirectory",
     }
     assert set(opts.keys()) == expected_keys

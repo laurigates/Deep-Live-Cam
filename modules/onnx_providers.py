@@ -26,7 +26,6 @@ def build_providers_config(providers: List[str]) -> List[ProviderConfig]:
                     "SpecializationStrategy": "FastPrediction",
                     "AllowLowPrecisionAccumulationOnGPU": 1,
                     "EnableOnSubgraphs": 1,
-                    "MaximumCacheSize": 1024 * 1024 * 512,
                     "ModelCacheDirectory": _COREML_CACHE_DIR,
                 },
             ))
