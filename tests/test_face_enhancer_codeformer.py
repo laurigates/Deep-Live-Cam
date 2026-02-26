@@ -18,10 +18,10 @@ def codeformer_module():
 
 @pytest.fixture
 def mock_no_face(codeformer_module):
-    """Patch get_one_face to return None."""
+    """Patch detect_faces to return empty list (no faces detected)."""
     with patch(
-        "modules.processors.frame.face_enhancer_codeformer.get_one_face",
-        return_value=None,
+        "modules.processors.frame._onnx_enhancer_factory.detect_faces",
+        return_value=[],
     ):
         yield
 

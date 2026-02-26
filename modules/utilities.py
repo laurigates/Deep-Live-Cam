@@ -362,5 +362,30 @@ def conditional_download(download_directory_path: str, urls: List[str], expected
                 print(f"conditional_download: checksum verified for {filename!r}")
 
 
+def download_model_if_needed(
+    model_file: str,
+    model_urls: list[str],
+    processor_name: str,
+    models_dir: str | None = None,
+) -> bool:
+    """Download a model if not present. Returns True if model is available."""
+    if models_dir is None:
+        from modules.paths import MODELS_DIR
+        models_dir = MODELS_DIR
+    model_path = os.path.join(models_dir, model_file)
+    if not os.path.exists(model_path):
+        from modules.core import update_status
+        update_status(f"Downloading {model_file}...", processor_name)
+    conditional_download(models_dir, model_urls)
+    if not os.path.exists(model_path):
+        from modules.core import update_status
+        update_status(
+            f"Model not found at {model_path}. Download may have failed.",
+            processor_name,
+        )
+        return False
+    return True
+
+
 def resolve_relative_path(path: str) -> str:
     return os.path.abspath(os.path.join(os.path.dirname(__file__), path))

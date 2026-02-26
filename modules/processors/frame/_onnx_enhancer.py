@@ -5,7 +5,6 @@ pre/post processing, and the core enhance-face-via-ONNX pipeline.
 """
 
 import os
-import platform
 import threading
 from typing import Any, Optional
 
@@ -14,8 +13,7 @@ import numpy as np
 import onnxruntime
 
 import modules.globals
-
-IS_APPLE_SILICON = platform.system() == "Darwin" and platform.machine() == "arm64"
+from modules.onnx_providers import build_providers_config
 
 # Limit concurrent ONNX calls to avoid VRAM exhaustion on multi-face frames
 _SEMAPHORE_COUNT = min(max(1, (os.cpu_count() or 1)), 8)
@@ -24,28 +22,7 @@ THREAD_SEMAPHORE = threading.Semaphore(_SEMAPHORE_COUNT)
 
 def create_onnx_session(model_path: str) -> onnxruntime.InferenceSession:
     """Create an ONNX Runtime session with provider config matching face_swapper."""
-    providers_config = []
-    for p in modules.globals.execution_providers:
-        if p == "CoreMLExecutionProvider" and IS_APPLE_SILICON:
-            coreml_cache_dir = os.path.join(
-                os.path.expanduser("~"), ".cache", "deep-live-cam", "coreml"
-            )
-            os.makedirs(coreml_cache_dir, exist_ok=True)
-            providers_config.append((
-                "CoreMLExecutionProvider",
-                {
-                    "ModelFormat": "MLProgram",
-                    "MLComputeUnits": "ALL",
-                    "SpecializationStrategy": "FastPrediction",
-                    "AllowLowPrecisionAccumulationOnGPU": 1,
-                    "EnableOnSubgraphs": 1,
-                    "MaximumCacheSize": 1024 * 1024 * 512,
-                    "ModelCacheDirectory": coreml_cache_dir,
-                },
-            ))
-        else:
-            providers_config.append(p)
-
+    providers_config = build_providers_config(modules.globals.execution_providers)
     session = onnxruntime.InferenceSession(model_path, providers=providers_config)
     return session
 
