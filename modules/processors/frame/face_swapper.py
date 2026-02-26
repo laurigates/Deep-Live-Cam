@@ -27,7 +27,6 @@ from modules.processors.frame.face_masking import (
     apply_mouth_area,
 )
 import os
-from collections import deque
 import time
 
 FACE_SWAPPER = None
@@ -47,13 +46,8 @@ def _set_previous_frame(frame):
     _THREAD_LOCAL.previous_frame_result = frame
 # --- END: Added for Interpolation ---
 
-# --- START: Mac M1-M5 Optimizations ---
-FRAME_CACHE = deque(maxlen=3)  # Cache for frame reuse
-FACE_DETECTION_CACHE = {}  # Cache face detections
+FACE_DETECTION_CACHE = {}  # Cache face detections (2 fixed keys: 'faces', 'timestamp')
 LAST_DETECTION_TIME = 0
-FRAME_SKIP_COUNTER = 0
-ADAPTIVE_QUALITY = True
-# --- END: Mac M1-M5 Optimizations ---
 
 models_dir = MODELS_DIR
 
@@ -295,6 +289,43 @@ def _paste_back(bgr_fake: np.ndarray, aimg: np.ndarray, M: np.ndarray, target_im
     return fake_merged.astype(np.uint8)
 
 
+def _paste_scale_from_M(M: np.ndarray, max_k: float = 4.0) -> float:
+    """Return the upscale factor k for pre-paste upscaling.
+
+    M maps the full frame to a 128×128 crop.  The scale embedded in M tells us
+    how many source pixels map to one 128px output pixel.  Upscaling by k before
+    the inverse-affine paste ensures we paste a resolution-appropriate crop rather
+    than stretching a tiny 128×128 result over a large face region.
+    """
+    scale_to_128 = float(np.sqrt(M[0, 0] ** 2 + M[0, 1] ** 2))
+    if scale_to_128 <= 0:
+        return 1.0
+    k = 1.0 / scale_to_128
+    return float(np.clip(k, 1.0, max_k))
+
+
+def _upscale_crop_for_paste(
+    bgr_fake: np.ndarray,
+    aimg: np.ndarray,
+    M: np.ndarray,
+    k: float,
+    interpolation: int = cv2.INTER_LANCZOS4,
+) -> tuple:
+    """Return (bgr_fake_up, aimg_up, M_scaled) upscaled by factor k.
+
+    Both bgr_fake and aimg must be upscaled together so _paste_back can compute
+    fake_diff = |bgr_fake - aimg| with matching shapes.  M is scaled by k so
+    the inverse-affine warp maps the upscaled crop correctly onto the frame.
+    """
+    if k <= 1.0 + 1e-3:
+        return bgr_fake, aimg, M
+    target = (int(round(bgr_fake.shape[1] * k)), int(round(bgr_fake.shape[0] * k)))
+    bgr_up = gpu_resize(bgr_fake, target, interpolation=interpolation)
+    aimg_up = gpu_resize(aimg, target, interpolation=interpolation)
+    M_scaled = M * k  # broadcast over 2×3; maps k×128 → full frame via invertAffine
+    return bgr_up, aimg_up, M_scaled
+
+
 def batch_swap_faces(
     source_faces: List[Face],
     target_faces: List[Face],
@@ -386,6 +417,11 @@ def batch_swap_faces(
         img_fake = preds[j].transpose((1, 2, 0))
         bgr_fake = np.clip(255 * img_fake, 0, 255).astype(np.uint8)[:, :, ::-1]
 
+        # Optionally upscale crop before paste-back to reduce stretch artifact
+        if getattr(modules.globals, "prepaste_upscale", True):
+            k = _paste_scale_from_M(M)
+            bgr_fake, aimg, M = _upscale_crop_for_paste(bgr_fake, aimg, M, k)
+
         # Paste back onto result frame
         result = _paste_back(bgr_fake, aimg, M, result)
 
@@ -425,45 +461,51 @@ def swap_face(source_face: Face, target_face: Face, temp_frame: Frame) -> Frame:
 
     # Apply the face swap with optimized memory handling
     try:
+        from insightface.utils import face_align as _face_align
+
         # Ensure contiguous memory layout for better performance on all platforms
         if not temp_frame.flags['C_CONTIGUOUS']:
             temp_frame = np.ascontiguousarray(temp_frame)
-        
-        swapped_frame_raw = face_swapper.get(
-            temp_frame, target_face, source_face, paste_back=True
+
+        # Use paste_back=False to get the raw crop + affine matrix so we can
+        # optionally upscale the crop before warping it back onto the frame.
+        bgr_fake, M = face_swapper.get(
+            temp_frame, target_face, source_face, paste_back=False
         )
 
-        # --- START: CRITICAL FIX FOR ORT 1.17 ---
-        # Check the output type and range from the model
-        if swapped_frame_raw is None:
-             # print("Warning: face_swapper.get returned None.") # Debug
-             return original_frame # Return original if swap somehow failed internally
-
-        # Ensure the output is a numpy array
-        if not isinstance(swapped_frame_raw, np.ndarray):
-            # print(f"Warning: face_swapper.get returned type {type(swapped_frame_raw)}, expected numpy array.") # Debug
+        if bgr_fake is None or M is None:
             return original_frame
 
-        # Ensure the output has the correct shape (like the input frame)
-        if swapped_frame_raw.shape != temp_frame.shape:
-             # print(f"Warning: Swapped frame shape {swapped_frame_raw.shape} differs from input {temp_frame.shape}.") # Debug
-             # Attempt resize (might distort if aspect ratio changed, but better than crashing)
-             try:
-                 swapped_frame_raw = gpu_resize(swapped_frame_raw, (temp_frame.shape[1], temp_frame.shape[0]))
-             except Exception as resize_e:
-                 # print(f"Error resizing swapped frame: {resize_e}") # Debug
-                 return original_frame
+        # Retrieve the aligned crop that was used as the swap base (needed by
+        # _paste_back to compute the diff mask).
+        aimg, _ = _face_align.norm_crop2(
+            temp_frame, target_face.kps, face_swapper.input_size[0]
+        )
 
-        # Explicitly clip values to 0-255 and convert to uint8
-        # This handles cases where the model might output floats or values outside the valid range
+        # Optionally upscale crop before paste-back to reduce stretch artifact
+        if getattr(modules.globals, "prepaste_upscale", True):
+            k = _paste_scale_from_M(M)
+            bgr_fake, aimg, M = _upscale_crop_for_paste(bgr_fake, aimg, M, k)
+
+        swapped_frame_raw = _paste_back(bgr_fake, aimg, M, temp_frame)
+
+        if swapped_frame_raw is None:
+            return original_frame
+
+        if not isinstance(swapped_frame_raw, np.ndarray):
+            return original_frame
+
+        if swapped_frame_raw.shape != temp_frame.shape:
+            try:
+                swapped_frame_raw = gpu_resize(swapped_frame_raw, (temp_frame.shape[1], temp_frame.shape[0]))
+            except Exception:
+                return original_frame
+
         swapped_frame = np.clip(swapped_frame_raw, 0, 255).astype(np.uint8)
-        # --- END: CRITICAL FIX FOR ORT 1.17 ---
 
     except Exception as e:
-        print(f"Error during face swap using face_swapper.get: {e}") # More specific error
-        # import traceback
-        # traceback.print_exc() # Print full traceback for debugging
-        return original_frame # Return original if swap fails
+        print(f"Error during face swap using face_swapper.get: {e}")
+        return original_frame
 
     # --- Post-swap Processing (Masking, Opacity, etc.) ---
     # Now, work with the guaranteed uint8 'swapped_frame'
