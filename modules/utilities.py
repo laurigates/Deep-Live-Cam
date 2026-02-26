@@ -110,116 +110,96 @@ def extract_frames(target_path: str) -> None:
     )
 
 
+_NVIDIA_ENCODERS = {'libx264': 'h264_nvenc', 'libx265': 'hevc_nvenc'}
+_AMD_ENCODERS = {'libx264': 'h264_amf', 'libx265': 'hevc_amf'}
+_HW_ENCODERS = set(_NVIDIA_ENCODERS.values()) | set(_AMD_ENCODERS.values())
+
+
+def _build_encoder_args(software_encoder: str, quality: int | None, providers: list) -> tuple[str, list]:
+    """Return (encoder_name, extra_ffmpeg_flags) for the given hardware context.
+
+    Pure function — reads only its arguments, has no side effects.
+    """
+    if quality is None:
+        quality = 18
+    if 'CUDAExecutionProvider' in providers:
+        encoder = _NVIDIA_ENCODERS.get(software_encoder, software_encoder)
+        if encoder in ('h264_nvenc', 'hevc_nvenc'):
+            options = [
+                "-preset", "p7",
+                "-tune", "hq",
+                "-rc", "vbr",
+                "-cq", str(quality),
+                "-b:v", "0",
+                "-multipass", "fullres",
+            ]
+            return encoder, options
+    elif 'DmlExecutionProvider' in providers:
+        encoder = _AMD_ENCODERS.get(software_encoder, software_encoder)
+        if encoder in ('h264_amf', 'hevc_amf'):
+            options = [
+                "-quality", "quality",
+                "-rc", "vbr_latency",
+                "-qp_i", str(quality),
+                "-qp_p", str(quality),
+            ]
+            return encoder, options
+
+    # CPU encoding
+    if software_encoder == 'libx264':
+        return software_encoder, ["-preset", "medium", "-crf", str(quality), "-tune", "film"]
+    if software_encoder == 'libx265':
+        return software_encoder, ["-preset", "medium", "-crf", str(quality), "-x265-params", "log-level=error"]
+    if software_encoder == 'libvpx-vp9':
+        return software_encoder, ["-crf", str(quality), "-b:v", "0", "-cpu-used", "2"]
+    return software_encoder, []
+
+
+def _build_video_ffmpeg_args(
+    fps: float,
+    input_pattern: str,
+    encoder: str,
+    encoder_options: list,
+    output_path: str,
+) -> list:
+    """Build the full ffmpeg argument list for video encoding.
+
+    Pure function — no side effects.
+    """
+    return [
+        "-r", str(fps),
+        "-i", input_pattern,
+        "-c:v", encoder,
+        *encoder_options,
+        "-pix_fmt", "yuv420p",
+        "-movflags", "+faststart",
+        "-vf", "colorspace=bt709:iall=bt601-6-625:fast=1",
+        "-y",
+        output_path,
+    ]
+
+
 def create_video(target_path: str, fps: float = modules.globals.FPS_CAP) -> None:
     """Create video with hardware-accelerated encoding and optimized settings."""
     temp_output_path = get_temp_output_path(target_path)
     temp_directory_path = get_temp_directory_path(target_path)
-    
-    # Determine optimal encoder based on available hardware
-    encoder = modules.globals.video_encoder
-    encoder_options = []
-    
-    # GPU-accelerated encoding options
-    if 'CUDAExecutionProvider' in modules.globals.execution_providers:
-        # NVIDIA GPU encoding
-        if encoder == 'libx264':
-            encoder = 'h264_nvenc'
-            encoder_options = [
-                "-preset", "p7",  # Highest quality preset for NVENC
-                "-tune", "hq",  # High quality tuning
-                "-rc", "vbr",  # Variable bitrate
-                "-cq", str(modules.globals.video_quality),  # Quality level
-                "-b:v", "0",  # Let CQ control bitrate
-                "-multipass", "fullres",  # Two-pass encoding for better quality
-            ]
-        elif encoder == 'libx265':
-            encoder = 'hevc_nvenc'
-            encoder_options = [
-                "-preset", "p7",
-                "-tune", "hq",
-                "-rc", "vbr",
-                "-cq", str(modules.globals.video_quality),
-                "-b:v", "0",
-            ]
-    elif 'DmlExecutionProvider' in modules.globals.execution_providers:
-        # AMD/Intel GPU encoding (DirectML on Windows)
-        if encoder == 'libx264':
-            # Try AMD AMF encoder
-            encoder = 'h264_amf'
-            encoder_options = [
-                "-quality", "quality",  # Quality mode
-                "-rc", "vbr_latency",
-                "-qp_i", str(modules.globals.video_quality),
-                "-qp_p", str(modules.globals.video_quality),
-            ]
-        elif encoder == 'libx265':
-            encoder = 'hevc_amf'
-            encoder_options = [
-                "-quality", "quality",
-                "-rc", "vbr_latency",
-                "-qp_i", str(modules.globals.video_quality),
-                "-qp_p", str(modules.globals.video_quality),
-            ]
-    else:
-        # CPU encoding with optimized settings
-        if encoder == 'libx264':
-            encoder_options = [
-                "-preset", "medium",  # Balance speed/quality
-                "-crf", str(modules.globals.video_quality),
-                "-tune", "film",  # Optimize for film content
-            ]
-        elif encoder == 'libx265':
-            encoder_options = [
-                "-preset", "medium",
-                "-crf", str(modules.globals.video_quality),
-                "-x265-params", "log-level=error",
-            ]
-        elif encoder == 'libvpx-vp9':
-            encoder_options = [
-                "-crf", str(modules.globals.video_quality),
-                "-b:v", "0",  # Constant quality mode
-                "-cpu-used", "2",  # Speed vs quality (0-5, lower=slower/better)
-            ]
-    
-    # Build ffmpeg command
-    ffmpeg_args = [
-        "-r", str(fps),
-        "-i", os.path.join(temp_directory_path, "%04d.jpg"),
-        "-c:v", encoder,
-    ]
-    
-    # Add encoder-specific options
-    ffmpeg_args.extend(encoder_options)
-    
-    # Add common options
-    ffmpeg_args.extend([
-        "-pix_fmt", "yuv420p",
-        "-movflags", "+faststart",  # Enable fast start for web playback
-        "-vf", "colorspace=bt709:iall=bt601-6-625:fast=1",
-        "-y",
-        temp_output_path,
-    ])
-    
-    # Try with hardware encoder first, fallback to software if it fails
+    input_pattern = os.path.join(temp_directory_path, "%04d.jpg")
+
+    encoder, encoder_options = _build_encoder_args(
+        modules.globals.video_encoder,
+        modules.globals.video_quality,
+        modules.globals.execution_providers,
+    )
+    ffmpeg_args = _build_video_ffmpeg_args(fps, input_pattern, encoder, encoder_options, temp_output_path)
+
     success = run_ffmpeg(ffmpeg_args)
-    
-    if not success and encoder in ['h264_nvenc', 'hevc_nvenc', 'h264_amf', 'hevc_amf']:
-        # Fallback to software encoding
+
+    if not success and encoder in _HW_ENCODERS:
         print(f"Hardware encoding with {encoder} failed, falling back to software encoding...")
         fallback_encoder = 'libx264' if 'h264' in encoder else 'libx265'
-        ffmpeg_args_fallback = [
-            "-r", str(fps),
-            "-i", os.path.join(temp_directory_path, "%04d.jpg"),
-            "-c:v", fallback_encoder,
-            "-preset", "medium",
-            "-crf", str(modules.globals.video_quality),
-            "-pix_fmt", "yuv420p",
-            "-movflags", "+faststart",
-            "-vf", "colorspace=bt709:iall=bt601-6-625:fast=1",
-            "-y",
-            temp_output_path,
-        ]
-        run_ffmpeg(ffmpeg_args_fallback)
+        _, fallback_options = _build_encoder_args(fallback_encoder, modules.globals.video_quality, [])
+        fallback_args = _build_video_ffmpeg_args(fps, input_pattern, fallback_encoder, fallback_options, temp_output_path)
+        run_ffmpeg(fallback_args)
 
 
 def restore_audio(target_path: str, output_path: str) -> None:

@@ -19,7 +19,13 @@ from modules.gpu_processing import gpu_gaussian_blur, gpu_sharpen, gpu_add_weigh
 from modules.paths import MODELS_DIR
 from modules.platform_info import IS_APPLE_SILICON
 from modules.onnx_providers import build_providers_config
-from modules.processors.frame.face_masking import apply_color_transfer
+from modules.processors.frame.face_masking import (
+    apply_color_transfer,
+    create_face_mask,
+    create_lower_mouth_mask,
+    draw_mouth_mask_visualization,
+    apply_mouth_area,
+)
 import os
 from collections import deque
 import time
@@ -233,6 +239,11 @@ logger = logging.getLogger(NAME)
 _batch_fallback_warned = False
 
 
+def _clamp_opacity() -> float:
+    """Read the current opacity from globals, clamped to [0.0, 1.0]."""
+    return max(0.0, min(1.0, getattr(modules.globals, "opacity", 1.0)))
+
+
 def _paste_back(bgr_fake: np.ndarray, aimg: np.ndarray, M: np.ndarray, target_img: np.ndarray) -> np.ndarray:
     """Paste an aligned face crop back onto the target image using inverse affine warp and blending.
 
@@ -362,8 +373,7 @@ def batch_swap_faces(
         return result
 
     # Post-processing: paste each face back onto the frame
-    opacity = getattr(modules.globals, "opacity", 1.0)
-    opacity = max(0.0, min(1.0, opacity))
+    opacity = _clamp_opacity()
     original_frame = temp_frame if opacity >= 1.0 else temp_frame.copy()
     result = temp_frame.copy()
 
@@ -406,8 +416,7 @@ def swap_face(source_face: Face, target_face: Face, temp_frame: Frame) -> Frame:
         return temp_frame
 
     # Store a copy of the original frame before swapping for opacity blending
-    opacity = getattr(modules.globals, "opacity", 1.0)
-    opacity = max(0.0, min(1.0, opacity))
+    opacity = _clamp_opacity()
     original_frame = temp_frame if opacity >= 1.0 else temp_frame.copy()
 
     # Pre-swap Input Check with optimization
@@ -754,118 +763,93 @@ def process_frame_v2(temp_frame: Frame, temp_frame_path: str = "") -> Frame:
     return final_frame
 
 
+def _load_source_face(source_path: str):
+    """Load a source image and extract the primary face, logging errors.
+
+    Returns the face object, or None when the image is missing / unreadable /
+    contains no detectable face.
+    """
+    if not source_path or not os.path.exists(source_path):
+        update_status(f"Error: Source path invalid or not provided for simple mode: {source_path}", NAME)
+        return None
+    try:
+        source_img = cv2.imread(source_path)
+        if source_img is None:
+            update_status(f"Error reading source image file {source_path}. Please check the path and file integrity.", NAME)
+            return None
+        face = get_one_face(source_img)
+        if face is None:
+            update_status(f"Warning: No face detected in source image {source_path}. Swaps will be skipped.", NAME)
+        return face
+    except Exception as e:
+        import traceback
+        print(f"{NAME}: Caught exception during source image processing for {source_path}:")
+        traceback.print_exc()
+        update_status(f"Error during source image reading or analysis {source_path}: {e}", NAME)
+        return None
+
+
+def _process_single_frame(
+    temp_frame_path: str,
+    use_v2: bool,
+    source_face,
+    progress: Any,
+) -> None:
+    """Read one frame file, apply swapping, write the result back, update progress."""
+    try:
+        temp_frame = cv2.imread(temp_frame_path)
+        if temp_frame is None:
+            print(f"{NAME}: Error: Could not read frame: {temp_frame_path}, skipping.")
+            if progress:
+                progress.update(1)
+            return
+    except Exception as read_e:
+        print(f"{NAME}: Error reading frame {temp_frame_path}: {read_e}, skipping.")
+        if progress:
+            progress.update(1)
+        return
+
+    try:
+        result_frame = (
+            process_frame_v2(temp_frame, temp_frame_path)
+            if use_v2
+            else process_frame(source_face, temp_frame)
+        )
+        if result_frame is None:
+            print(f"{NAME}: Warning: Processing returned None for frame {temp_frame_path}. Using original.")
+            result_frame = temp_frame
+    except Exception as proc_e:
+        print(f"{NAME}: Error processing frame {temp_frame_path}: {proc_e}")
+        result_frame = temp_frame
+
+    try:
+        if not cv2.imwrite(temp_frame_path, result_frame, [cv2.IMWRITE_JPEG_QUALITY, 95]):
+            print(f"{NAME}: Error: Failed to write processed frame to {temp_frame_path}")
+    except Exception as write_e:
+        print(f"{NAME}: Error writing frame {temp_frame_path}: {write_e}")
+
+    if progress:
+        progress.update(1)
+
+
 def process_frames(
     source_path: str, temp_frame_paths: List[str], progress: Any = None
 ) -> None:
-    """
-    Processes a list of frame paths (typically for video).
-    Optimized with better memory management and caching.
-    Iterates through frames, applies the appropriate swapping logic based on globals,
-    and saves the result back to the frame path. Handles multi-threading via caller.
-    """
-    # Determine which processing function to use based on map_faces global setting
+    """Process a list of frame paths for video — read, swap, write back."""
     use_v2 = getattr(modules.globals, "map_faces", False)
-    source_face = None # Initialize source_face
+    source_face = None
 
-    # --- Pre-load source face only if needed (Simple Mode: map_faces=False) ---
     if not use_v2:
-        if not source_path or not os.path.exists(source_path):
-            update_status(f"Error: Source path invalid or not provided for simple mode: {source_path}", NAME)
-            # Log the error but allow proceeding; subsequent check will stop processing.
-        else:
-            try:
-                source_img = cv2.imread(source_path)
-                if source_img is None:
-                    # Specific error for file reading failure
-                    update_status(f"Error reading source image file {source_path}. Please check the path and file integrity.", NAME)
-                else:
-                    source_face = get_one_face(source_img)
-                    if source_face is None:
-                        # Specific message for no face detected after successful read
-                        update_status(f"Warning: Successfully read source image {source_path}, but no face was detected. Swaps will be skipped.", NAME)
-                    # Free memory immediately after extracting face
-                    del source_img
-            except Exception as e:
-                # Print the specific exception caught
-                import traceback
-                print(f"{NAME}: Caught exception during source image processing for {source_path}:")
-                traceback.print_exc() # Print the full traceback
-                update_status(f"Error during source image reading or analysis {source_path}: {e}", NAME)
-                # Log general exception during the process
+        source_face = _load_source_face(source_path)
+        if source_face is None:
+            update_status("Halting video processing: Invalid or no face detected in source image for simple mode.", NAME)
+            remaining = len(temp_frame_paths) - (progress.n if progress and hasattr(progress, 'n') else 0)
+            if progress and remaining > 0:
+                progress.update(remaining)
+            return
 
-    total_frames = len(temp_frame_paths)
-    # update_status(f"Processing {total_frames} frames. Use V2 (map_faces): {use_v2}", NAME) # Optional Debug
-
-    # --- Stop processing entirely if in Simple Mode and source face is invalid ---
-    if not use_v2 and source_face is None:
-        update_status(f"Halting video processing: Invalid or no face detected in source image for simple mode.", NAME)
-        if progress:
-            # Ensure the progress bar completes if it was started
-            remaining_updates = total_frames - progress.n if hasattr(progress, 'n') else total_frames
-            if remaining_updates > 0:
-                progress.update(remaining_updates)
-        return # Exit the function entirely
-
-    # --- Process each frame path provided in the list ---
-    # Note: In the current core.py multi_process_frame, temp_frame_paths will usually contain only ONE path per call.
-    for i, temp_frame_path in enumerate(temp_frame_paths):
-        # update_status(f"Processing frame {i+1}/{total_frames}: {os.path.basename(temp_frame_path)}", NAME) # Optional Debug
-
-        # Read the target frame
-        temp_frame = None
-        try:
-            temp_frame = cv2.imread(temp_frame_path)
-            if temp_frame is None:
-                print(f"{NAME}: Error: Could not read frame: {temp_frame_path}, skipping.")
-                if progress: progress.update(1)
-                continue # Skip this frame if read fails
-        except Exception as read_e:
-            print(f"{NAME}: Error reading frame {temp_frame_path}: {read_e}, skipping.")
-            if progress: progress.update(1)
-            continue
-
-        # Select processing function and execute
-        result_frame = None
-        try:
-            if use_v2:
-                # V2 uses global maps and needs the frame path for lookup in video mode
-                # update_status(f"Using process_frame_v2 for: {os.path.basename(temp_frame_path)}", NAME) # Optional Debug
-                result_frame = process_frame_v2(temp_frame, temp_frame_path)
-            else:
-                # Simple mode uses the pre-loaded source_face (already checked for validity above)
-                # update_status(f"Using process_frame (simple) for: {os.path.basename(temp_frame_path)}", NAME) # Optional Debug
-                result_frame = process_frame(source_face, temp_frame) # source_face is guaranteed to be valid here
-
-            # Check if processing actually returned a frame
-            if result_frame is None:
-                 print(f"{NAME}: Warning: Processing returned None for frame {temp_frame_path}. Using original.")
-                 result_frame = temp_frame
-
-        except Exception as proc_e:
-            print(f"{NAME}: Error processing frame {temp_frame_path}: {proc_e}")
-            # import traceback # Optional for detailed debugging
-            # traceback.print_exc()
-            result_frame = temp_frame # Use original frame on processing error
-
-        # Write the result back to the same frame path
-        try:
-            write_success = cv2.imwrite(temp_frame_path, result_frame, [cv2.IMWRITE_JPEG_QUALITY, 95])
-            if not write_success:
-                print(f"{NAME}: Error: Failed to write processed frame to {temp_frame_path}")
-        except Exception as write_e:
-            print(f"{NAME}: Error writing frame {temp_frame_path}: {write_e}")
-        
-        # Free memory immediately after processing
-        del temp_frame
-        if result_frame is not None:
-            del result_frame
-
-        # Update progress bar
-        if progress:
-            progress.update(1)
-        # else: # Basic console progress (optional)
-        #     if (i + 1) % 10 == 0 or (i + 1) == total_frames: # Update every 10 frames or on last frame
-        #        update_status(f"Processed frame {i+1}/{total_frames}", NAME)
+    for temp_frame_path in temp_frame_paths:
+        _process_single_frame(temp_frame_path, use_v2, source_face, progress)
 
 
 def process_image(source_path: str, target_path: str, output_path: str) -> None:
@@ -943,420 +927,3 @@ def process_video(source_path: str, temp_frame_paths: List[str]) -> None:
         source_path, temp_frame_paths, process_frames # Pass the newly modified process_frames
     )
 
-# ==========================
-# MASKING FUNCTIONS (Mostly unchanged, added safety checks and minor improvements)
-# ==========================
-
-def create_lower_mouth_mask(
-    face: Face, frame: Frame
-) -> (np.ndarray, np.ndarray, tuple, np.ndarray):
-    mask = np.zeros(frame.shape[:2], dtype=np.uint8)
-    mouth_cutout = None
-    lower_lip_polygon = None # Initialize
-    mouth_box = (0,0,0,0) # Initialize
-
-    # Validate face and landmarks
-    if face is None or not hasattr(face, 'landmark_2d_106'):
-        # print("Warning: Invalid face object passed to create_lower_mouth_mask.")
-        return mask, mouth_cutout, mouth_box, lower_lip_polygon
-
-    landmarks = face.landmark_2d_106
-
-    # Check landmark validity
-    if landmarks is None or not isinstance(landmarks, np.ndarray) or landmarks.shape[0] < 106:
-        # print("Warning: Invalid or insufficient landmarks for mouth mask.")
-        return mask, mouth_cutout, mouth_box, lower_lip_polygon
-
-    try: # Wrap main logic in try-except
-        # Use outer mouth landmarks (52-63) to capture the lips only
-        # This avoids including the chin/jawline, preserving the face shape from the swap
-        lower_lip_order = list(range(52, 64))
-
-        # Check if all indices are valid for the loaded landmarks (already partially done by < 106 check)
-        if max(lower_lip_order) >= landmarks.shape[0]:
-            # print(f"Warning: Landmark index {max(lower_lip_order)} out of bounds for shape {landmarks.shape[0]}.")
-            return mask, mouth_cutout, mouth_box, lower_lip_polygon
-
-        lower_lip_landmarks = landmarks[lower_lip_order].astype(np.float32)
-
-        # Filter out potential NaN or Inf values in landmarks
-        if not np.all(np.isfinite(lower_lip_landmarks)):
-            # print("Warning: Non-finite values detected in lower lip landmarks.")
-            return mask, mouth_cutout, mouth_box, lower_lip_polygon
-
-        center = np.mean(lower_lip_landmarks, axis=0)
-        if not np.all(np.isfinite(center)): # Check center calculation
-            # print("Warning: Could not calculate valid center for mouth mask.")
-            return mask, mouth_cutout, mouth_box, lower_lip_polygon
-
-
-        mask_down_size = getattr(modules.globals, "mask_down_size", 0.1) # Default 0.1
-        expansion_factor = 1 + mask_down_size
-        expanded_landmarks = (lower_lip_landmarks - center) * expansion_factor + center
-
-        # Ensure landmarks are finite after adjustments
-        if not np.all(np.isfinite(expanded_landmarks)):
-            # print("Warning: Non-finite values detected after expanding landmarks.")
-            return mask, mouth_cutout, mouth_box, lower_lip_polygon
-
-        expanded_landmarks = expanded_landmarks.astype(np.int32)
-
-        min_x, min_y = np.min(expanded_landmarks, axis=0)
-        max_x, max_y = np.max(expanded_landmarks, axis=0)
-
-        # Add padding *after* initial min/max calculation
-        padding_ratio = 0.1 # Percentage padding
-        padding_x = int((max_x - min_x) * padding_ratio)
-        padding_y = int((max_y - min_y) * padding_ratio) # Use y-range for y-padding
-
-        # Apply padding and clamp to frame boundaries
-        frame_h, frame_w = frame.shape[:2]
-        min_x = max(0, min_x - padding_x)
-        min_y = max(0, min_y - padding_y)
-        max_x = min(frame_w, max_x + padding_x)
-        max_y = min(frame_h, max_y + padding_y)
-
-
-        if max_x > min_x and max_y > min_y:
-            # Create the mask ROI
-            mask_roi_h = max_y - min_y
-            mask_roi_w = max_x - min_x
-            mask_roi = np.zeros((mask_roi_h, mask_roi_w), dtype=np.uint8)
-
-            # Shift polygon coordinates relative to the ROI's top-left corner
-            polygon_relative_to_roi = expanded_landmarks - [min_x, min_y]
-
-            # Draw polygon on the ROI mask
-            cv2.fillPoly(mask_roi, [polygon_relative_to_roi], 255)
-
-            # Apply Gaussian blur (GPU-accelerated when available)
-            blur_k_size = getattr(modules.globals, "mask_blur_kernel", 15) # Default 15
-            blur_k_size = max(1, blur_k_size // 2 * 2 + 1) # Ensure odd
-            mask_roi = gpu_gaussian_blur(mask_roi, (blur_k_size, blur_k_size), 0)
-
-            # Place the mask ROI in the full-sized mask
-            mask[min_y:max_y, min_x:max_x] = mask_roi
-
-            # Extract the masked area from the *original* frame
-            mouth_cutout = frame[min_y:max_y, min_x:max_x].copy()
-
-            lower_lip_polygon = expanded_landmarks # Return polygon in original frame coords
-            mouth_box = (min_x, min_y, max_x, max_y) # Return the calculated box
-        else:
-            # print("Warning: Invalid mouth mask bounding box after padding/clamping.") # Optional debug
-            pass
-
-    except IndexError as idx_e:
-        # print(f"Warning: Landmark index out of bounds during mouth mask creation: {idx_e}") # Optional debug
-        pass
-    except Exception as e:
-        print(f"Error in create_lower_mouth_mask: {e}") # Print unexpected errors
-        # import traceback
-        # traceback.print_exc()
-        pass
-
-    # Return values, ensuring defaults if errors occurred
-    return mask, mouth_cutout, mouth_box, lower_lip_polygon
-
-
-def draw_mouth_mask_visualization(
-    frame: Frame, face: Face, mouth_mask_data: tuple
-) -> Frame:
-
-    # Validate inputs
-    if frame is None or face is None or mouth_mask_data is None or len(mouth_mask_data) != 4:
-        return frame # Return original frame if inputs are invalid
-
-    mask, mouth_cutout, box, lower_lip_polygon = mouth_mask_data
-    (min_x, min_y, max_x, max_y) = box
-
-    # Check if polygon is valid for drawing
-    if lower_lip_polygon is None or not isinstance(lower_lip_polygon, np.ndarray) or len(lower_lip_polygon) < 3:
-        return frame # Cannot draw without a valid polygon
-
-    vis_frame = frame.copy()
-    height, width = vis_frame.shape[:2]
-
-    # Ensure box coordinates are valid integers within frame bounds
-    try:
-        min_x, min_y = max(0, int(min_x)), max(0, int(min_y))
-        max_x, max_y = min(width, int(max_x)), min(height, int(max_y))
-    except ValueError:
-        # print("Warning: Invalid coordinates for mask visualization box.")
-        return frame
-
-    if max_x <= min_x or max_y <= min_y:
-        return frame # Invalid box
-
-    # Draw the lower lip polygon (green outline)
-    try:
-         # Ensure polygon points are within frame boundaries before drawing
-         safe_polygon = lower_lip_polygon.copy()
-         safe_polygon[:, 0] = np.clip(safe_polygon[:, 0], 0, width - 1)
-         safe_polygon[:, 1] = np.clip(safe_polygon[:, 1], 0, height - 1)
-         cv2.polylines(vis_frame, [safe_polygon.astype(np.int32)], isClosed=True, color=(0, 255, 0), thickness=2)
-    except Exception as e:
-        print(f"Error drawing polygon for visualization: {e}") # Optional debug
-        pass
-
-    # Optional: Draw bounding box (red rectangle)
-    # cv2.rectangle(vis_frame, (min_x, min_y), (max_x, max_y), (0, 0, 255), 1)
-
-    # Optional: Add labels
-    label_pos_y = min_y - 10 if min_y > 20 else max_y + 15 # Adjust position based on box location
-    label_pos_x = min_x
-    try:
-        cv2.putText(vis_frame, "Mouth Mask", (label_pos_x, label_pos_y),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1, cv2.LINE_AA)
-    except Exception as e:
-        # print(f"Error drawing text for visualization: {e}") # Optional debug
-        pass
-
-
-    return vis_frame
-
-
-def apply_mouth_area(
-    frame: np.ndarray,
-    mouth_cutout: np.ndarray,
-    mouth_box: tuple,
-    face_mask: np.ndarray, # Full face mask (for blending edges)
-    mouth_polygon: np.ndarray, # Specific polygon for the mouth area itself
-) -> np.ndarray:
-
-    # Basic validation
-    if (frame is None or mouth_cutout is None or mouth_box is None or
-        face_mask is None or mouth_polygon is None):
-        # print("Warning: Invalid input (None value) to apply_mouth_area") # Optional debug
-        return frame
-    if (mouth_cutout.size == 0 or face_mask.size == 0 or len(mouth_polygon) < 3):
-        # print("Warning: Invalid input (empty array/polygon) to apply_mouth_area") # Optional debug
-        return frame
-
-    try: # Wrap main logic in try-except
-        min_x, min_y, max_x, max_y = map(int, mouth_box) # Ensure integer coords
-        box_width = max_x - min_x
-        box_height = max_y - min_y
-
-        # Check box validity
-        if box_width <= 0 or box_height <= 0:
-            # print("Warning: Invalid mouth box dimensions in apply_mouth_area.")
-            return frame
-
-        # Define the Region of Interest (ROI) on the target frame (swapped frame)
-        frame_h, frame_w = frame.shape[:2]
-        # Clamp coordinates strictly within frame boundaries
-        min_y, max_y = max(0, min_y), min(frame_h, max_y)
-        min_x, max_x = max(0, min_x), min(frame_w, max_x)
-
-        # Recalculate box dimensions based on clamped coords
-        box_width = max_x - min_x
-        box_height = max_y - min_y
-        if box_width <= 0 or box_height <= 0:
-            # print("Warning: ROI became invalid after clamping in apply_mouth_area.")
-            return frame # ROI is invalid
-
-        roi = frame[min_y:max_y, min_x:max_x]
-
-        # Ensure ROI extraction was successful
-        if roi.size == 0:
-            # print("Warning: Extracted ROI is empty in apply_mouth_area.")
-            return frame
-
-        # Resize mouth cutout from original frame to fit the ROI size
-        resized_mouth_cutout = None
-        if roi.shape[:2] != mouth_cutout.shape[:2]:
-             # Check if mouth_cutout has valid dimensions before resizing
-             if mouth_cutout.shape[0] > 0 and mouth_cutout.shape[1] > 0:
-                  resized_mouth_cutout = gpu_resize(mouth_cutout, (box_width, box_height), interpolation=cv2.INTER_LINEAR)
-             else:
-                 # print("Warning: mouth_cutout has invalid dimensions, cannot resize.")
-                 return frame # Cannot proceed without valid cutout
-        else:
-             resized_mouth_cutout = mouth_cutout
-
-        # If resize failed or original was invalid
-        if resized_mouth_cutout is None or resized_mouth_cutout.size == 0:
-            # print("Warning: Mouth cutout is invalid after resize attempt.")
-            return frame
-
-        # --- Color Correction Step ---
-        # Apply color transfer from ROI (swapped face region) to the original mouth cutout
-        # This helps match lighting/color before blending
-        color_corrected_mouth = resized_mouth_cutout # Default to resized if correction fails
-        try:
-           # Ensure both images are 3 channels for color transfer
-           if len(resized_mouth_cutout.shape) == 3 and resized_mouth_cutout.shape[2] == 3 and \
-              len(roi.shape) == 3 and roi.shape[2] == 3:
-                 color_corrected_mouth = apply_color_transfer(resized_mouth_cutout, roi)
-           else:
-               # print("Warning: Cannot apply color transfer, images not BGR.")
-               pass
-        except cv2.error as ct_e: # Handle potential errors in color transfer
-           # print(f"Warning: Color transfer failed: {ct_e}. Using uncorrected mouth cutout.") # Optional debug
-           pass
-        except Exception as ct_gen_e:
-           # print(f"Warning: Unexpected error during color transfer: {ct_gen_e}")
-           pass
-        # --- End Color Correction ---
-
-
-        # --- Mask Creation ---
-        # Create a mask based *specifically* on the mouth_polygon, relative to the ROI
-        polygon_mask_roi = np.zeros(roi.shape[:2], dtype=np.uint8)
-        # Adjust polygon coordinates relative to the ROI's top-left corner
-        adjusted_polygon = mouth_polygon - [min_x, min_y]
-        # Draw the filled polygon on the ROI mask
-        cv2.fillPoly(polygon_mask_roi, [adjusted_polygon.astype(np.int32)], 255)
-
-        # Feather the polygon mask (Gaussian blur)
-        mask_feather_ratio = getattr(modules.globals, "mask_feather_ratio", 12) # Default 12
-        # Calculate feather amount based on the smaller dimension of the box
-        feather_base_dim = min(box_width, box_height)
-        feather_amount = max(1, min(30, feather_base_dim // max(1, mask_feather_ratio))) # Avoid div by zero
-        # Ensure kernel size is odd and positive
-        kernel_size = 2 * feather_amount + 1
-        feathered_polygon_mask = cv2.GaussianBlur(polygon_mask_roi.astype(np.float32), (kernel_size, kernel_size), 0)
-
-        # Normalize feathered mask to [0.0, 1.0] range
-        max_val = feathered_polygon_mask.max()
-        if max_val > 1e-6: # Avoid division by zero
-           feathered_polygon_mask = feathered_polygon_mask / max_val
-        else:
-           feathered_polygon_mask.fill(0.0) # Mask is all black if max is near zero
-        # --- End Mask Creation ---
-
-
-        # --- Refined Blending ---
-        # Get the corresponding ROI from the *full face mask* (already blurred)
-        # Ensure face_mask is float and normalized [0.0, 1.0]
-        if face_mask.dtype != np.float64 and face_mask.dtype != np.float32:
-            face_mask_float = face_mask.astype(np.float32) / 255.0
-        else: # Assume already float [0,1] if type is float
-            face_mask_float = face_mask.astype(np.float32) if face_mask.dtype == np.float64 else face_mask
-        face_mask_roi = face_mask_float[min_y:max_y, min_x:max_x]
-
-        # Combine the feathered mouth polygon mask with the face mask ROI
-        # Use minimum to ensure we only affect area inside both masks (mouth area within face)
-        # This helps blend the edges smoothly with the surrounding swapped face region
-        combined_mask = np.minimum(feathered_polygon_mask, face_mask_roi)
-
-        # Expand mask to 3 channels for blending (ensure it matches image channels)
-        if len(frame.shape) == 3 and frame.shape[2] == 3:
-            combined_mask_3channel = combined_mask[:, :, np.newaxis]
-
-            # Ensure data types are compatible for blending
-            # float32 provides sufficient precision for 8-bit image blending
-            combined_mask_f32 = combined_mask_3channel.astype(np.float32)
-            inv_mask = np.float32(1.0) - combined_mask_f32
-
-            # Blend: (original_mouth * combined_mask) + (swapped_face_roi * (1 - combined_mask))
-            blended_roi = (color_corrected_mouth * combined_mask_f32 +
-                           roi * inv_mask)
-
-            # Place the blended ROI back into the frame
-            frame[min_y:max_y, min_x:max_x] = blended_roi.astype(np.uint8)
-        else:
-            # print("Warning: Cannot apply mouth mask blending, frame is not 3-channel BGR.")
-            pass # Don't modify frame if it's not BGR
-
-    except Exception as e:
-        print(f"Error applying mouth area: {e}") # Optional debug
-        # import traceback
-        # traceback.print_exc()
-        pass # Don't crash, just return the frame as is
-
-    return frame
-
-
-def create_face_mask(face: Face, frame: Frame) -> np.ndarray:
-    """Creates a feathered mask covering the whole face area based on landmarks."""
-    mask = np.zeros(frame.shape[:2], dtype=np.uint8) # Start with uint8
-
-    # Validate inputs
-    if face is None or not hasattr(face, 'landmark_2d_106') or frame is None:
-        # print("Warning: Invalid face or frame for create_face_mask.")
-        return mask # Return empty mask
-
-    landmarks = face.landmark_2d_106
-    if landmarks is None or not isinstance(landmarks, np.ndarray) or landmarks.shape[0] < 106:
-        # print("Warning: Invalid or insufficient landmarks for face mask.")
-        return mask # Return empty mask
-
-    try: # Wrap main logic in try-except
-        # Filter out non-finite landmark values
-        if not np.all(np.isfinite(landmarks)):
-            # print("Warning: Non-finite values detected in landmarks for face mask.")
-            return mask
-
-        landmarks_int = landmarks.astype(np.int32)
-
-        # Use standard face outline landmarks (0-32)
-        # Use standard face outline (0-32)
-        face_outline = landmarks_int[0:33]
-
-        # Estimate forehead points to ensure mask covers the whole face (including forehead)
-        # This is critical for Poisson blending to work correctly on the forehead
-        eyebrows = landmarks_int[33:43]
-        if eyebrows.shape[0] > 0:
-            chin = landmarks_int[16]
-            eyebrow_center = np.mean(eyebrows, axis=0)
-            
-            # Vector from chin to eyebrows (upwards)
-            up_vector = eyebrow_center - chin
-            norm = np.linalg.norm(up_vector)
-            if norm > 0:
-                up_vector /= norm
-                
-                # Extend upwards by 1.0 of the chin-to-eyebrow distance (aggressive coverage)
-                # This ensures the mask covers the entire forehead for proper blending
-                forehead_offset = up_vector * (norm * 1.0)
-                
-                # Shift eyebrows up to create forehead points
-                forehead_points = eyebrows + forehead_offset
-                
-                # Expand the top points slightly outwards to cover forehead corners
-                # Calculate the center of the new top points
-                top_center = np.mean(forehead_points, axis=0)
-                
-                # Expand outwards by 20%
-                forehead_points = (forehead_points - top_center) * 1.2 + top_center
-                
-                # Combine outline and forehead points
-                face_outline = np.concatenate((face_outline, forehead_points.astype(np.int32)), axis=0)
-
-        # Calculate convex hull of these points
-        # Use try-except as convexHull can fail on degenerate input
-        try:
-             hull = cv2.convexHull(face_outline.astype(np.float32)) # Use float for accuracy
-             if hull is None or len(hull) < 3:
-                 # print("Warning: Convex hull calculation failed or returned too few points.")
-                 # Fallback: use bounding box of landmarks? Or just return empty mask?
-                 return mask
-
-             # Draw the filled convex hull on the mask
-             cv2.fillConvexPoly(mask, hull.astype(np.int32), 255)
-        except Exception as hull_e:
-             print(f"Error creating convex hull for face mask: {hull_e}")
-             return mask # Return empty mask on error
-
-
-        # Apply Gaussian blur to feather the mask edges (GPU-accelerated when available)
-        blur_k_size = getattr(modules.globals, "face_mask_blur", 31) # Default 31
-        blur_k_size = max(1, blur_k_size // 2 * 2 + 1) # Ensure odd and positive
-        mask = gpu_gaussian_blur(mask, (blur_k_size, blur_k_size), 0)
-
-        # --- Optional: Return float mask for apply_mouth_area ---
-        # mask = mask.astype(float) / 255.0
-        # ---
-
-    except IndexError:
-        # print("Warning: Landmark index out of bounds for face mask.") # Optional debug
-        pass
-    except Exception as e:
-        print(f"Error creating face mask: {e}") # Print unexpected errors
-        # import traceback
-        # traceback.print_exc()
-        pass
-
-    return mask # Return uint8 mask
