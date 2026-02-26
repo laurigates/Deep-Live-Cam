@@ -11,7 +11,7 @@ WORKFLOW_DIR = os.path.join(ROOT_DIR, "workflow")
 FACE_CONFIDENCE_THRESHOLD: float = 0.5    # Minimum confidence score to accept a detected face
 DETECTION_INTERVAL: float = 0.033          # Face detection cache TTL in seconds (~30 FPS)
 DETECTION_CACHE_SIZE: int = 128            # Max entries in face detection LRU cache
-FPS_CAP: float = 30.0                      # Maximum preview frame rate for live mode
+live_max_fps: int = 30                     # Maximum preview frame rate for live mode (UI-adjustable)
 MOUTH_FEATHER_RADIUS: int = 10             # Pixel radius for mouth mask edge feathering
 
 file_types = [

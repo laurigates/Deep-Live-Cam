@@ -182,6 +182,7 @@ def save_switch_states():
         "rife_multiplier": modules.globals.rife_multiplier,
         "half_rate_processing": modules.globals.half_rate_processing,
         "keyframe_interval": modules.globals.keyframe_interval,
+        "live_max_fps": modules.globals.live_max_fps,
         "source_path": modules.globals.source_path,
         "target_path": modules.globals.target_path,
     }
@@ -215,6 +216,7 @@ def load_switch_states():
         modules.globals.rife_multiplier = switch_states.get("rife_multiplier", 2)
         modules.globals.half_rate_processing = switch_states.get("half_rate_processing", False)
         modules.globals.keyframe_interval = switch_states.get("keyframe_interval", 2)
+        modules.globals.live_max_fps = switch_states.get("live_max_fps", 30)
         # Restore last-used paths; validate existence before accepting.
         saved_source = switch_states.get("source_path")
         if saved_source and os.path.isfile(saved_source):
@@ -583,6 +585,30 @@ def _add_half_rate_controls_to_tab(tab: ctk.CTkFrame, num_switches: int) -> None
     )
     ToolTip(interval_optionmenu, _("Process a full detection every N frames (higher = faster, lower = more accurate)"))
 
+    # FPS cap
+    fps_label = ctk.CTkLabel(tab, text=_("Max Preview FPS:"))
+    fps_label.grid(row=start_row + 1, column=0, sticky="w", padx=15, pady=(8, 2))
+
+    fps_values = ["15", "24", "30", "60"]
+    current_fps = str(getattr(modules.globals, "live_max_fps", 30))
+    if current_fps not in fps_values:
+        current_fps = "30"
+    fps_variable = ctk.StringVar(value=current_fps)
+
+    def on_fps_change(choice):
+        modules.globals.live_max_fps = int(choice)
+        save_switch_states()
+        update_status(f"Preview FPS cap set to {choice}")
+
+    fps_optionmenu = ctk.CTkOptionMenu(
+        tab, variable=fps_variable, values=fps_values,
+        command=on_fps_change,
+    )
+    fps_optionmenu.grid(
+        row=start_row + 1, column=1, sticky="ew", padx=(0, 15), pady=(8, 2),
+    )
+    ToolTip(fps_optionmenu, _("Cap the preview frame rate — lower values reduce CPU/GPU heat (30 FPS recommended)"))
+
 
 def _add_camera_to_tab(
     tab: ctk.CTkFrame, root: ctk.CTk, num_switches: int, live_button: ctk.CTkButton,
@@ -762,7 +788,10 @@ def create_preview(parent: ctk.CTkToplevel) -> ctk.CTkToplevel:
 
 
 def update_status(text: str) -> None:
-    # May be called from background threads (e.g. face swapper model loading).
+    # May be called from background threads (e.g. face swapper model loading)
+    # before ROOT is initialized. Guard against None to avoid AttributeError.
+    if ROOT is None:
+        return
     # Tkinter is not thread-safe: schedule the label update on the main thread.
     ROOT.after(0, lambda t=text: status_label.configure(text=_(t)))
 
@@ -775,6 +804,8 @@ def download_progress_callback(filename: str, downloaded: int, total: int) -> No
         return
     _last_progress_update = now
 
+    if ROOT is None:
+        return
     if total > 0 and downloaded < total:
         progress_value = downloaded / total
         ROOT.after(0, lambda f=filename, v=progress_value: _show_download_progress(f, v))
