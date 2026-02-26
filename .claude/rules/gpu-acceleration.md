@@ -52,9 +52,10 @@ further indication that GPU inference is not running.
 
 - Always validate options against the installed `onnxruntime-silicon` version before adding them
 - `RequireStaticShapes` is **not** a valid option in onnxruntime-silicon ≤1.24.2 — remove it
-- Valid options in 1.24.x: `ModelFormat`, `MLComputeUnits`, `SpecializationStrategy`,
-  `AllowLowPrecisionAccumulationOnGPU`, `EnableOnSubgraphs`, `MaximumCacheSize`,
-  `ModelCacheDirectory`
+- `MaximumCacheSize` is **not** a valid option in onnxruntime-silicon 1.24.2 — remove it
+  (causes silent fallback to CPU)
+- Valid options in 1.24.2: `ModelFormat`, `MLComputeUnits`, `SpecializationStrategy`,
+  `AllowLowPrecisionAccumulationOnGPU`, `EnableOnSubgraphs`, `ModelCacheDirectory`
 - After adding a new CoreML option, verify in startup logs that `CoreMLExecutionProvider`
   appears in "Applied providers" (not just `CPUExecutionProvider`)
 
