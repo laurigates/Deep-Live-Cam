@@ -578,8 +578,8 @@ def create_webcam_preview(camera_index: int):
             draw.text((11, 11), overlay, fill=(0, 0, 0))
             draw.text((10, 10), overlay, fill=(0, 255, 0))
 
-        image = ctk.CTkImage(image, size=image.size)
-        preview_label.configure(image=image)
+        preview_label._ctk_img = ctk.CTkImage(image, size=image.size)
+        preview_label.configure(image=preview_label._ctk_img)
 
         ROOT.after(max(1, 1000 // modules.globals.live_max_fps), _display_next_frame)
 
