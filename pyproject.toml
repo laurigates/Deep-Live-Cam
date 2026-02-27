@@ -66,5 +66,13 @@ rife = ["rife-ncnn-vulkan-python-tntwise>=1.4.0"]
 [dependency-groups]
 dev = [
     "pytest>=9.0.2",
+    "pytest-benchmark>=5.1.0",
     "onnxconverter-common>=1.14.0",
 ]
+
+[tool.pytest.ini_options]
+markers = [
+    "benchmark: performance benchmarks requiring real models and GPU (deselect with '-m \"not benchmark\"')",
+    "integration: integration tests requiring real models (deselect with '-m \"not integration\"')",
+]
+addopts = "-m 'not benchmark and not integration'"
