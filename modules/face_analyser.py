@@ -37,6 +37,10 @@ class FaceAnalyser:
     owns its own ``FaceAnalysis`` object and lock, so multiple instances with
     different providers or detection sizes can coexist in the same process.
 
+    Class attributes ``LIVE_DET_SIZE`` and ``DEFAULT_DET_SIZE`` are the canonical
+    sources for detection sizes — callers should reference these rather than
+    importing the private module-level ``_LIVE_DET_SIZE``/``_DEFAULT_DET_SIZE``.
+
     Usage::
 
         from modules.face_analyser import FaceAnalyser, FaceAnalyserConfig
@@ -45,6 +49,10 @@ class FaceAnalyser:
         analyser = FaceAnalyser(cfg)
         face = analyser.get_one_face(frame)
     """
+
+    # Public class-level constants (use these instead of importing private _* names)
+    DEFAULT_DET_SIZE: tuple[int, int] = (320, 320)
+    LIVE_DET_SIZE: tuple[int, int] = (160, 160) if IS_APPLE_SILICON else (320, 320)
 
     def __init__(self, config: FaceAnalyserConfig) -> None:
         self._config = config
@@ -222,6 +230,27 @@ def detect_faces(frame: Frame, config: Optional[ProcessingConfig] = None) -> lis
     else:
         face = get_one_face(frame)
         return [face] if face is not None else []
+
+
+def detect_faces_for_webcam(frame: Frame, many_faces: bool) -> dict:
+    """Detect faces in a webcam frame and return a structured result dict.
+
+    Encapsulates the many_faces branching that previously lived in the UI
+    rendering thread (``ui_webcam.py``).  Callers receive a dict with:
+
+    * ``target_face`` — the single best face (when ``many_faces=False``), or ``None``
+    * ``many_faces`` — list of all faces (when ``many_faces=True``), or ``None``
+
+    This is the canonical detection function for the webcam pipeline.
+    ``ui_webcam.py`` should call this instead of calling ``get_one_face`` /
+    ``get_many_faces`` directly.
+    """
+    if many_faces:
+        faces = get_many_faces(frame)
+        return {'target_face': None, 'many_faces': faces if faces else []}
+    else:
+        face = get_one_face(frame)
+        return {'target_face': face, 'many_faces': None}
 
 
 def has_valid_map() -> bool:

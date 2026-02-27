@@ -8,7 +8,10 @@ import customtkinter as ctk
 import modules.globals
 from modules import virtual_cam
 from modules.gpu_processing import gpu_cvt_color, gpu_flip
-from modules.face_analyser import get_one_face, get_many_faces, set_det_size, _LIVE_DET_SIZE, _DEFAULT_DET_SIZE, faces_are_similar
+from modules.face_analyser import (
+    get_one_face, get_many_faces, set_det_size,
+    detect_faces_for_webcam, faces_are_similar, FaceAnalyser,
+)
 from modules.processors.frame.core import get_frame_processors_modules
 from modules.rife_interpolation import has_native_binding, interpolate_frame_pair
 from modules.single_slot_worker import single_slot_worker_loop
@@ -81,16 +84,10 @@ def _detection_thread_func(latest_frame_holder, detection_result, detection_lock
             time.sleep(0.005)
             continue
 
-        if modules.globals.many_faces:
-            many = get_many_faces(frame)
-            with detection_lock:
-                detection_result['target_face'] = None
-                detection_result['many_faces'] = many
-        else:
-            face = get_one_face(frame)
-            with detection_lock:
-                detection_result['target_face'] = face
-                detection_result['many_faces'] = None
+        result = detect_faces_for_webcam(frame, many_faces=modules.globals.many_faces)
+        with detection_lock:
+            detection_result['target_face'] = result['target_face']
+            detection_result['many_faces'] = result['many_faces']
 
 
 def _swap_process_fn(inp):
@@ -420,11 +417,11 @@ def create_webcam_preview(camera_index: int):
     )
     from modules.core import destroy
 
-    set_det_size(_LIVE_DET_SIZE)
+    set_det_size(FaceAnalyser.LIVE_DET_SIZE)
 
     cap = VideoCapturer(camera_index)
     if not cap.start(PREVIEW_DEFAULT_WIDTH, PREVIEW_DEFAULT_HEIGHT, 60):
-        set_det_size(_DEFAULT_DET_SIZE)
+        set_det_size(FaceAnalyser.DEFAULT_DET_SIZE)
         update_status("Failed to start camera")
         return
 
@@ -531,7 +528,7 @@ def create_webcam_preview(camera_index: int):
             proc_thread.join(timeout=2.0)
             cap.release()
             virtual_cam.stop()
-            set_det_size(_DEFAULT_DET_SIZE)
+            set_det_size(FaceAnalyser.DEFAULT_DET_SIZE)
 
         threading.Thread(target=_background_cleanup, daemon=True).start()
 
