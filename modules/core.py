@@ -16,7 +16,7 @@ import onnxruntime
 
 import modules.globals
 import modules.metadata
-import modules.ui as ui
+from modules.status_bus import BUS as _STATUS_BUS
 from modules.processors.frame.core import get_frame_processors_modules
 from modules.utilities import has_image_extension, is_image, is_video, detect_fps, create_video, extract_frames, get_temp_frame_paths, restore_audio, create_temp, move_temp, clean_temp, normalize_output_path, set_download_progress_callback
 from modules.blas_check import check_apple_silicon_blas
@@ -220,8 +220,7 @@ def pre_check() -> bool:
 
 def update_status(message: str, scope: str = 'DLC.CORE') -> None:
     print(f'[{scope}] {message}')
-    if not modules.globals.headless:
-        ui.update_status(message)
+    _STATUS_BUS.publish(message, scope)
 
 def start() -> None:
     """Start processing with performance monitoring."""
@@ -236,8 +235,10 @@ def start() -> None:
     
     # process image to image
     if has_image_extension(modules.globals.target_path):
-        if modules.globals.nsfw_filter and ui.check_and_ignore_nsfw(modules.globals.target_path, destroy):
-            return
+        if modules.globals.nsfw_filter:
+            import modules.ui as ui
+            if ui.check_and_ignore_nsfw(modules.globals.target_path, destroy):
+                return
         try:
             shutil.copy2(modules.globals.target_path, modules.globals.output_path)
         except Exception as e:
@@ -254,8 +255,10 @@ def start() -> None:
         return
     
     # process image to videos
-    if modules.globals.nsfw_filter and ui.check_and_ignore_nsfw(modules.globals.target_path, destroy):
-        return
+    if modules.globals.nsfw_filter:
+        import modules.ui as ui
+        if ui.check_and_ignore_nsfw(modules.globals.target_path, destroy):
+            return
 
     extraction_start = time.time()
     if not modules.globals.map_faces:
@@ -376,6 +379,8 @@ def run() -> None:
         # then download any missing models in the background.  Each processor's
         # process_frame/swap_face already returns the original frame when its
         # model is not yet loaded, so the live feed stays smooth during download.
+        import modules.ui as ui
+        _STATUS_BUS.subscribe(lambda msg, _: ui.update_status(msg))
         set_download_progress_callback(ui.download_progress_callback)
         threading.Thread(target=_run_processor_pre_checks, daemon=True, name="model-downloader").start()
         window = ui.init(start, destroy, modules.globals.lang)
