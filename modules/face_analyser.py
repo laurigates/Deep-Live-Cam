@@ -1,5 +1,6 @@
 import os
 import shutil
+from dataclasses import dataclass, field
 from typing import Any, Optional
 import insightface
 from insightface.app import FaceAnalysis as _FaceAnalysis
@@ -16,6 +17,99 @@ from pathlib import Path
 from modules.platform_info import IS_APPLE_SILICON
 from modules.processing_config import ProcessingConfig
 from modules.face_map_store import STORE as _MAP_STORE
+
+
+# ---------------------------------------------------------------------------
+# Class-based injectable API (Issue #58)
+# ---------------------------------------------------------------------------
+
+@dataclass
+class FaceAnalyserConfig:
+    """Configuration for a FaceAnalyser instance."""
+    providers: list[str]
+    det_size: tuple[int, int] = (320, 320)
+
+
+class FaceAnalyser:
+    """Injectable face analyser service.
+
+    Unlike the module-level singleton functions, each ``FaceAnalyser`` instance
+    owns its own ``FaceAnalysis`` object and lock, so multiple instances with
+    different providers or detection sizes can coexist in the same process.
+
+    Usage::
+
+        from modules.face_analyser import FaceAnalyser, FaceAnalyserConfig
+
+        cfg = FaceAnalyserConfig(providers=['CPUExecutionProvider'])
+        analyser = FaceAnalyser(cfg)
+        face = analyser.get_one_face(frame)
+    """
+
+    def __init__(self, config: FaceAnalyserConfig) -> None:
+        self._config = config
+        self._det_size = config.det_size
+        self._lock = threading.Lock()
+        self._inner = self._build(config.providers, config.det_size)
+
+    # ------------------------------------------------------------------
+    # Private helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _filter_providers(providers: list[str]) -> list[str]:
+        """Remove CoreML from InsightFace sessions (dynamic-shape incompatibility)."""
+        filtered = [p for p in providers if p != 'CoreMLExecutionProvider']
+        return filtered or ['CPUExecutionProvider']
+
+    def _build(self, providers: list[str], det_size: tuple[int, int]) -> Any:
+        safe_providers = self._filter_providers(providers)
+        inner = _FaceAnalysis(
+            name='buffalo_l',
+            providers=safe_providers,
+            allowed_modules=['detection', 'recognition'],
+        )
+        inner.prepare(ctx_id=0, det_size=det_size)
+        return inner
+
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
+
+    def get_one_face(self, frame: Frame) -> Any:
+        """Return the leftmost detected face, or ``None`` if none found."""
+        faces = self._inner.get(frame)
+        try:
+            return min(faces, key=lambda x: x.bbox[0])
+        except ValueError:
+            return None
+
+    def get_many_faces(self, frame: Frame) -> list:
+        """Return all detected faces (empty list if none found)."""
+        try:
+            return list(self._inner.get(frame))
+        except (IndexError, Exception):
+            return []
+
+    def set_det_size(self, det_size: tuple[int, int]) -> None:
+        """Change the detection input resolution.
+
+        Rebuilds the underlying ``FaceAnalysis`` instance because InsightFace
+        silently ignores subsequent ``prepare()`` calls on the same object.
+        Thread-safe via an instance-level lock.
+        """
+        if det_size == self._det_size:
+            return
+        with self._lock:
+            if det_size == self._det_size:
+                return  # re-check after acquiring lock
+            self._det_size = det_size
+            self._inner = self._build(self._config.providers, det_size)
+
+
+# ---------------------------------------------------------------------------
+# Module-level singleton (legacy API — kept for backward compatibility)
+# ---------------------------------------------------------------------------
 
 FACE_ANALYSER = None
 FACE_ANALYSER_LOCK = threading.Lock()
