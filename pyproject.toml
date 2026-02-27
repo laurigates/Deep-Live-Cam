@@ -30,6 +30,8 @@ dependencies = [
     "coremltools>=9.0 ; sys_platform == 'darwin'",
     "onnx2torch>=1.5.15 ; sys_platform == 'darwin'",
     "mlx>=0.20.0 ; sys_platform == 'darwin' and platform_machine == 'arm64'",
+    "pyvirtualcam>=0.14.0",
+    "rife-ncnn-vulkan-python-tntwise>=1.4.0",
 ]
 
 [build-system]
@@ -58,10 +60,6 @@ torch = [
 torchvision = [
     { index = "pytorch-cu128", marker = "sys_platform != 'darwin'" },
 ]
-
-[project.optional-dependencies]
-virtualcam = ["pyvirtualcam>=0.14.0"]
-rife = ["rife-ncnn-vulkan-python-tntwise>=1.4.0"]
 
 [dependency-groups]
 dev = [

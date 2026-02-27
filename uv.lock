@@ -338,6 +338,8 @@ dependencies = [
     { name = "protobuf" },
     { name = "psutil" },
     { name = "pygrabber", marker = "sys_platform == 'win32'" },
+    { name = "pyvirtualcam" },
+    { name = "rife-ncnn-vulkan-python-tntwise" },
     { name = "tensorflow", marker = "sys_platform != 'darwin'" },
     { name = "tk" },
     { name = "torch", version = "2.8.0+cu128", source = { registry = "https://download.pytorch.org/whl/cu128" }, marker = "sys_platform != 'darwin'" },
@@ -345,14 +347,6 @@ dependencies = [
     { name = "torchvision", version = "0.23.0+cu128", source = { registry = "https://download.pytorch.org/whl/cu128" }, marker = "sys_platform != 'darwin'" },
     { name = "torchvision", version = "0.25.0", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform == 'darwin'" },
     { name = "typing-extensions" },
-]
-
-[package.optional-dependencies]
-rife = [
-    { name = "rife-ncnn-vulkan-python-tntwise" },
-]
-virtualcam = [
-    { name = "pyvirtualcam" },
 ]
 
 [package.dev-dependencies]
@@ -381,8 +375,8 @@ requires-dist = [
     { name = "protobuf", specifier = ">=4.25.1" },
     { name = "psutil", specifier = "==5.9.8" },
     { name = "pygrabber", marker = "sys_platform == 'win32'" },
-    { name = "pyvirtualcam", marker = "extra == 'virtualcam'", specifier = ">=0.14.0" },
-    { name = "rife-ncnn-vulkan-python-tntwise", marker = "extra == 'rife'", specifier = ">=1.4.0" },
+    { name = "pyvirtualcam", specifier = ">=0.14.0" },
+    { name = "rife-ncnn-vulkan-python-tntwise", specifier = ">=1.4.0" },
     { name = "tensorflow", marker = "sys_platform != 'darwin'", specifier = ">=2.20.0" },
     { name = "tk", specifier = "==0.1.0" },
     { name = "torch", marker = "sys_platform != 'darwin'", specifier = "==2.8.0+cu128", index = "https://download.pytorch.org/whl/cu128" },
@@ -391,7 +385,6 @@ requires-dist = [
     { name = "torchvision", marker = "sys_platform == 'darwin'" },
     { name = "typing-extensions", specifier = ">=4.8.0" },
 ]
-provides-extras = ["virtualcam", "rife"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -1460,8 +1453,8 @@ name = "pygrabber"
 version = "0.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "comtypes", marker = "sys_platform != 'darwin'" },
-    { name = "numpy", marker = "sys_platform != 'darwin'" },
+    { name = "comtypes", marker = "(platform_machine != 'aarch64' and sys_platform == 'linux') or (sys_platform != 'darwin' and sys_platform != 'linux')" },
+    { name = "numpy", marker = "(platform_machine != 'aarch64' and sys_platform == 'linux') or (sys_platform != 'darwin' and sys_platform != 'linux')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/d4/24/e7e5efa1d915853f3f34cedf751cbee9d88bee47a41122d495ee95452dad/pygrabber-0.2.tar.gz", hash = "sha256:e584b119d4c9b9a8f339eb34d1fe7fdd16214a2bf5a1876171145caebdb9e413", size = 18487, upload-time = "2023-10-20T07:17:14.97Z" }
 wheels = [

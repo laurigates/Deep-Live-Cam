@@ -95,43 +95,6 @@ start-virtualcam:
     uv run run.py --execution-provider {{ default_provider }} --virtual-cam
 
 ##########
-# Setup (Optional Dependencies)
-##########
-
-# Install RIFE frame interpolation optional dependency
-[group: "setup"]
-setup-rife:
-    uv sync --extra rife
-    @echo "RIFE interpolation installed. Use --rife flag or toggle in UI."
-
-# Install pyvirtualcam optional dependency and show platform setup instructions
-[group: "setup"]
-setup-virtualcam:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    uv sync --extra virtualcam
-    echo ""
-    echo "pyvirtualcam installed successfully."
-    echo ""
-    case "$(uname -s)" in
-        Darwin)
-            echo "macOS setup:"
-            echo "  1. Install OBS Studio 30+"
-            echo "  2. Open OBS → Tools → Start Virtual Camera → Stop → Close OBS"
-            echo "  3. The 'OBS Virtual Camera' device is now available system-wide"
-            ;;
-        Linux)
-            echo "Linux setup:"
-            echo "  sudo apt install v4l2loopback-dkms"
-            echo "  sudo modprobe v4l2loopback devices=1"
-            ;;
-        *)
-            echo "Windows setup:"
-            echo "  Install OBS Studio 26+ (provides the virtual camera backend)"
-            ;;
-    esac
-
-##########
 # Debug
 ##########
 
