@@ -96,7 +96,12 @@ def pre_start() -> bool:
     return True
 
 
-def get_face_swapper() -> Any:
+def get_face_swapper(providers: list | None = None) -> Any:
+    """Return the face swapper singleton, initialising it if needed.
+
+    *providers* overrides ``modules.globals.execution_providers`` when given,
+    enabling tests and callers to inject providers without touching globals.
+    """
     global FACE_SWAPPER
 
     if FACE_SWAPPER is None:
@@ -106,7 +111,8 @@ def get_face_swapper() -> Any:
                 model_path = os.path.join(models_dir, model_name)
                 update_status(f"Loading face swapper model from: {model_path}", NAME)
                 try:
-                    providers_config = build_providers_config(modules.globals.execution_providers)
+                    _providers = providers if providers is not None else modules.globals.execution_providers
+                    providers_config = build_providers_config(_providers)
 
                     FACE_SWAPPER = insightface.model_zoo.get_model(
                         model_path,

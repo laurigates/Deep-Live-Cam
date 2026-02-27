@@ -98,10 +98,11 @@ def pre_start() -> bool:
     return True
 
 
-def get_face_enhancer() -> onnxruntime.InferenceSession:
-    """
-    Initializes and returns the GFPGAN ONNX Runtime inference session,
-    using the execution providers configured in modules.globals.
+def get_face_enhancer(providers: list | None = None) -> onnxruntime.InferenceSession:
+    """Return the GFPGAN ONNX inference session, initialising it if needed.
+
+    *providers* overrides ``modules.globals.execution_providers`` when given,
+    enabling tests and callers to inject providers without touching globals.
     """
     global FACE_ENHANCER
 
@@ -122,7 +123,7 @@ def get_face_enhancer() -> onnxruntime.InferenceSession:
                 )
 
             try:
-                providers = modules.globals.execution_providers
+                providers = providers if providers is not None else modules.globals.execution_providers
 
                 session_options = onnxruntime.SessionOptions()
                 session_options.graph_optimization_level = (
