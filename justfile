@@ -203,6 +203,31 @@ test-cov *args:
 test-blas:
     uv run pytest tests/test_numpy_blas.py -v
 
+# Run performance benchmarks (requires real models in models/)
+[group: "test"]
+bench *args:
+    uv run pytest tests/benchmarks/ -m benchmark -v --tb=short -s {{ args }}
+
+# Run integration tests (requires real models in models/)
+[group: "test"]
+test-integration *args:
+    uv run pytest tests/ -m integration -v --tb=short {{ args }}
+
+# Save benchmark results as baseline for regression detection
+[group: "test"]
+bench-save name="default":
+    uv run python scripts/benchmark_baseline.py save --name {{ name }}
+
+# Compare benchmarks against saved baseline
+[group: "test"]
+bench-compare name="default":
+    uv run python scripts/benchmark_baseline.py compare --name {{ name }}
+
+# List saved benchmark baselines
+[group: "test"]
+bench-list:
+    uv run python scripts/benchmark_baseline.py list
+
 ##########
 # Maintenance
 ##########

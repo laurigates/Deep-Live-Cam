@@ -27,5 +27,9 @@ faceswap/
 switch_states.json
 /models
 
+# Benchmark results and baselines (machine-specific)
+benchmarks/baselines/
+benchmarks/results/
+
 # Blueprint work orders (task-specific, may contain sensitive details)
 docs/blueprint/work-orders/
