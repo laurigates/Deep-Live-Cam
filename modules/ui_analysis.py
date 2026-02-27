@@ -20,8 +20,8 @@ def analyze_target(start, root):
         return
 
     if modules.globals.map_faces:
-        with modules.globals.MAP_LOCK:
-            modules.globals.source_target_map = []
+        from modules.face_map_store import STORE as _MAP_STORE
+        _MAP_STORE.clear()
 
         if is_image(modules.globals.target_path):
             update_status("Getting unique faces")
@@ -30,8 +30,9 @@ def analyze_target(start, root):
             update_status("Getting unique faces")
             get_unique_faces_from_target_video()
 
-        if len(modules.globals.source_target_map) > 0:
-            create_source_target_popup(start, root, modules.globals.source_target_map)
+        entries = _MAP_STORE.get_entries()
+        if len(entries) > 0:
+            create_source_target_popup(start, root, entries)
         else:
             update_status("No faces found in target")
     else:

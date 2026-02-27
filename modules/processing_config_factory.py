@@ -90,8 +90,7 @@ def build_config_from_globals() -> ProcessingConfig:
         nsfw_filter=modules.globals.nsfw_filter,
         # UI State
         fp_ui=modules.globals.fp_ui.copy(),
-        # Synchronization
-        map_lock=modules.globals.MAP_LOCK,
+        # map_lock is self-provisioned — FaceMapStore now owns face-map locking
     )
 
 

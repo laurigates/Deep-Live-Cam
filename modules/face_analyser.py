@@ -15,6 +15,7 @@ from modules.utilities import get_temp_directory_path, create_temp, extract_fram
 from pathlib import Path
 from modules.platform_info import IS_APPLE_SILICON
 from modules.processing_config import ProcessingConfig
+from modules.face_map_store import STORE as _MAP_STORE
 
 FACE_ANALYSER = None
 FACE_ANALYSER_LOCK = threading.Lock()
@@ -130,37 +131,19 @@ def detect_faces(frame: Frame, config: Optional[ProcessingConfig] = None) -> lis
 
 
 def has_valid_map() -> bool:
-    return any(
-        "source" in face_map and "target" in face_map
-        for face_map in modules.globals.source_target_map
-    )
+    return _MAP_STORE.has_valid_map()
 
 
 def default_source_face() -> Any:
-    return next(
-        (face_map['source']['face']
-         for face_map in modules.globals.source_target_map
-         if "source" in face_map),
-        None,
-    )
+    return _MAP_STORE.default_source_face()
 
 
 def simplify_maps() -> None:
-    paired = [
-        face_map for face_map in modules.globals.source_target_map
-        if "source" in face_map and "target" in face_map
-    ]
-    faces = [m['source']['face'] for m in paired]
-    centroids = [m['target']['face'].normed_embedding for m in paired]
-    with modules.globals.MAP_LOCK:
-        modules.globals.simple_map = {'source_faces': faces, 'target_embeddings': centroids}
+    _MAP_STORE.simplify()
 
 
 def add_blank_map() -> None:
-    with modules.globals.MAP_LOCK:
-        existing_ids = [m['id'] for m in modules.globals.source_target_map]
-        next_id = (max(existing_ids) + 1) if existing_ids else 0
-        modules.globals.source_target_map.append({'id': next_id})
+    _MAP_STORE.add_blank()
 
 
 def get_unique_faces_from_target_image() -> None:
@@ -178,8 +161,7 @@ def get_unique_faces_from_target_image() -> None:
             for i, face in enumerate(many_faces)
             for x_min, y_min, x_max, y_max in [face['bbox']]
         ]
-        with modules.globals.MAP_LOCK:
-            modules.globals.source_target_map = new_map
+        _MAP_STORE.set_entries(new_map)
     except ValueError:
         return
     
@@ -241,8 +223,7 @@ def get_unique_faces_from_target_video() -> None:
         _assign_centroids(frame_face_embeddings, centroids)
         new_map = _build_centroid_map(frame_face_embeddings, centroids)
 
-        with modules.globals.MAP_LOCK:
-            modules.globals.source_target_map = new_map
+        _MAP_STORE.set_entries(new_map)
 
         default_target_face()
     except ValueError:
@@ -262,7 +243,7 @@ def _find_best_face_in_frames(frames: list):
 
 
 def default_target_face() -> None:
-    for face_map in modules.globals.source_target_map:
+    for face_map in _MAP_STORE.get_entries():
         best_face, best_frame = _find_best_face_in_frames(face_map['target_faces_in_frame'])
         if best_face is None:
             continue

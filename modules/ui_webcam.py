@@ -602,8 +602,8 @@ def webcam_preview(root: ctk.CTk, camera_index: int):
             return
         create_webcam_preview(camera_index)
     else:
-        with modules.globals.MAP_LOCK:
-            modules.globals.source_target_map = []
+        from modules.face_map_store import STORE as _MAP_STORE
+        _MAP_STORE.clear()
         create_source_target_popup_for_webcam(
-            root, modules.globals.source_target_map, camera_index
+            root, _MAP_STORE.get_entries(), camera_index
         )

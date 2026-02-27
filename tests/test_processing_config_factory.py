@@ -58,16 +58,11 @@ def test_build_config_from_globals_preserves_values():
     assert config.keyframe_interval == 3
 
 
-def test_build_config_from_globals_preserves_map_lock():
-    """Verify that the synchronization lock is preserved."""
-    import modules.globals
-    import threading
-
+def test_build_config_from_globals_has_usable_map_lock():
+    """Verify that config provides a usable lock (self-provisioned since FaceMapStore owns map locking)."""
     config = build_config_from_globals()
 
-    # The config should reference the same lock object
-    assert config.map_lock is modules.globals.MAP_LOCK
-    # Verify it has the lock interface (acquire/release methods)
+    # Lock is self-provisioned by ProcessingConfig default_factory
     assert hasattr(config.map_lock, 'acquire')
     assert hasattr(config.map_lock, 'release')
 

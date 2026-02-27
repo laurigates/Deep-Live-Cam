@@ -6,6 +6,7 @@ import threading
 import numpy as np
 import modules.globals
 import modules.processors.frame.core
+from modules.face_map_store import STORE as _MAP_STORE
 from modules.core import update_status
 from modules.face_analyser import get_one_face, get_many_faces, default_source_face
 from modules.typing import Face, Frame
@@ -679,8 +680,7 @@ def process_frame(source_face: Face, temp_frame: Frame) -> Frame:
 def _build_pairs_from_file_map(temp_frame_path: str) -> list:
     """Build (source_face, target_face) pairs from source_target_map for image/video files."""
     pairs = []
-    with modules.globals.MAP_LOCK:
-        source_target_map = list(getattr(modules.globals, "source_target_map", []))
+    source_target_map = _MAP_STORE.get_entries()
     if not source_target_map:
         return pairs
 
@@ -722,8 +722,7 @@ def _build_pairs_live(processed_frame: Frame) -> list:
     if not detected_faces:
         return pairs
 
-    with modules.globals.MAP_LOCK:
-        simple_map = dict(getattr(modules.globals, "simple_map", None) or {})
+    simple_map = _MAP_STORE.get_simple_map()
 
     if modules.globals.many_faces:
         source_face = default_source_face()

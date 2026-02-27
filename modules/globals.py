@@ -1,7 +1,6 @@
 # --- START OF FILE globals.py ---
 
 import os
-import threading
 from typing import List, Dict, Any
 
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -18,13 +17,6 @@ file_types = [
     ("Image", ("*.png", "*.jpg", "*.jpeg", "*.gif", "*.bmp")),
     ("Video", ("*.mp4", "*.mkv")),
 ]
-
-# Lock protecting source_target_map and simple_map for cross-thread access
-MAP_LOCK: threading.RLock = threading.RLock()
-
-# Face Mapping Data
-source_target_map: List[Dict[str, Any]] = [] # Stores detailed map for image/video processing
-simple_map: Dict[str, Any] = {}             # Stores simplified map (embeddings/faces) for live/simple mode
 
 # Paths
 source_path: str | None = None
