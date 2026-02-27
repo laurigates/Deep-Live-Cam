@@ -347,22 +347,31 @@ def download_model_if_needed(
     model_urls: list[str],
     processor_name: str,
     models_dir: str | None = None,
+    on_status=None,
 ) -> bool:
-    """Download a model if not present. Returns True if model is available."""
+    """Download a model if not present. Returns True if model is available.
+
+    *on_status* is an optional ``Callable[[str, str], None]`` that receives
+    ``(message, processor_name)`` status updates.  When omitted the function
+    falls back to importing ``modules.core.update_status`` (legacy behaviour).
+    """
     if models_dir is None:
         from modules.paths import MODELS_DIR
         models_dir = MODELS_DIR
     model_path = os.path.join(models_dir, model_file)
+
+    def _emit(msg: str) -> None:
+        if on_status is not None:
+            on_status(msg, processor_name)
+        else:
+            from modules.core import update_status
+            update_status(msg, processor_name)
+
     if not os.path.exists(model_path):
-        from modules.core import update_status
-        update_status(f"Downloading {model_file}...", processor_name)
+        _emit(f"Downloading {model_file}...")
     conditional_download(models_dir, model_urls)
     if not os.path.exists(model_path):
-        from modules.core import update_status
-        update_status(
-            f"Model not found at {model_path}. Download may have failed.",
-            processor_name,
-        )
+        _emit(f"Model not found at {model_path}. Download may have failed.")
         return False
     return True
 
