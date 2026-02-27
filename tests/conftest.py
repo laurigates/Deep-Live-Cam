@@ -13,6 +13,9 @@ def _make_insightface_stub():
     insightface.app = insightface_app
     insightface_app.common = insightface_app_common
 
+    # insightface.app.FaceAnalysis — used by face_analyser module
+    insightface_app.FaceAnalysis = MagicMock()
+
     # insightface.utils.face_align — used by batch_swap_faces
     insightface_utils = types.ModuleType("insightface.utils")
     insightface_utils_face_align = types.ModuleType("insightface.utils.face_align")

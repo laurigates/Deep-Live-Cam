@@ -1,15 +1,15 @@
 """Tests for refactoring face_analyser to accept injectable ProcessingConfig.
 
-This test suite documents the desired API for an injectable face_analyser,
-showing how key functions should accept ProcessingConfig instead of reading
-from modules.globals.
+This file has two sections:
 
-Full refactoring is staged across multiple PRs to minimize risk.
+Section 1 — Config structure specs (verify ProcessingConfig has the right fields).
+These tests were written first (TDD RED) and already pass once ProcessingConfig exists.
 
-Note: Some globals (source_target_map, simple_map) are runtime data, not configuration.
-These may remain as globals or be passed through different mechanisms.
+Section 2 — Behavioral tests for the injectable API (verify functions actually use
+the injected config instead of reading from modules.globals).
 """
 import pytest
+import threading
 from unittest.mock import MagicMock, patch
 from modules.processing_config import ProcessingConfig
 
@@ -77,3 +77,89 @@ def test_config_face_detection_settings():
     assert config.detection_cache_size > 0
     assert isinstance(config.face_analyser_det_size, tuple)
     assert len(config.face_analyser_det_size) == 2
+
+
+# ---------------------------------------------------------------------------
+# Section 2 — Behavioral tests for the injectable API
+# ---------------------------------------------------------------------------
+
+@pytest.fixture(autouse=True)
+def reset_face_analyser_singleton():
+    """Reset the FACE_ANALYSER singleton before each test to ensure isolation."""
+    import modules.face_analyser as fa
+    original = fa.FACE_ANALYSER
+    fa.FACE_ANALYSER = None
+    yield
+    fa.FACE_ANALYSER = original
+
+
+def test_get_face_analyser_uses_execution_providers_from_config():
+    """get_face_analyser(config=config) must use config.execution_providers, not globals."""
+    import modules.face_analyser as fa
+
+    config = ProcessingConfig(execution_providers=['CPUExecutionProvider'])
+
+    mock_instance = MagicMock()
+    with patch('modules.face_analyser._FaceAnalysis', return_value=mock_instance) as MockFA:
+        result = fa.get_face_analyser(config=config)
+
+    # FaceAnalysis was created with CPU provider (CoreML is filtered but CPU stays)
+    MockFA.assert_called_once()
+    _, call_kwargs = MockFA.call_args
+    providers_used = call_kwargs['providers']
+    assert 'CPUExecutionProvider' in providers_used
+
+    # prepare() was called on the instance
+    mock_instance.prepare.assert_called_once()
+
+    # returned object is the mock instance
+    assert result is mock_instance
+
+
+def test_detect_faces_uses_many_faces_from_config():
+    """detect_faces(frame, config=config) dispatches based on config.many_faces."""
+    import modules.face_analyser as fa
+
+    frame = MagicMock()
+    mock_face = MagicMock()
+
+    with patch.object(fa, 'get_many_faces', return_value=[mock_face]) as mock_many, \
+         patch.object(fa, 'get_one_face', return_value=mock_face) as mock_one:
+
+        # many_faces=True → get_many_faces
+        config_many = ProcessingConfig(many_faces=True)
+        result_many = fa.detect_faces(frame, config=config_many)
+        mock_many.assert_called_once_with(frame)
+        mock_one.assert_not_called()
+        assert result_many == [mock_face]
+
+        mock_many.reset_mock()
+        mock_one.reset_mock()
+
+        # many_faces=False → get_one_face
+        config_one = ProcessingConfig(many_faces=False)
+        result_one = fa.detect_faces(frame, config=config_one)
+        mock_one.assert_called_once_with(frame)
+        mock_many.assert_not_called()
+        assert result_one == [mock_face]
+
+
+def test_set_det_size_uses_config_providers():
+    """set_det_size(size, config=config) must recreate FaceAnalysis with config providers."""
+    import modules.face_analyser as fa
+
+    # Force a different det_size so the early-return guard doesn't fire
+    fa._CURRENT_DET_SIZE = (320, 320)
+
+    config = ProcessingConfig(execution_providers=['CPUExecutionProvider'])
+    new_size = (160, 160)
+
+    mock_instance = MagicMock()
+    with patch('modules.face_analyser._FaceAnalysis', return_value=mock_instance) as MockFA:
+        fa.set_det_size(new_size, config=config)
+
+    MockFA.assert_called_once()
+    _, call_kwargs = MockFA.call_args
+    providers_used = call_kwargs['providers']
+    assert 'CPUExecutionProvider' in providers_used
+    mock_instance.prepare.assert_called_once_with(ctx_id=0, det_size=new_size)

@@ -1,7 +1,8 @@
 import os
 import shutil
-from typing import Any
+from typing import Any, Optional
 import insightface
+from insightface.app import FaceAnalysis as _FaceAnalysis
 import threading
 
 import cv2
@@ -13,6 +14,7 @@ from modules.cluster_analysis import find_cluster_centroids, find_closest_centro
 from modules.utilities import get_temp_directory_path, create_temp, extract_frames, clean_temp, get_temp_frame_paths
 from pathlib import Path
 from modules.platform_info import IS_APPLE_SILICON
+from modules.processing_config import ProcessingConfig
 
 FACE_ANALYSER = None
 FACE_ANALYSER_LOCK = threading.Lock()
@@ -23,8 +25,13 @@ _LIVE_DET_SIZE = (160, 160) if IS_APPLE_SILICON else (320, 320)
 _DEFAULT_DET_SIZE = (320, 320)
 
 
-def get_face_analyser() -> Any:
-    """Get face analyser with thread-safe initialization."""
+def get_face_analyser(config: Optional[ProcessingConfig] = None) -> Any:
+    """Get face analyser with thread-safe initialization.
+
+    When *config* is provided its ``execution_providers`` are used instead of
+    reading from ``modules.globals``.  Callers that pass no argument retain the
+    previous behavior unchanged.
+    """
     global FACE_ANALYSER
 
     if FACE_ANALYSER is None:
@@ -33,11 +40,16 @@ def get_face_analyser() -> Any:
             if FACE_ANALYSER is None:
                 # CoreML provider fails with InsightFace detection models due to
                 # dynamic output shape incompatibility, so always use CPU for face analysis
+                source_providers = (
+                    config.execution_providers
+                    if config is not None
+                    else modules.globals.execution_providers
+                )
                 providers = [
-                    p for p in modules.globals.execution_providers
+                    p for p in source_providers
                     if p != 'CoreMLExecutionProvider'
                 ] or ['CPUExecutionProvider']
-                FACE_ANALYSER = insightface.app.FaceAnalysis(
+                FACE_ANALYSER = _FaceAnalysis(
                     name='buffalo_l',
                     providers=providers,
                     allowed_modules=['detection', 'recognition']
@@ -46,7 +58,7 @@ def get_face_analyser() -> Any:
     return FACE_ANALYSER
 
 
-def set_det_size(det_size: tuple[int, int]) -> None:
+def set_det_size(det_size: tuple[int, int], config: Optional[ProcessingConfig] = None) -> None:
     """Recreate the face analyser with a different detection size.
 
     InsightFace ignores ``prepare()`` after the first call, so the only
@@ -55,6 +67,9 @@ def set_det_size(det_size: tuple[int, int]) -> None:
     Call with ``_LIVE_DET_SIZE`` when entering live mode and
     ``_DEFAULT_DET_SIZE`` when leaving it so that image/video processing
     keeps full detection resolution.
+
+    When *config* is provided its ``execution_providers`` are used instead of
+    reading from ``modules.globals``.
     """
     global FACE_ANALYSER, _CURRENT_DET_SIZE
 
@@ -63,11 +78,16 @@ def set_det_size(det_size: tuple[int, int]) -> None:
 
     with FACE_ANALYSER_LOCK:
         _CURRENT_DET_SIZE = det_size
+        source_providers = (
+            config.execution_providers
+            if config is not None
+            else modules.globals.execution_providers
+        )
         providers = [
-            p for p in modules.globals.execution_providers
+            p for p in source_providers
             if p != 'CoreMLExecutionProvider'
         ] or ['CPUExecutionProvider']
-        FACE_ANALYSER = insightface.app.FaceAnalysis(
+        FACE_ANALYSER = _FaceAnalysis(
             name='buffalo_l',
             providers=providers,
             allowed_modules=['detection', 'recognition']
@@ -94,9 +114,14 @@ def get_many_faces(frame: Frame) -> Any:
         return None
 
 
-def detect_faces(frame: Frame) -> list:
-    """Return detected faces based on the current many_faces setting."""
-    if modules.globals.many_faces:
+def detect_faces(frame: Frame, config: Optional[ProcessingConfig] = None) -> list:
+    """Return detected faces based on the current many_faces setting.
+
+    When *config* is provided its ``many_faces`` flag is used instead of
+    reading from ``modules.globals``.
+    """
+    many_faces = config.many_faces if config is not None else modules.globals.many_faces
+    if many_faces:
         faces = get_many_faces(frame)
         return faces if faces else []
     else:
