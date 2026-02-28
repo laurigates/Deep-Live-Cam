@@ -9,10 +9,12 @@ import subprocess
 import urllib
 import urllib.request
 from pathlib import Path
-from typing import List, Any
+from typing import List, Any, Optional
 from tqdm import tqdm
 
 import modules.globals
+from modules.processing_config import ProcessingConfig
+from modules.processing_config_factory import build_config_from_globals
 
 TEMP_FILE = "temp.mp4"
 TEMP_DIRECTORY = "temp"
@@ -52,15 +54,17 @@ def _validate_path_for_subprocess(path: str) -> None:
         )
 
 
-def run_ffmpeg(args: List[str]) -> bool:
+def run_ffmpeg(args: List[str], config: Optional[ProcessingConfig] = None) -> bool:
     """Run ffmpeg with hardware acceleration and optimized settings."""
+    if config is None:
+        config = build_config_from_globals()
     commands = [
         "ffmpeg",
         "-hide_banner",
         "-hwaccel", "auto",  # Auto-detect hardware acceleration
         "-hwaccel_output_format", "auto",  # Use hardware format when possible
-        "-threads", str(modules.globals.execution_threads or 0),  # 0 = auto-detect optimal thread count
-        "-loglevel", modules.globals.log_level,
+        "-threads", str(config.execution_threads or 0),  # 0 = auto-detect optimal thread count
+        "-loglevel", config.log_level,
     ]
     commands.extend(args)
     try:
@@ -93,11 +97,13 @@ def detect_fps(target_path: str) -> float:
     return 30.0
 
 
-def extract_frames(target_path: str) -> None:
+def extract_frames(target_path: str, config: Optional[ProcessingConfig] = None) -> None:
     """Extract frames with hardware acceleration and optimized settings."""
+    if config is None:
+        config = build_config_from_globals()
     temp_directory_path = get_temp_directory_path(target_path)
 
-    if modules.globals.use_png_frames:
+    if config.use_png_frames:
         frame_pattern = os.path.join(temp_directory_path, "%04d.png")
         extra_args: list = []
     else:
@@ -113,7 +119,8 @@ def extract_frames(target_path: str) -> None:
             "-frame_pts", "1",  # Preserve frame timing
             frame_pattern,
             *extra_args,
-        ]
+        ],
+        config=config,
     )
 
 
@@ -186,28 +193,31 @@ def _build_video_ffmpeg_args(
     ]
 
 
-def create_video(target_path: str, fps: float = 30.0) -> None:
+def create_video(target_path: str, fps: float = 30.0,
+                 config: Optional[ProcessingConfig] = None) -> None:
     """Create video with hardware-accelerated encoding and optimized settings."""
+    if config is None:
+        config = build_config_from_globals()
     temp_output_path = get_temp_output_path(target_path)
     temp_directory_path = get_temp_directory_path(target_path)
-    ext = "png" if modules.globals.use_png_frames else "jpg"
+    ext = "png" if config.use_png_frames else "jpg"
     input_pattern = os.path.join(temp_directory_path, f"%04d.{ext}")
 
     encoder, encoder_options = _build_encoder_args(
-        modules.globals.video_encoder,
-        modules.globals.video_quality,
-        modules.globals.execution_providers,
+        config.video_encoder,
+        config.video_quality,
+        config.execution_providers,
     )
     ffmpeg_args = _build_video_ffmpeg_args(fps, input_pattern, encoder, encoder_options, temp_output_path)
 
-    success = run_ffmpeg(ffmpeg_args)
+    success = run_ffmpeg(ffmpeg_args, config=config)
 
     if not success and encoder in _HW_ENCODERS:
         print(f"Hardware encoding with {encoder} failed, falling back to software encoding...")
         fallback_encoder = 'libx264' if 'h264' in encoder else 'libx265'
-        _, fallback_options = _build_encoder_args(fallback_encoder, modules.globals.video_quality, [])
+        _, fallback_options = _build_encoder_args(fallback_encoder, config.video_quality, [])
         fallback_args = _build_video_ffmpeg_args(fps, input_pattern, fallback_encoder, fallback_options, temp_output_path)
-        run_ffmpeg(fallback_args)
+        run_ffmpeg(fallback_args, config=config)
 
 
 def restore_audio(target_path: str, output_path: str) -> None:
@@ -232,9 +242,12 @@ def restore_audio(target_path: str, output_path: str) -> None:
         move_temp(target_path, output_path)
 
 
-def get_temp_frame_paths(target_path: str) -> List[str]:
+def get_temp_frame_paths(target_path: str,
+                         config: Optional[ProcessingConfig] = None) -> List[str]:
+    if config is None:
+        config = build_config_from_globals()
     temp_directory_path = get_temp_directory_path(target_path)
-    ext = "png" if modules.globals.use_png_frames else "jpg"
+    ext = "png" if config.use_png_frames else "jpg"
     return glob.glob(os.path.join(glob.escape(temp_directory_path), f"*.{ext}"))
 
 
@@ -277,10 +290,12 @@ def move_temp(target_path: str, output_path: str) -> None:
         shutil.move(temp_output_path, output_path)
 
 
-def clean_temp(target_path: str) -> None:
+def clean_temp(target_path: str, config: Optional[ProcessingConfig] = None) -> None:
+    if config is None:
+        config = build_config_from_globals()
     temp_directory_path = get_temp_directory_path(target_path)
     parent_directory_path = os.path.dirname(temp_directory_path)
-    if not modules.globals.keep_frames and os.path.isdir(temp_directory_path):
+    if not config.keep_frames and os.path.isdir(temp_directory_path):
         shutil.rmtree(temp_directory_path)
     if os.path.exists(parent_directory_path) and not os.listdir(parent_directory_path):
         os.rmdir(parent_directory_path)

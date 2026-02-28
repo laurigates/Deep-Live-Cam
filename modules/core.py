@@ -274,11 +274,11 @@ def start(config: Optional[ProcessingConfig] = None) -> None:
         update_status('Creating temp resources...')
         create_temp(config.target_path)
         update_status('Extracting frames...')
-        extract_frames(config.target_path)
+        extract_frames(config.target_path, config=config)
     extraction_time = time.time() - extraction_start
     update_status(f'Frame extraction completed in {extraction_time:.2f}s')
 
-    temp_frame_paths = get_temp_frame_paths(config.target_path)
+    temp_frame_paths = get_temp_frame_paths(config.target_path, config=config)
     total_frames = len(temp_frame_paths)
     update_status(f'Processing {total_frames} frames with {config.execution_threads} threads...')
 
@@ -302,7 +302,7 @@ def start(config: Optional[ProcessingConfig] = None) -> None:
             if new_count:
                 update_status(f'RIFE interpolation completed in {rife_time:.2f}s ({new_count} frames)')
                 # Refresh frame paths after interpolation added new frames
-                temp_frame_paths = get_temp_frame_paths(config.target_path)
+                temp_frame_paths = get_temp_frame_paths(config.target_path, config=config)
             else:
                 update_status(f'RIFE interpolation skipped or failed ({rife_time:.2f}s)')
 
@@ -313,11 +313,11 @@ def start(config: Optional[ProcessingConfig] = None) -> None:
         update_status('Detecting fps...')
         fps = detect_fps(config.target_path) * rife_multiplier
         update_status(f'Creating video with {fps} fps...')
-        create_video(config.target_path, fps)
+        create_video(config.target_path, fps, config=config)
     else:
         adjusted_fps = 30.0 * rife_multiplier
         update_status(f'Creating video with {adjusted_fps:.1f} fps...')
-        create_video(config.target_path, adjusted_fps)
+        create_video(config.target_path, adjusted_fps, config=config)
     encoding_time = time.time() - encoding_start
     update_status(f'Video encoding completed in {encoding_time:.2f}s')
 
@@ -332,7 +332,7 @@ def start(config: Optional[ProcessingConfig] = None) -> None:
         move_temp(config.target_path, config.output_path)
 
     # clean and validate
-    clean_temp(config.target_path)
+    clean_temp(config.target_path, config=config)
 
     total_time = time.time() - start_time
     if is_video(config.target_path):
@@ -380,7 +380,7 @@ def run() -> None:
     # via widget callbacks, so it re-snapshots at each processing start.
     config = build_config_from_globals()
     limit_resources(config)
-    if modules.globals.headless:
+    if config.headless:
         # Headless: run pre_checks synchronously before processing starts.
         for frame_processor in get_frame_processors_modules(config.frame_processors):
             if not frame_processor.pre_check():
