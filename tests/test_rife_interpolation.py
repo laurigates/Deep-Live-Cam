@@ -117,8 +117,8 @@ class TestBackendDetection:
             assert _get_backend() == "none"
 
     def test_has_native_binding_returns_false_without_package(self):
-        # The package is not installed in test env
-        assert has_native_binding() is False
+        with patch.dict(sys.modules, {"rife_ncnn_vulkan_python": None}):
+            assert has_native_binding() is False
 
 
 # ---------------------------------------------------------------------------

@@ -354,11 +354,18 @@ def _processing_thread_func(capture_queue, processed_queue, stop_event,
         # never reach this block.
         rife_enabled = getattr(modules.globals, "rife_enabled", False)
         if rife_enabled and prev_processed_frame is not None and not skip_face_processing:
-            if not rife_warned and not has_native_binding():
-                print("[DLC.RIFE] Native binding not available — live interpolation disabled")
-                rife_warned = True
+            if not has_native_binding():
+                if not rife_warned:
+                    print("[DLC.RIFE] Native binding not available — live interpolation disabled")
+                    rife_warned = True
             else:
-                multiplier = getattr(modules.globals, "rife_multiplier", 2)
+                # In half-rate mode, generate exactly keyframe_interval-1 intermediates so
+                # every skip slot between consecutive keyframes gets a smooth interpolated
+                # frame. Outside half-rate mode, honour the user's rife_multiplier setting.
+                if half_rate_enabled:
+                    multiplier = keyframe_interval
+                else:
+                    multiplier = getattr(modules.globals, "rife_multiplier", 2)
                 intermediates = interpolate_frame_pair(
                     prev_processed_frame, temp_frame, multiplier=multiplier,
                     should_stop=stop_event.is_set,
@@ -394,6 +401,13 @@ def _processing_thread_func(capture_queue, processed_queue, stop_event,
             tick_rate_holder[0] = tick_count / (tick_now - tick_prev_time)
             tick_count = 0
             tick_prev_time = tick_now
+
+        # When RIFE is active and this is a skip frame, suppress the duplicate emission.
+        # RIFE will generate smooth intermediates on the next keyframe to fill this slot.
+        # Emitting the dup would pollute the 4-slot queue and appear between interp frames,
+        # creating a visible hold→jump pattern instead of smooth motion.
+        if skip_face_processing and rife_enabled:
+            continue
 
         # Send full-resolution processed frame to virtual camera if enabled
         if modules.globals.virtual_cam:
