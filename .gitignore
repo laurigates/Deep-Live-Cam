@@ -36,3 +36,4 @@ docs/blueprint/work-orders/
 
 # Claude Code local settings (user-specific)
 .claude/settings.local.json
+.cache/

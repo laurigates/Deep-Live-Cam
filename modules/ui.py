@@ -137,6 +137,12 @@ _resize_timer_id = None
 # Selected camera index, updated by camera detection and dropdown selection
 _selected_camera_index = 0
 
+# Embedded preview state
+_embedded_label = None          # CTkLabel inside embedded frame
+_popout_label = None            # CTkLabel inside PREVIEW CTkToplevel
+_preview_embedded = True        # True = embedded, False = pop-out window
+_embedded_preview_frame = None  # the collapsible frame widget
+
 
 def init(start: Callable[[], None], destroy: Callable[[], None], lang: str) -> ctk.CTk:
     global ROOT, PREVIEW, _
@@ -257,19 +263,20 @@ def _setup_window(destroy: Callable) -> ctk.CTk:
     ctk.set_default_color_theme(resolve_relative_path("ui.json"))
 
     root = ctk.CTk()
-    root.minsize(700, 600)
+    root.minsize(700, 700)
     root.title(
         f"{modules.metadata.name} {modules.metadata.version} {modules.metadata.edition}"
     )
     root.configure()
     root.protocol("WM_DELETE_WINDOW", lambda: destroy())
 
-    # Configure root grid: row 1 (tabview) gets all extra space
+    # Configure root grid: rows 1 (tabview) and 2 (embedded preview) get extra space
     root.columnconfigure(0, weight=1)
     root.rowconfigure(0, weight=0)  # top_frame (images)
     root.rowconfigure(1, weight=1)  # settings_tabview
-    root.rowconfigure(2, weight=0)  # action_frame
-    root.rowconfigure(3, weight=0)  # status_frame
+    root.rowconfigure(2, weight=2)  # embedded preview (NEW)
+    root.rowconfigure(3, weight=0)  # action_frame (was 2)
+    root.rowconfigure(4, weight=0)  # status_frame (was 3)
 
     return root
 
@@ -327,6 +334,34 @@ def _add_top_frame(root: ctk.CTk) -> None:
     )
     capture_target_button.grid(row=2, column=0, pady=(0, 5), sticky="ew", padx=10)
     ToolTip(capture_target_button, _("Take a photo from your webcam to use as target"))
+
+
+def _add_embedded_preview(root: ctk.CTk) -> None:
+    """Create the collapsible embedded preview panel (row 2). Hidden by default."""
+    global _embedded_preview_frame, _embedded_label, preview_label
+
+    _embedded_preview_frame = ctk.CTkFrame(root)
+    _embedded_preview_frame.grid(row=2, column=0, sticky="nsew", padx=10, pady=5)
+    _embedded_preview_frame.grid_remove()  # collapsed by default
+
+    _embedded_preview_frame.columnconfigure(0, weight=1)
+    _embedded_preview_frame.rowconfigure(0, weight=0)
+    _embedded_preview_frame.rowconfigure(1, weight=1)
+
+    header = ctk.CTkFrame(_embedded_preview_frame, fg_color="transparent")
+    header.grid(row=0, column=0, sticky="ew")
+    header.columnconfigure(0, weight=1)
+    ctk.CTkLabel(header, text="Preview", anchor="w").grid(
+        row=0, column=0, sticky="w", padx=10
+    )
+    ctk.CTkButton(
+        header, text="⤢", width=30, cursor="hand2",
+        command=pop_out_preview,
+    ).grid(row=0, column=1, padx=(0, 5), pady=5)
+
+    _embedded_label = ctk.CTkLabel(_embedded_preview_frame, text="")
+    _embedded_label.grid(row=1, column=0, sticky="nsew", padx=5, pady=(0, 5))
+    preview_label = _embedded_label
 
 
 # --- Data-driven switch definitions ---
@@ -695,7 +730,7 @@ def _add_camera_to_tab(
 def _add_action_buttons(root: ctk.CTk, start: Callable, destroy: Callable) -> ctk.CTkButton:
     """Create action bar with Start, Stop, Preview, Live buttons. Returns the Live button."""
     action_frame = ctk.CTkFrame(root, fg_color="transparent")
-    action_frame.grid(row=2, column=0, sticky="ew", padx=10, pady=5)
+    action_frame.grid(row=3, column=0, sticky="ew", padx=10, pady=5)
     action_frame.columnconfigure(0, weight=1)
     action_frame.columnconfigure(1, weight=1)
     action_frame.columnconfigure(2, weight=1)
@@ -736,7 +771,7 @@ def _add_status_bar(root: ctk.CTk) -> None:
     global status_label, _download_progress_bar
 
     status_frame = ctk.CTkFrame(root, fg_color="transparent")
-    status_frame.grid(row=3, column=0, sticky="ew", padx=10, pady=(0, 5))
+    status_frame.grid(row=4, column=0, sticky="ew", padx=10, pady=(0, 5))
     status_frame.columnconfigure(0, weight=1)
     status_frame.columnconfigure(1, weight=1)
 
@@ -764,6 +799,7 @@ def create_root(start: Callable[[], None], destroy: Callable[[], None]) -> ctk.C
     load_switch_states()
     root = _setup_window(destroy)
     _add_top_frame(root)
+    _add_embedded_preview(root)
     live_button = _add_action_buttons(root, start, destroy)
     _add_settings_tabview(root, live_button)
     _add_status_bar(root)
@@ -772,23 +808,57 @@ def create_root(start: Callable[[], None], destroy: Callable[[], None]) -> ctk.C
 
 
 def create_preview(parent: ctk.CTkToplevel) -> ctk.CTkToplevel:
-    global preview_label, preview_slider
+    global preview_slider, _popout_label
 
     preview = ctk.CTkToplevel(parent)
     preview.withdraw()
     preview.title(_("Preview"))
     preview.configure()
-    preview.protocol("WM_DELETE_WINDOW", lambda: toggle_preview())
+    preview.protocol("WM_DELETE_WINDOW", pop_in_preview)
     preview.resizable(width=True, height=True)
 
-    preview_label = ctk.CTkLabel(preview, text=None)
-    preview_label.pack(fill="both", expand=True)
+    # Pop-in button in top-right
+    header = ctk.CTkFrame(preview, fg_color="transparent")
+    header.pack(fill="x", side="top", padx=5, pady=(5, 0))
+    ctk.CTkButton(
+        header, text="⤡ Pop In", width=80, cursor="hand2",
+        command=pop_in_preview,
+    ).pack(side="right")
+
+    _popout_label = ctk.CTkLabel(preview, text="")
+    _popout_label.pack(fill="both", expand=True)
 
     preview_slider = ctk.CTkSlider(
         preview, from_=0, to=0, command=lambda frame_value: update_preview(frame_value)
     )
 
     return preview
+
+
+def pop_out_preview() -> None:
+    """Move preview display from the embedded panel into the floating PREVIEW window."""
+    global preview_label, _preview_embedded
+    _preview_embedded = False
+    img = getattr(_embedded_label, '_ctk_img', None)
+    if img:
+        _popout_label._ctk_img = img
+        _popout_label.configure(image=img)
+        _embedded_label.configure(image=None)
+    preview_label = _popout_label
+    PREVIEW.deiconify()
+    PREVIEW.focus()
+
+
+def pop_in_preview() -> None:
+    """Move preview display from the floating PREVIEW window back into the embedded panel."""
+    global preview_label, _preview_embedded
+    _preview_embedded = True
+    img = getattr(_popout_label, '_ctk_img', None)
+    if img:
+        _embedded_label._ctk_img = img
+        _embedded_label.configure(image=img)
+    preview_label = _embedded_label
+    PREVIEW.withdraw()
 
 
 def update_status(text: str) -> None:
@@ -862,7 +932,7 @@ def update_tumbler(var: str, value: bool) -> None:
     if var in _ENHANCER_KEYS:
         _sync_enhancer_frame_processors()
     save_switch_states()
-    if PREVIEW.state() == "normal":
+    if _preview_embedded or PREVIEW.state() == "normal":
         global frame_processors
         frame_processors = get_frame_processors_modules(
             modules.globals.frame_processors
@@ -1091,14 +1161,26 @@ def render_video_preview(
 
 
 def toggle_preview() -> None:
-    if PREVIEW.state() == "normal":
-        PREVIEW.withdraw()
-    elif modules.globals.source_path and modules.globals.target_path:
-        init_preview()
-        update_preview()
+    if _preview_embedded:
+        if _embedded_preview_frame.winfo_ismapped():
+            _embedded_preview_frame.grid_remove()
+        elif modules.globals.source_path and modules.globals.target_path:
+            _embedded_preview_frame.grid()
+            init_preview()
+            update_preview()
+    else:
+        if PREVIEW.state() == "normal":
+            PREVIEW.withdraw()
+        elif modules.globals.source_path and modules.globals.target_path:
+            init_preview()
+            update_preview()
 
 
 def init_preview() -> None:
+    # Slider is pop-out only — hide it in embedded mode
+    if _preview_embedded:
+        preview_slider.pack_forget()
+        return
     if is_image(modules.globals.target_path):
         preview_slider.pack_forget()
     if is_video(modules.globals.target_path):
@@ -1127,7 +1209,10 @@ def update_preview(frame_number: int = 0) -> None:
         image = ctk.CTkImage(image, size=image.size)
         preview_label.configure(image=image)
         update_status("Processing succeed!")
-        PREVIEW.deiconify()
+        if _preview_embedded:
+            _embedded_preview_frame.grid()
+        else:
+            PREVIEW.deiconify()
 
 
 
