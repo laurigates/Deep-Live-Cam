@@ -65,6 +65,37 @@ Given the complex Tcl/Tk environment setup:
 - If test is expected to fail, mark with `@pytest.mark.xfail` with reason
 - Document why test is failing/skipped in a comment
 
+## Testing Module-Level Singletons
+
+ONNX model loaders (`get_face_swapper`, `get_face_enhancer`) and the face
+analyser use module-level singletons initialized on first call.  To test
+initialization behavior without side-effecting other tests:
+
+```python
+original = face_swapper.FACE_SWAPPER
+face_swapper.FACE_SWAPPER = None
+try:
+    face_swapper.get_face_swapper(providers=['CPUExecutionProvider'])
+finally:
+    face_swapper.FACE_SWAPPER = original
+```
+
+### Patching ONNX InferenceSession
+
+Do **NOT** use `patch.object(onnxruntime.InferenceSession, '__init__', ...)` — it
+fails with `AttributeError: __init__`.  Patch at the module import path instead:
+
+```python
+with patch(
+    'modules.processors.frame.face_enhancer.onnxruntime.InferenceSession',
+    side_effect=fake_session_factory,
+):
+    face_enhancer.get_face_enhancer(providers=['CPUExecutionProvider'])
+```
+
+The `side_effect` factory receives `(model_path, sess_options=..., providers=..., **kwargs)`
+and should return a `MagicMock` session object.
+
 ## Continuous Testing
 
 - Run `pytest --watch` during development for instant feedback

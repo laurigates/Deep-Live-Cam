@@ -23,10 +23,22 @@ Derived from recurring fix commits: None embeddings crash (PR #980), source_targ
 - Validate face embedding shape and dtype before passing to ONNX swap model
 - A mismatched embedding silently produces garbage output — fail fast with a descriptive error
 
-## Face Mapping (`source_target_map`)
+## Face Mapping (FaceMapStore)
 
-- Variable name is `source_target_map` — not `souce_target_map` (recurring typo, two separate
-  fixes in git history)
+Face map state is owned by `modules.face_map_store.STORE` (`FaceMapStore` singleton).
+`source_target_map`, `simple_map`, and `MAP_LOCK` no longer exist in `modules.globals`.
+
+- `from modules.face_map_store import STORE as _MAP_STORE`
+- `_MAP_STORE.get_entries()` — always returns a **snapshot** (copy), never the live list
+- `_MAP_STORE.set_entries(new_list)` — atomic replacement
+- `_MAP_STORE.add_blank()`, `_MAP_STORE.clear()`, `_MAP_STORE.has_valid_map()`
+- `_MAP_STORE.simplify()` — builds simple map from paired entries in-place
+- `_MAP_STORE.get_simple_map()` — snapshot copy of the simplified map
+
+`FaceMapStore` uses `threading.Lock()` (not `RLock`) — if you need re-entrance it is
+a design error.  All map read operations return snapshots to avoid holding the lock
+while processing.
+
 - Keep map entries as `{source_face, target_face}` dicts; avoid positional indexing
 - When live-mode faces exceed available map entries, fall back to the first map entry rather
   than crashing (evidence: PR #572)
@@ -70,6 +82,37 @@ swap+masking processing thread — do not move enhancement back into the process
 - Apply Poisson blending (`cv2.seamlessClone`) at the mask boundary for smooth transitions
   (added in v2.0.2c; do not revert to hard alpha compositing)
 - Test with both `--mouth-mask` enabled and disabled before committing mouth-mask changes
+
+## Injectable Provider Pattern
+
+All three ONNX model loaders accept an explicit providers list for testing and
+injection — fall back to `modules.globals.execution_providers` when omitted:
+
+| Loader | Injection parameter |
+|--------|---------------------|
+| `get_face_analyser()` | `config: Optional[ProcessingConfig]` → `config.execution_providers` |
+| `get_face_swapper()` | `providers: list \| None` |
+| `get_face_enhancer()` | `providers: list \| None` |
+
+Never set `modules.globals.execution_providers` in tests — pass providers explicitly.
+
+## Status Updates
+
+Do **not** import `modules.ui` in non-UI modules.  Publish status messages via:
+
+```python
+from modules.status_bus import BUS
+BUS.publish("Processing...", "MY_MODULE_NAME")
+```
+
+Or use `from modules.core import update_status` — it routes through `BUS` automatically.
+GUI mode subscribes `ui.update_status` to `BUS` during startup; headless mode gets the
+`print()` fallback in `update_status`.
+
+**Private constant cross-module import = wrong abstraction boundary.**
+`from module import _PRIVATE_CONST` across module boundaries is a code smell.
+Expose such values as public class attributes instead (e.g., `_LIVE_DET_SIZE` became
+`FaceAnalyser.LIVE_DET_SIZE`).
 
 ## Model Download and Caching
 

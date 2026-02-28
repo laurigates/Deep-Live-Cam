@@ -92,6 +92,17 @@ Use the justfile debug recipes in order:
 5. `just start-dyld-trace` — shows last shared library loaded before crash (useful for
    import-time segfaults in C extensions).
 
+## Module Decoupling
+
+- **No top-level UI imports in core.py** — `import modules.ui as ui` at module level forces
+  the entire Tkinter stack to load even in headless mode.  Use lazy imports inside the
+  conditional branches that actually need UI (e.g., `if not headless:` blocks).
+- **StatusBus for cross-module events** — `modules/status_bus.py` owns the `BUS` singleton;
+  `core.update_status()` publishes to it; GUI mode subscribes `ui.update_status` to `BUS`
+  during startup.  Non-UI modules must not import `modules.ui` at module level.
+- **FaceMapStore** (`modules/face_map_store.STORE`) owns all face map state.
+  Do not add new mutable state to `modules/globals.py`.
+
 ## Security
 
 - Never commit API tokens or secrets
