@@ -675,17 +675,18 @@ def _add_camera_to_tab(
         if camera_names and choice in camera_names:
             _selected_camera_index = camera_indices[camera_names.index(choice)]
 
-    # Wire up the live button command to use the camera selection from this tab
-    live_button.configure(
-        command=lambda: webcam_preview(
-            root,
-            (
-                camera_indices[camera_names.index(camera_variable.get())]
-                if camera_names and camera_names[0] != "No cameras found"
-                else None
-            ),
-        ),
-    )
+    # Wire up the live button command to use the camera selection from this tab.
+    # Config snapshot is taken at click time so UI changes before clicking are captured.
+    def _start_webcam():
+        from modules.processing_config_factory import build_config_from_globals as _bcfg
+        camera_index = (
+            camera_indices[camera_names.index(camera_variable.get())]
+            if camera_names and camera_names[0] != "No cameras found"
+            else None
+        )
+        webcam_preview(root, camera_index, config=_bcfg())
+
+    live_button.configure(command=_start_webcam)
     camera_optionmenu.configure(command=_on_camera_selected)
 
     def _finish_camera_probe(indices, names):
@@ -1117,7 +1118,9 @@ def select_output_path(start: Callable[[], None]) -> None:
     if output_path:
         modules.globals.output_path = output_path
         RECENT_DIRECTORY_OUTPUT = os.path.dirname(modules.globals.output_path)
-        start()
+        # Snapshot globals at the moment Start is clicked; processing uses this config.
+        from modules.processing_config_factory import build_config_from_globals as _bcfg
+        start(config=_bcfg())
 
 
 def fit_image_to_size(image, width: int, height: int):
