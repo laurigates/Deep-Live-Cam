@@ -96,7 +96,14 @@ def detect_fps(target_path: str) -> float:
 def extract_frames(target_path: str) -> None:
     """Extract frames with hardware acceleration and optimized settings."""
     temp_directory_path = get_temp_directory_path(target_path)
-    
+
+    if modules.globals.use_png_frames:
+        frame_pattern = os.path.join(temp_directory_path, "%04d.png")
+        extra_args: list = []
+    else:
+        frame_pattern = os.path.join(temp_directory_path, "%04d.jpg")
+        extra_args = ["-qscale:v", "2"]  # JPEG quality ~95% (scale 2-31, lower=better)
+
     # Use hardware-accelerated decoding and optimized pixel format
     run_ffmpeg(
         [
@@ -104,8 +111,8 @@ def extract_frames(target_path: str) -> None:
             "-vf", "format=rgb24",  # Use video filter for format conversion (faster)
             "-vsync", "0",  # Prevent frame duplication
             "-frame_pts", "1",  # Preserve frame timing
-            os.path.join(temp_directory_path, "%04d.jpg"),
-            "-qscale:v", "2",  # JPEG quality ~95% (scale 2-31, lower=better)
+            frame_pattern,
+            *extra_args,
         ]
     )
 
@@ -183,7 +190,8 @@ def create_video(target_path: str, fps: float = 30.0) -> None:
     """Create video with hardware-accelerated encoding and optimized settings."""
     temp_output_path = get_temp_output_path(target_path)
     temp_directory_path = get_temp_directory_path(target_path)
-    input_pattern = os.path.join(temp_directory_path, "%04d.jpg")
+    ext = "png" if modules.globals.use_png_frames else "jpg"
+    input_pattern = os.path.join(temp_directory_path, f"%04d.{ext}")
 
     encoder, encoder_options = _build_encoder_args(
         modules.globals.video_encoder,
@@ -226,7 +234,8 @@ def restore_audio(target_path: str, output_path: str) -> None:
 
 def get_temp_frame_paths(target_path: str) -> List[str]:
     temp_directory_path = get_temp_directory_path(target_path)
-    return glob.glob((os.path.join(glob.escape(temp_directory_path), "*.jpg")))
+    ext = "png" if modules.globals.use_png_frames else "jpg"
+    return glob.glob(os.path.join(glob.escape(temp_directory_path), f"*.{ext}"))
 
 
 def get_temp_directory_path(target_path: str) -> str:

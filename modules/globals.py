@@ -37,6 +37,7 @@ nsfw_filter: bool = False
 # Video Output Options
 video_encoder: str | None = None
 video_quality: int | None = None # Typically a CRF value or bitrate
+use_png_frames: bool = False     # Use lossless PNG for intermediate frames (vs JPEG)
 
 # Live Mode Options
 live_mirror: bool = False

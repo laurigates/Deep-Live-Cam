@@ -165,6 +165,7 @@ def save_switch_states():
         "keep_fps": modules.globals.keep_fps,
         "keep_audio": modules.globals.keep_audio,
         "keep_frames": modules.globals.keep_frames,
+        "use_png_frames": modules.globals.use_png_frames,
         "many_faces": modules.globals.many_faces,
         "map_faces": modules.globals.map_faces,
         "poisson_blend": modules.globals.poisson_blend,
@@ -197,6 +198,7 @@ def load_switch_states():
         modules.globals.keep_fps = switch_states.get("keep_fps", True)
         modules.globals.keep_audio = switch_states.get("keep_audio", True)
         modules.globals.keep_frames = switch_states.get("keep_frames", False)
+        modules.globals.use_png_frames = switch_states.get("use_png_frames", False)
         modules.globals.many_faces = switch_states.get("many_faces", False)
         modules.globals.map_faces = switch_states.get("map_faces", False)
         modules.globals.poisson_blend = switch_states.get("poisson_blend", False)
@@ -366,6 +368,8 @@ def _get_switch_defs():
              _("Copy audio track from the source video to output")),
             (_("Save Temp Frames"), "keep_frames", False,
              _("Keep extracted frames on disk after processing (uses disk space)")),
+            (_("PNG Frames"), "use_png_frames", False,
+             _("Use lossless PNG for intermediate frames — no compression artifacts, but ~10x more disk I/O")),
             (_("RIFE Interpolation"), "rife_enabled", False,
              _("Generate intermediate frames for smoother video (2x or 4x)")),
         ],
