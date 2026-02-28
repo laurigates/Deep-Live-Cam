@@ -164,10 +164,14 @@ def _count_frames(directory: str) -> int:
 # Native Python binding backend
 # ---------------------------------------------------------------------------
 
-def _get_native_rife():
+def _get_native_rife(should_stop=None):
     """Get or create a cached native Rife instance.
 
     Thread-safe: uses _NATIVE_RIFE_LOCK to prevent concurrent creation.
+
+    *should_stop* is an optional callable (e.g. ``threading.Event.is_set``).
+    When it returns True before or after acquiring the lock, model loading is
+    skipped and None is returned so callers can exit promptly on shutdown.
     """
     global _NATIVE_RIFE, _NATIVE_RIFE_MODEL
 
@@ -177,8 +181,14 @@ def _get_native_rife():
     if _NATIVE_RIFE is not None and _NATIVE_RIFE_MODEL == model_name:
         return _NATIVE_RIFE
 
+    # Abort early if shutdown has been requested
+    if should_stop is not None and should_stop():
+        return None
+
     with _NATIVE_RIFE_LOCK:
-        # Re-check under lock (another thread may have created it)
+        # Re-check under lock (another thread may have created it, or we're shutting down)
+        if should_stop is not None and should_stop():
+            return None
         if _NATIVE_RIFE is not None and _NATIVE_RIFE_MODEL == model_name:
             return _NATIVE_RIFE
 
@@ -193,6 +203,17 @@ def _get_native_rife():
         _NATIVE_RIFE_MODEL = model_name
         _update_status(f"RIFE native engine loaded: {model_name}")
         return _NATIVE_RIFE
+
+
+def cleanup_rife() -> None:
+    """Release the cached native Rife instance and free GPU resources.
+
+    Safe to call from any thread.  Acquires ``_NATIVE_RIFE_LOCK`` briefly.
+    """
+    global _NATIVE_RIFE, _NATIVE_RIFE_MODEL
+    with _NATIVE_RIFE_LOCK:
+        _NATIVE_RIFE = None
+        _NATIVE_RIFE_MODEL = None
 
 
 def _interpolate_native(temp_directory_path: str) -> Optional[int]:
@@ -269,17 +290,24 @@ def _interpolate_native(temp_directory_path: str) -> Optional[int]:
 # ---------------------------------------------------------------------------
 
 
-def interpolate_frame_pair(frame0, frame1, multiplier: int = 2) -> List:
+def interpolate_frame_pair(frame0, frame1, multiplier: int = 2, should_stop=None) -> List:
     """Interpolate intermediate frames between two BGR numpy arrays.
 
     Returns only the intermediate frames (not frame0 or frame1).
     For 2x: returns 1 frame at timestep 0.5.
     For 4x: returns 3 frames at timesteps 0.25, 0.5, 0.75.
 
+    *should_stop* is an optional callable (e.g. ``threading.Event.is_set``).
+    When it returns True the function returns [] immediately so the calling
+    thread can exit promptly on shutdown without waiting for model loading.
+
     Returns an empty list on any failure (no native binding, shape mismatch,
     GPU error) so callers can safely skip interpolation.
     """
     import numpy as np
+
+    if should_stop is not None and should_stop():
+        return []
 
     if not has_native_binding():
         return []
@@ -290,9 +318,13 @@ def interpolate_frame_pair(frame0, frame1, multiplier: int = 2) -> List:
     n_intermediate = max(multiplier - 1, 1)
 
     try:
-        rife = _get_native_rife()
+        rife = _get_native_rife(should_stop=should_stop)
+        if rife is None:
+            return []
         intermediates = []
         for step_idx in range(1, n_intermediate + 1):
+            if should_stop is not None and should_stop():
+                return []
             timestep = step_idx / multiplier
             interpolated = rife.process_cv2(frame0, frame1, timestep=timestep)
             intermediates.append(interpolated)

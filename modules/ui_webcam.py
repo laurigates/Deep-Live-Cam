@@ -13,7 +13,7 @@ from modules.face_analyser import (
     detect_faces_for_webcam, faces_are_similar, FaceAnalyser,
 )
 from modules.processors.frame.core import get_frame_processors_modules
-from modules.rife_interpolation import has_native_binding, interpolate_frame_pair
+from modules.rife_interpolation import has_native_binding, interpolate_frame_pair, cleanup_rife
 from modules.single_slot_worker import single_slot_worker_loop
 from modules.video_capture import VideoCapturer
 
@@ -162,7 +162,6 @@ def _processing_thread_func(capture_queue, processed_queue, stop_event,
     Face detection is no longer performed here — it runs concurrently in
     _detection_thread_func and the most recent result is consumed lock-free
     (under a brief lock copy) so the swap loop never blocks on detection."""
-    frame_processors = get_frame_processors_modules(modules.globals.frame_processors)
     source_image = None
     last_source_path = None
     tick_count = 0
@@ -186,6 +185,10 @@ def _processing_thread_func(capture_queue, processed_queue, stop_event,
             frame = capture_queue.get(timeout=0.05)
         except queue.Empty:
             continue
+
+        # Re-read on every frame so processors added/removed after webcam
+        # start take effect immediately without restarting the session.
+        frame_processors = get_frame_processors_modules(modules.globals.frame_processors)
 
         temp_frame = frame
 
@@ -357,7 +360,8 @@ def _processing_thread_func(capture_queue, processed_queue, stop_event,
             else:
                 multiplier = getattr(modules.globals, "rife_multiplier", 2)
                 intermediates = interpolate_frame_pair(
-                    prev_processed_frame, temp_frame, multiplier=multiplier
+                    prev_processed_frame, temp_frame, multiplier=multiplier,
+                    should_stop=stop_event.is_set,
                 )
                 for interp_frame in intermediates:
                     tick_count += 1
@@ -521,6 +525,7 @@ def create_webcam_preview(camera_index: int):
         PREVIEW.withdraw()
 
         def _background_cleanup():
+            cleanup_rife()
             cap_thread.join(timeout=2.0)
             det_thread.join(timeout=2.0)
             swap_thread.join(timeout=2.0)
