@@ -43,6 +43,7 @@ def build_config_from_globals() -> ProcessingConfig:
         keep_fps=modules.globals.keep_fps,
         keep_audio=modules.globals.keep_audio,
         keep_frames=modules.globals.keep_frames,
+        use_png_frames=modules.globals.use_png_frames,
         # Face Swapper Options
         face_swapper_enabled=modules.globals.face_swapper_enabled,
         opacity=max(0.0, min(1.0, getattr(modules.globals, 'opacity', 1.0))),
@@ -96,25 +97,76 @@ def build_config_from_globals() -> ProcessingConfig:
 
 
 def build_config_from_cli_args(args) -> ProcessingConfig:
-    """
-    Build ProcessingConfig directly from CLI arguments.
-
-    This function will replace build_config_from_globals() once all modules
-    are updated to accept injected configuration.
+    """Build ProcessingConfig directly from CLI arguments.
 
     Args:
-        args: Parsed command-line arguments (from argparse)
+        args: Parsed command-line arguments (from argparse).  Deprecated fields
+              (source_path_deprecated, cpu_cores_deprecated, gpu_vendor_deprecated,
+              gpu_threads_deprecated) are honoured when present.
 
     Returns:
-        ProcessingConfig instance configured from CLI args
+        ProcessingConfig instance configured from CLI args.
     """
-    # This is a placeholder for the future CLI-based config builder.
-    # For now, it would extract fields from args and return a ProcessingConfig.
-    # Example (once implemented):
-    #   return ProcessingConfig(
-    #       execution_providers=args.execution_provider or ['cpu'],
-    #       source_path=args.source,
-    #       target_path=args.target,
-    #       ... etc
-    #   )
-    raise NotImplementedError("CLI-based config builder not yet implemented")
+    # Lazy import to avoid circular dependency (core imports this factory).
+    from modules.core import decode_execution_providers, normalize_output_path
+
+    source_path = args.source_path
+    target_path = args.target_path
+    output_path = normalize_output_path(source_path, target_path, args.output_path)
+    execution_providers = decode_execution_providers(args.execution_provider or ['cpu'])
+    execution_threads = args.execution_threads
+
+    # Handle deprecated arguments
+    if getattr(args, 'source_path_deprecated', None):
+        source_path = args.source_path_deprecated
+        output_path = normalize_output_path(source_path, target_path, args.output_path)
+    if getattr(args, 'cpu_cores_deprecated', None):
+        execution_threads = args.cpu_cores_deprecated
+    if getattr(args, 'gpu_vendor_deprecated', None):
+        if args.gpu_vendor_deprecated == 'apple':
+            execution_providers = decode_execution_providers(['coreml'])
+        elif args.gpu_vendor_deprecated == 'nvidia':
+            execution_providers = decode_execution_providers(['cuda'])
+        elif args.gpu_vendor_deprecated == 'amd':
+            execution_providers = decode_execution_providers(['rocm'])
+    if getattr(args, 'gpu_threads_deprecated', None):
+        execution_threads = args.gpu_threads_deprecated
+
+    frame_processors = list(args.frame_processor)
+    fp_ui = {
+        'face_enhancer': 'face_enhancer' in frame_processors,
+        'face_enhancer_gpen256': 'face_enhancer_gpen256' in frame_processors,
+        'face_enhancer_gpen512': 'face_enhancer_gpen512' in frame_processors,
+        'face_enhancer_codeformer': 'face_enhancer_codeformer' in frame_processors,
+    }
+
+    return ProcessingConfig(
+        source_path=source_path,
+        target_path=target_path,
+        output_path=output_path,
+        frame_processors=frame_processors,
+        use_png_frames=args.use_png_frames,
+        keep_fps=args.keep_fps,
+        keep_audio=args.keep_audio,
+        keep_frames=args.keep_frames,
+        many_faces=args.many_faces,
+        mouth_mask=args.mouth_mask,
+        nsfw_filter=args.nsfw_filter,
+        map_faces=args.map_faces,
+        video_encoder=args.video_encoder,
+        video_quality=args.video_quality,
+        live_mirror=args.live_mirror,
+        live_resizable=args.live_resizable,
+        virtual_cam=args.virtual_cam,
+        max_memory=args.max_memory,
+        execution_providers=execution_providers,
+        execution_threads=execution_threads,
+        rife_enabled=args.rife_enabled,
+        rife_model=args.rife_model,
+        rife_multiplier=args.rife_multiplier,
+        half_rate_processing=args.half_rate_processing,
+        keyframe_interval=args.keyframe_interval,
+        live_enhance_size=args.live_enhance_size,
+        fp_ui=fp_ui,
+        headless=bool(source_path or target_path or args.output_path),
+    )

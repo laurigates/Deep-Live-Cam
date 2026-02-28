@@ -91,6 +91,9 @@ class ProcessingConfig:
     keep_frames: bool = False
     """Keep temporary frame files after processing"""
 
+    use_png_frames: bool = False
+    """Use lossless PNG for intermediate frames (vs JPEG)"""
+
     # ======================== Face Swapper Options ========================
     face_swapper_enabled: bool = True
     """General toggle for the face swapper processor"""

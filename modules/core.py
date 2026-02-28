@@ -7,7 +7,7 @@ if any(arg.startswith('--execution-provider') for arg in sys.argv):
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 import threading
 import warnings
-from typing import List
+from typing import List, Optional
 import platform
 import signal
 import shutil
@@ -16,6 +16,8 @@ import onnxruntime
 
 import modules.globals
 import modules.metadata
+from modules.processing_config import ProcessingConfig
+from modules.processing_config_factory import build_config_from_globals
 from modules.status_bus import BUS as _STATUS_BUS
 from modules.processors.frame.core import get_frame_processors_modules
 from modules.utilities import has_image_extension, is_image, is_video, detect_fps, create_video, extract_frames, get_temp_frame_paths, restore_audio, create_temp, move_temp, clean_temp, normalize_output_path, set_download_progress_callback
@@ -180,7 +182,9 @@ def suggest_execution_threads() -> int:
     return max(4, min(cpu_count - 2, 16))
 
 
-def limit_resources() -> None:
+def limit_resources(config: Optional[ProcessingConfig] = None) -> None:
+    if config is None:
+        config = build_config_from_globals()
     # prevent tensorflow memory leak (lazy import — only needed for GPU memory config)
     try:
         import tensorflow
@@ -190,10 +194,8 @@ def limit_resources() -> None:
     except ImportError:
         pass
     # limit memory usage
-    if modules.globals.max_memory:
-        memory = modules.globals.max_memory * 1024 ** 3
-        if platform.system().lower() == 'darwin':
-            memory = modules.globals.max_memory * 1024 ** 3
+    if config.max_memory:
+        memory = config.max_memory * 1024 ** 3
         if platform.system().lower() == 'windows':
             import ctypes
             kernel32 = ctypes.windll.kernel32
@@ -203,8 +205,10 @@ def limit_resources() -> None:
             resource.setrlimit(resource.RLIMIT_DATA, (memory, memory))
 
 
-def release_resources() -> None:
-    if 'CUDAExecutionProvider' in modules.globals.execution_providers and _ensure_torch():
+def release_resources(config: Optional[ProcessingConfig] = None) -> None:
+    if config is None:
+        config = build_config_from_globals()
+    if 'CUDAExecutionProvider' in config.execution_providers and _ensure_torch():
         torch.cuda.empty_cache()
 
 
@@ -224,68 +228,71 @@ def update_status(message: str, scope: str = 'DLC.CORE') -> None:
     print(f'[{scope}] {message}')
     _STATUS_BUS.publish(message, scope)
 
-def start() -> None:
+def start(config: Optional[ProcessingConfig] = None) -> None:
     """Start processing with performance monitoring."""
     import time
-    
+
+    if config is None:
+        config = build_config_from_globals()
+
     start_time = time.time()
-    
-    for frame_processor in get_frame_processors_modules(modules.globals.frame_processors):
+
+    for frame_processor in get_frame_processors_modules(config.frame_processors):
         if not frame_processor.pre_start():
             return
     update_status('Processing...')
-    
+
     # process image to image
-    if has_image_extension(modules.globals.target_path):
-        if modules.globals.nsfw_filter:
+    if has_image_extension(config.target_path):
+        if config.nsfw_filter:
             import modules.ui as ui
-            if ui.check_and_ignore_nsfw(modules.globals.target_path, destroy):
+            if ui.check_and_ignore_nsfw(config.target_path, destroy):
                 return
         try:
-            shutil.copy2(modules.globals.target_path, modules.globals.output_path)
+            shutil.copy2(config.target_path, config.output_path)
         except Exception as e:
             print("Error copying file:", str(e))
-        for frame_processor in get_frame_processors_modules(modules.globals.frame_processors):
+        for frame_processor in get_frame_processors_modules(config.frame_processors):
             update_status('Progressing...', frame_processor.NAME)
-            frame_processor.process_image(modules.globals.source_path, modules.globals.output_path, modules.globals.output_path)
-            release_resources()
-        if is_image(modules.globals.target_path):
+            frame_processor.process_image(config.source_path, config.output_path, config.output_path)
+            release_resources(config)
+        if is_image(config.target_path):
             elapsed = time.time() - start_time
             update_status(f'Processing to image succeed! (Time: {elapsed:.2f}s)')
         else:
             update_status('Processing to image failed!')
         return
-    
+
     # process image to videos
-    if modules.globals.nsfw_filter:
+    if config.nsfw_filter:
         import modules.ui as ui
-        if ui.check_and_ignore_nsfw(modules.globals.target_path, destroy):
+        if ui.check_and_ignore_nsfw(config.target_path, destroy):
             return
 
     extraction_start = time.time()
-    if not modules.globals.map_faces:
+    if not config.map_faces:
         update_status('Creating temp resources...')
-        create_temp(modules.globals.target_path)
+        create_temp(config.target_path)
         update_status('Extracting frames...')
-        extract_frames(modules.globals.target_path)
+        extract_frames(config.target_path)
     extraction_time = time.time() - extraction_start
     update_status(f'Frame extraction completed in {extraction_time:.2f}s')
 
-    temp_frame_paths = get_temp_frame_paths(modules.globals.target_path)
+    temp_frame_paths = get_temp_frame_paths(config.target_path)
     total_frames = len(temp_frame_paths)
-    update_status(f'Processing {total_frames} frames with {modules.globals.execution_threads} threads...')
-    
+    update_status(f'Processing {total_frames} frames with {config.execution_threads} threads...')
+
     processing_start = time.time()
-    for frame_processor in get_frame_processors_modules(modules.globals.frame_processors):
+    for frame_processor in get_frame_processors_modules(config.frame_processors):
         update_status('Progressing...', frame_processor.NAME)
-        frame_processor.process_video(modules.globals.source_path, temp_frame_paths)
-        release_resources()
+        frame_processor.process_video(config.source_path, temp_frame_paths)
+        release_resources(config)
     processing_time = time.time() - processing_start
     fps_processing = total_frames / processing_time if processing_time > 0 else 0
     update_status(f'Frame processing completed in {processing_time:.2f}s ({fps_processing:.2f} fps)')
-    
+
     # RIFE frame interpolation (if enabled)
-    if modules.globals.rife_enabled:
+    if config.rife_enabled:
         from modules.rife_interpolation import interpolate_frames
         rife_start = time.time()
         temp_directory_path = os.path.dirname(temp_frame_paths[0]) if temp_frame_paths else None
@@ -295,40 +302,40 @@ def start() -> None:
             if new_count:
                 update_status(f'RIFE interpolation completed in {rife_time:.2f}s ({new_count} frames)')
                 # Refresh frame paths after interpolation added new frames
-                temp_frame_paths = get_temp_frame_paths(modules.globals.target_path)
+                temp_frame_paths = get_temp_frame_paths(config.target_path)
             else:
                 update_status(f'RIFE interpolation skipped or failed ({rife_time:.2f}s)')
 
     # handles fps
     encoding_start = time.time()
-    rife_multiplier = modules.globals.rife_multiplier if modules.globals.rife_enabled else 1
-    if modules.globals.keep_fps:
+    rife_multiplier = config.rife_multiplier if config.rife_enabled else 1
+    if config.keep_fps:
         update_status('Detecting fps...')
-        fps = detect_fps(modules.globals.target_path) * rife_multiplier
+        fps = detect_fps(config.target_path) * rife_multiplier
         update_status(f'Creating video with {fps} fps...')
-        create_video(modules.globals.target_path, fps)
+        create_video(config.target_path, fps)
     else:
         adjusted_fps = 30.0 * rife_multiplier
         update_status(f'Creating video with {adjusted_fps:.1f} fps...')
-        create_video(modules.globals.target_path, adjusted_fps)
+        create_video(config.target_path, adjusted_fps)
     encoding_time = time.time() - encoding_start
     update_status(f'Video encoding completed in {encoding_time:.2f}s')
-    
+
     # handle audio
-    if modules.globals.keep_audio:
-        if modules.globals.keep_fps:
+    if config.keep_audio:
+        if config.keep_fps:
             update_status('Restoring audio...')
         else:
             update_status('Restoring audio might cause issues as fps are not kept...')
-        restore_audio(modules.globals.target_path, modules.globals.output_path)
+        restore_audio(config.target_path, config.output_path)
     else:
-        move_temp(modules.globals.target_path, modules.globals.output_path)
-    
+        move_temp(config.target_path, config.output_path)
+
     # clean and validate
-    clean_temp(modules.globals.target_path)
-    
+    clean_temp(config.target_path)
+
     total_time = time.time() - start_time
-    if is_video(modules.globals.target_path):
+    if is_video(config.target_path):
         update_status(f'Processing to video succeed! Total time: {total_time:.2f}s')
     else:
         update_status('Processing to video failed!')
@@ -347,35 +354,42 @@ def destroy(to_quit=True) -> None:
         raise SystemExit(0)
 
 
-def _run_processor_pre_checks() -> None:
+def _run_processor_pre_checks(config: Optional[ProcessingConfig] = None) -> None:
     """Download missing models in a background thread (GUI mode only).
 
     Runs each frame processor's pre_check() sequentially so tqdm progress bars
     don't interleave. Status messages are posted to the UI via update_status().
     RIFE pre_check runs last since it depends on the frame processors being ready.
     """
-    for frame_processor in get_frame_processors_modules(modules.globals.frame_processors):
+    if config is None:
+        config = build_config_from_globals()
+    for frame_processor in get_frame_processors_modules(config.frame_processors):
         frame_processor.pre_check()
-    if modules.globals.rife_enabled:
+    if config.rife_enabled:
         from modules.rife_interpolation import pre_check as rife_pre_check
         rife_pre_check()
 
 
 def run() -> None:
+    from modules.processing_config_factory import build_config_from_cli_args
     parse_args()
     if not pre_check():
         return
-    limit_resources()
+    # Build a config snapshot from the globals that parse_args() just wrote.
+    # Headless mode uses this config exclusively; GUI mode still mutates globals
+    # via widget callbacks, so it re-snapshots at each processing start.
+    config = build_config_from_globals()
+    limit_resources(config)
     if modules.globals.headless:
         # Headless: run pre_checks synchronously before processing starts.
-        for frame_processor in get_frame_processors_modules(modules.globals.frame_processors):
+        for frame_processor in get_frame_processors_modules(config.frame_processors):
             if not frame_processor.pre_check():
                 return
-        if modules.globals.rife_enabled:
+        if config.rife_enabled:
             from modules.rife_interpolation import pre_check as rife_pre_check
             if not rife_pre_check():
                 return
-        start()
+        start(config)
     else:
         # GUI mode: start the UI immediately so the webcam preview is responsive,
         # then download any missing models in the background.  Each processor's
