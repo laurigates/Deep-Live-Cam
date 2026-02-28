@@ -75,7 +75,7 @@ class FaceAnalyser:
         inner = _FaceAnalysis(
             name='buffalo_l',
             providers=safe_providers,
-            allowed_modules=['detection', 'recognition'],
+            allowed_modules=['detection', 'recognition', 'landmark_2d_106'],
         )
         inner.prepare(ctx_id=0, det_size=det_size)
         return inner
@@ -155,7 +155,7 @@ def get_face_analyser(config: Optional[ProcessingConfig] = None) -> Any:
                 FACE_ANALYSER = _FaceAnalysis(
                     name='buffalo_l',
                     providers=providers,
-                    allowed_modules=['detection', 'recognition']
+                    allowed_modules=['detection', 'recognition', 'landmark_2d_106']
                 )
                 FACE_ANALYSER.prepare(ctx_id=0, det_size=_CURRENT_DET_SIZE)
     return FACE_ANALYSER
@@ -193,7 +193,7 @@ def set_det_size(det_size: tuple[int, int], config: Optional[ProcessingConfig] =
         FACE_ANALYSER = _FaceAnalysis(
             name='buffalo_l',
             providers=providers,
-            allowed_modules=['detection', 'recognition']
+            allowed_modules=['detection', 'recognition', 'landmark_2d_106']
         )
         FACE_ANALYSER.prepare(ctx_id=0, det_size=det_size)
 
