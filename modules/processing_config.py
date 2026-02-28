@@ -188,6 +188,9 @@ class ProcessingConfig:
     live_mirror: bool = False
     """Mirror the live preview horizontally"""
 
+    live_resizable: bool = True
+    """Allow the live preview window to be resized"""
+
     live_max_fps: int = 30
     """Maximum preview frame rate for live mode"""
 

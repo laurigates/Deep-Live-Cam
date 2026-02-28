@@ -80,6 +80,7 @@ def build_config_from_globals() -> ProcessingConfig:
         motion_adaptive_cosine_threshold=modules.globals.motion_adaptive_cosine_threshold,
         webcam_preview_running=modules.globals.webcam_preview_running,
         live_mirror=modules.globals.live_mirror,
+        live_resizable=modules.globals.live_resizable,
         live_max_fps=modules.globals.live_max_fps,
         show_fps=modules.globals.show_fps,
         virtual_cam=modules.globals.virtual_cam,
