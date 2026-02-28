@@ -260,7 +260,14 @@ def _paste_back(bgr_fake: np.ndarray, aimg: np.ndarray, M: np.ndarray, target_im
     IM = cv2.invertAffineTransform(M)
     img_white = np.full((aimg.shape[0], aimg.shape[1]), 255, dtype=np.float32)
 
-    bgr_fake = cv2.warpAffine(bgr_fake, IM, (target_img.shape[1], target_img.shape[0]), borderValue=0.0)
+    bgr_fake_canvas = target_img.astype(np.float32).copy()
+    cv2.warpAffine(
+        bgr_fake.astype(np.float32), IM,
+        (target_img.shape[1], target_img.shape[0]),
+        dst=bgr_fake_canvas,
+        borderMode=cv2.BORDER_TRANSPARENT,
+    )
+    bgr_fake = bgr_fake_canvas
     img_white = cv2.warpAffine(img_white, IM, (target_img.shape[1], target_img.shape[0]), borderValue=0.0)
     fake_diff = cv2.warpAffine(fake_diff, IM, (target_img.shape[1], target_img.shape[0]), borderValue=0.0)
 
