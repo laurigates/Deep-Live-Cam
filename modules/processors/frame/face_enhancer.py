@@ -21,6 +21,8 @@ from modules.utilities import (
     is_image,
     is_video,
 )
+from modules.processing_config import ProcessingConfig
+from modules.processing_config_factory import build_config_from_globals
 
 # Allow up to min(cpu_count, 8) concurrent GFPGAN calls to better utilise multi-core hardware.
 _SEMAPHORE_COUNT = min(max(1, (os.cpu_count() or 1)), 8)
@@ -89,10 +91,9 @@ def pre_check() -> bool:
     return True
 
 
-def pre_start() -> bool:
-    if not is_image(modules.globals.target_path) and not is_video(
-        modules.globals.target_path
-    ):
+def pre_start(config=None) -> bool:
+    config = config or build_config_from_globals()
+    if not is_image(config.target_path) and not is_video(config.target_path):
         update_status("Select an image or video for target path.", NAME)
         return False
     return True
@@ -317,18 +318,20 @@ def _postprocess_face(output: np.ndarray) -> np.ndarray:
     return cv2.cvtColor(face, cv2.COLOR_RGB2BGR)
 
 
-def enhance_face(temp_frame: Frame, faces=None, live_mode: bool = False) -> Frame:
+def enhance_face(temp_frame: Frame, faces=None, live_mode: bool = False, config=None) -> Frame:
     """Enhances all faces in a frame using the GFPGAN ONNX model.
 
     Args:
         temp_frame: The input frame to enhance.
         faces: Optional pre-detected face list. When provided, skips the
             redundant InsightFace detection pass (~100-200 ms saved per frame).
-        live_mode: When True, aligns and pastes at ``modules.globals.live_enhance_size``
+        live_mode: When True, aligns and pastes at ``config.live_enhance_size``
             instead of the model's native input size.  The face is upscaled to the
             model's expected resolution before inference and the output is
             downscaled back, reducing warp/paste costs for real-time use.
+        config: Optional ProcessingConfig; falls back to globals when not provided.
     """
+    config = config or build_config_from_globals()
     # Check for faces before loading the model — avoids paying the session
     # initialisation cost on face-free frames.
     if faces is None:
@@ -357,8 +360,8 @@ def enhance_face(temp_frame: Frame, faces=None, live_mode: bool = False) -> Fram
     # In live mode use a smaller alignment/paste resolution to reduce warp costs.
     # The face is still run through the model at `align_size` (upscaled before
     # inference, downscaled after), so quality degrades only slightly.
-    if live_mode and modules.globals.live_enhance_size < align_size:
-        paste_size = modules.globals.live_enhance_size
+    if live_mode and config.live_enhance_size < align_size:
+        paste_size = config.live_enhance_size
     else:
         paste_size = align_size
 
@@ -428,6 +431,7 @@ def process_frame(
     temp_frame: Frame,
     faces=None,
     live_mode: bool = False,
+    config=None,
 ) -> Frame:
     """Processes a frame: enhances all detected faces.
 
@@ -437,12 +441,13 @@ def process_frame(
         faces: Optional pre-detected face list. Passed through to
             enhance_face() to skip redundant InsightFace detection.
         live_mode: Passed through to enhance_face() for live-mode resolution scaling.
+        config: Optional ProcessingConfig; falls back to globals when not provided.
     """
-    return enhance_face(temp_frame, faces=faces, live_mode=live_mode)
+    return enhance_face(temp_frame, faces=faces, live_mode=live_mode, config=config)
 
 
 def process_frames(
-    source_path: str | None, temp_frame_paths: List[str], progress: Any = None
+    source_path: str | None, temp_frame_paths: List[str], progress: Any = None, config=None
 ) -> None:
     """Processes multiple frames from file paths."""
     modules.processors.frame.core.process_frames_io(
@@ -453,7 +458,7 @@ def process_frames(
 
 
 def process_image(
-    source_path: str | None, target_path: str, output_path: str
+    source_path: str | None, target_path: str, output_path: str, config=None
 ) -> None:
     """Processes a single image file."""
     target_frame = cv2.imread(target_path)
@@ -466,12 +471,12 @@ def process_image(
 
 
 def process_video(
-    source_path: str | None, temp_frame_paths: List[str]
+    source_path: str | None, temp_frame_paths: List[str], config=None
 ) -> None:
     """Processes video frames using the frame processor core."""
     modules.processors.frame.core.process_video(source_path, temp_frame_paths, process_frames)
 
-def process_frame_v2(temp_frame: Frame, faces=None, live_mode: bool = False) -> Frame:
-    return enhance_face(temp_frame, faces=faces, live_mode=live_mode)
+def process_frame_v2(temp_frame: Frame, faces=None, live_mode: bool = False, config=None) -> Frame:
+    return enhance_face(temp_frame, faces=faces, live_mode=live_mode, config=config)
 
 # --- END OF FILE face_enhancer.py ---

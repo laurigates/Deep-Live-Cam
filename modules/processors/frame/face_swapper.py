@@ -27,6 +27,8 @@ from modules.processors.frame.face_masking import (
     draw_mouth_mask_visualization,
     apply_mouth_area,
 )
+from modules.processing_config import ProcessingConfig
+from modules.processing_config_factory import build_config_from_globals
 import os
 import time
 
@@ -177,21 +179,22 @@ def get_face_swapper(providers: list | None = None) -> Any:
     return FACE_SWAPPER
 
 
-def _apply_mouth_mask(swapped: Frame, target_face: Face, original: Frame) -> Frame:
-    if not getattr(modules.globals, "mouth_mask", False):
+def _apply_mouth_mask(swapped: Frame, target_face: Face, original: Frame, config=None) -> Frame:
+    config = config or build_config_from_globals()
+    if not config.mouth_mask:
         return swapped
 
-    face_mask = create_face_mask(target_face, original)
+    face_mask = create_face_mask(target_face, original, config=config)
     mouth_mask, mouth_cutout, mouth_box, lower_lip_polygon = (
-        create_lower_mouth_mask(target_face, original)
+        create_lower_mouth_mask(target_face, original, config=config)
     )
 
     if mouth_cutout is not None and mouth_box != (0, 0, 0, 0):
         swapped = apply_mouth_area(
-            swapped, mouth_cutout, mouth_box, face_mask, lower_lip_polygon
+            swapped, mouth_cutout, mouth_box, face_mask, lower_lip_polygon, config=config
         )
 
-        if getattr(modules.globals, "show_mouth_mask_box", False):
+        if config.show_mouth_mask_box:
             mouth_mask_data = (mouth_mask, mouth_cutout, mouth_box, lower_lip_polygon)
             swapped = draw_mouth_mask_visualization(
                 swapped, target_face, mouth_mask_data
@@ -200,8 +203,9 @@ def _apply_mouth_mask(swapped: Frame, target_face: Face, original: Frame) -> Fra
     return swapped
 
 
-def _apply_poisson_blend(swapped: Frame, target_face: Face, original: Frame, pre_swap: Frame) -> Frame:
-    if not getattr(modules.globals, "poisson_blend", False):
+def _apply_poisson_blend(swapped: Frame, target_face: Face, original: Frame, pre_swap: Frame, config=None) -> Frame:
+    config = config or build_config_from_globals()
+    if not config.poisson_blend:
         return swapped
 
     face_mask = create_face_mask(target_face, original)
@@ -240,9 +244,10 @@ logger = logging.getLogger(NAME)
 _batch_fallback_warned = False
 
 
-def _clamp_opacity() -> float:
-    """Read the current opacity from globals, clamped to [0.0, 1.0]."""
-    return max(0.0, min(1.0, getattr(modules.globals, "opacity", 1.0)))
+def _clamp_opacity(config=None) -> float:
+    """Read the current opacity from config (or globals fallback), clamped to [0.0, 1.0]."""
+    config = config or build_config_from_globals()
+    return max(0.0, min(1.0, config.opacity))
 
 
 def _paste_back(bgr_fake: np.ndarray, aimg: np.ndarray, M: np.ndarray, target_img: np.ndarray) -> np.ndarray:
@@ -344,6 +349,7 @@ def batch_swap_faces(
     source_faces: List[Face],
     target_faces: List[Face],
     temp_frame: Frame,
+    config=None,
 ) -> Frame:
     """Swap multiple faces in a single ONNX inference call.
 
@@ -398,6 +404,8 @@ def batch_swap_faces(
     if not blobs:
         return temp_frame
 
+    config = config or build_config_from_globals()
+
     # Attempt batched inference
     try:
         batch_blob = np.concatenate(blobs, axis=0).astype(np.float32)  # (N, 3, 128, 128)
@@ -414,11 +422,11 @@ def batch_swap_faces(
         # Fallback: sequential swap_face calls
         result = temp_frame.copy()
         for source_face, target_face in zip(source_faces, target_faces):
-            result = swap_face(source_face, target_face, result)
+            result = swap_face(source_face, target_face, result, config)
         return result
 
     # Post-processing: paste each face back onto the frame
-    opacity = _clamp_opacity()
+    opacity = _clamp_opacity(config)
     original_frame = temp_frame if opacity >= 1.0 else temp_frame.copy()
     result = temp_frame.copy()
 
@@ -432,7 +440,7 @@ def batch_swap_faces(
         bgr_fake = np.clip(255 * img_fake, 0, 255).astype(np.uint8)[:, :, ::-1]
 
         # Optionally upscale crop before paste-back to reduce stretch artifact
-        if getattr(modules.globals, "prepaste_upscale", True):
+        if config.prepaste_upscale:
             k = _paste_scale_from_M(M)
             bgr_fake, aimg, M = _upscale_crop_for_paste(bgr_fake, aimg, M, k)
 
@@ -440,8 +448,8 @@ def batch_swap_faces(
         result = _paste_back(bgr_fake, aimg, M, result)
 
         # Apply mouth mask and Poisson blend per-face
-        result = _apply_mouth_mask(result, target_face, temp_frame)
-        result = _apply_poisson_blend(result, target_face, temp_frame, original_frame)
+        result = _apply_mouth_mask(result, target_face, temp_frame, config)
+        result = _apply_poisson_blend(result, target_face, temp_frame, original_frame, config)
 
     if opacity < 1.0:
         result = gpu_add_weighted(
@@ -452,7 +460,7 @@ def batch_swap_faces(
     return np.clip(result, 0, 255).astype(np.uint8)
 
 
-def swap_face(source_face: Face, target_face: Face, temp_frame: Frame) -> Frame:
+def swap_face(source_face: Face, target_face: Face, temp_frame: Frame, config=None) -> Frame:
     """Optimized face swapping with better memory management and performance."""
     face_swapper = get_face_swapper()
     if face_swapper is None:
@@ -465,8 +473,10 @@ def swap_face(source_face: Face, target_face: Face, temp_frame: Frame) -> Frame:
     if not hasattr(source_face, 'normed_embedding') or source_face.normed_embedding is None:
         return temp_frame
 
+    config = config or build_config_from_globals()
+
     # Store a copy of the original frame before swapping for opacity blending
-    opacity = _clamp_opacity()
+    opacity = _clamp_opacity(config)
     original_frame = temp_frame if opacity >= 1.0 else temp_frame.copy()
 
     # Pre-swap Input Check with optimization
@@ -497,7 +507,7 @@ def swap_face(source_face: Face, target_face: Face, temp_frame: Frame) -> Frame:
         )
 
         # Optionally upscale crop before paste-back to reduce stretch artifact
-        if getattr(modules.globals, "prepaste_upscale", True):
+        if config.prepaste_upscale:
             k = _paste_scale_from_M(M)
             bgr_fake, aimg, M = _upscale_crop_for_paste(bgr_fake, aimg, M, k)
 
@@ -524,8 +534,8 @@ def swap_face(source_face: Face, target_face: Face, temp_frame: Frame) -> Frame:
     # --- Post-swap Processing (Masking, Opacity, etc.) ---
     # Now, work with the guaranteed uint8 'swapped_frame'
 
-    swapped_frame = _apply_mouth_mask(swapped_frame, target_face, temp_frame)
-    swapped_frame = _apply_poisson_blend(swapped_frame, target_face, temp_frame, original_frame)
+    swapped_frame = _apply_mouth_mask(swapped_frame, target_face, temp_frame, config)
+    swapped_frame = _apply_poisson_blend(swapped_frame, target_face, temp_frame, original_frame, config)
 
     # Apply opacity blend between the original frame and the swapped frame
     if opacity >= 1.0:
@@ -537,13 +547,15 @@ def swap_face(source_face: Face, target_face: Face, temp_frame: Frame) -> Frame:
 
 
 # --- START: Mac M1-M5 Optimized Face Detection ---
-def get_faces_optimized(frame: Frame, use_cache: bool = True) -> Optional[List[Face]]:
+def get_faces_optimized(frame: Frame, use_cache: bool = True, config=None) -> Optional[List[Face]]:
     """Optimized face detection for live mode on Apple Silicon"""
     global LAST_DETECTION_TIME, FACE_DETECTION_CACHE
-    
+
+    config = config or build_config_from_globals()
+
     if not use_cache:
         # Standard detection (no caching)
-        if modules.globals.many_faces:
+        if config.many_faces:
             return get_many_faces(frame)
         else:
             face = get_one_face(frame)
@@ -554,33 +566,34 @@ def get_faces_optimized(frame: Frame, use_cache: bool = True) -> Optional[List[F
     # IS_APPLE_SILICON; now enabled on all platforms for live mode.
     current_time = time.time()
     time_since_last = current_time - LAST_DETECTION_TIME
-    
+
     # Skip detection if too soon (adaptive frame skipping)
-    if time_since_last < modules.globals.DETECTION_INTERVAL and FACE_DETECTION_CACHE:
+    if time_since_last < config.detection_interval and FACE_DETECTION_CACHE:
         return FACE_DETECTION_CACHE.get('faces')
-    
+
     # Perform detection
     LAST_DETECTION_TIME = current_time
-    if modules.globals.many_faces:
+    if config.many_faces:
         faces = get_many_faces(frame)
     else:
         face = get_one_face(frame)
         faces = [face] if face else None
-    
+
     # Cache results
     FACE_DETECTION_CACHE['faces'] = faces
     FACE_DETECTION_CACHE['timestamp'] = current_time
-    
+
     return faces
 # --- END: Mac M1-M5 Optimized Face Detection ---
 
 # --- START: Helper function for interpolation and sharpening ---
-def apply_post_processing(current_frame: Frame, swapped_face_bboxes: List[np.ndarray]) -> Frame:
+def apply_post_processing(current_frame: Frame, swapped_face_bboxes: List[np.ndarray], config=None) -> Frame:
     """Applies sharpening and interpolation with Apple Silicon optimizations."""
+    config = config or build_config_from_globals()
     processed_frame = current_frame
 
     # 1. Apply Sharpening (if enabled) with optimized kernel for Apple Silicon
-    sharpness_value = getattr(modules.globals, "sharpness", 0.0)
+    sharpness_value = config.sharpness
     if sharpness_value > 0.0 and swapped_face_bboxes:
         height, width = processed_frame.shape[:2]
         for bbox in swapped_face_bboxes:
@@ -614,8 +627,8 @@ def apply_post_processing(current_frame: Frame, swapped_face_bboxes: List[np.nda
 
 
     # 2. Apply Interpolation (if enabled)
-    enable_interpolation = getattr(modules.globals, "enable_interpolation", False)
-    interpolation_weight = getattr(modules.globals, "interpolation_weight", 0.2)
+    enable_interpolation = config.enable_interpolation
+    interpolation_weight = config.interpolation_weight
 
     final_frame = processed_frame # Start with the current (potentially sharpened) frame
     prev_frame = _get_previous_frame()
@@ -650,12 +663,14 @@ def apply_post_processing(current_frame: Frame, swapped_face_bboxes: List[np.nda
 # --- END: Helper function for interpolation and sharpening ---
 
 
-def process_frame(source_face: Face, temp_frame: Frame) -> Frame:
+def process_frame(source_face: Face, temp_frame: Frame, config=None) -> Frame:
     """
     DEPRECATED / SIMPLER VERSION - Processes a single frame using one source face.
     Consider using process_frame_v2 for more complex scenarios.
     """
-    if getattr(modules.globals, "opacity", 1.0) == 0:
+    config = config or build_config_from_globals()
+
+    if config.opacity == 0:
         # If opacity is 0, no swap happens, so no post-processing needed.
         # Also reset interpolation state if it was active.
         _set_previous_frame(None)
@@ -666,7 +681,7 @@ def process_frame(source_face: Face, temp_frame: Frame) -> Frame:
     processed_frame = temp_frame # Start with the input frame
     swapped_face_bboxes = [] # Keep track of where swaps happened
 
-    if modules.globals.many_faces:
+    if config.many_faces:
         many_faces = get_many_faces(processed_frame)
         if many_faces:
             for face in many_faces:
@@ -674,39 +689,40 @@ def process_frame(source_face: Face, temp_frame: Frame) -> Frame:
                     swapped_face_bboxes.append(face.bbox.astype(int))
             if len(many_faces) >= 2:
                 source_faces = [source_face] * len(many_faces)
-                processed_frame = batch_swap_faces(source_faces, many_faces, processed_frame)
+                processed_frame = batch_swap_faces(source_faces, many_faces, processed_frame, config)
             else:
-                processed_frame = swap_face(source_face, many_faces[0], processed_frame)
+                processed_frame = swap_face(source_face, many_faces[0], processed_frame, config)
     else:
         target_face = get_one_face(processed_frame)
         if target_face:
-            processed_frame = swap_face(source_face, target_face, processed_frame)
+            processed_frame = swap_face(source_face, target_face, processed_frame, config)
             if target_face is not None and hasattr(target_face, "bbox") and target_face.bbox is not None:
                     swapped_face_bboxes.append(target_face.bbox.astype(int))
 
     # Apply sharpening and interpolation
-    final_frame = apply_post_processing(processed_frame, swapped_face_bboxes)
+    final_frame = apply_post_processing(processed_frame, swapped_face_bboxes, config)
 
     return final_frame
 
 
-def _build_pairs_from_file_map(temp_frame_path: str) -> list:
+def _build_pairs_from_file_map(temp_frame_path: str, config=None) -> list:
     """Build (source_face, target_face) pairs from source_target_map for image/video files."""
+    config = config or build_config_from_globals()
     pairs = []
     source_target_map = _MAP_STORE.get_entries()
     if not source_target_map:
         return pairs
 
-    if modules.globals.many_faces:
+    if config.many_faces:
         source_face = default_source_face()
         if not source_face:
             return pairs
         for map_data in source_target_map:
-            if is_image(modules.globals.target_path):
+            if is_image(config.target_path):
                 target_face = map_data.get("target", {}).get("face")
                 if target_face:
                     pairs.append((source_face, target_face))
-            elif is_video(modules.globals.target_path):
+            elif is_video(config.target_path):
                 for frame_data in map_data.get("target_faces_in_frame", []):
                     if frame_data and frame_data.get("location") == temp_frame_path:
                         for target_face in frame_data.get("faces", []):
@@ -716,11 +732,11 @@ def _build_pairs_from_file_map(temp_frame_path: str) -> list:
             source_face = map_data.get("source", {}).get("face")
             if not source_face:
                 continue
-            if is_image(modules.globals.target_path):
+            if is_image(config.target_path):
                 target_face = map_data.get("target", {}).get("face")
                 if target_face:
                     pairs.append((source_face, target_face))
-            elif is_video(modules.globals.target_path):
+            elif is_video(config.target_path):
                 for frame_data in map_data.get("target_faces_in_frame", []):
                     if frame_data and frame_data.get("location") == temp_frame_path:
                         for target_face in frame_data.get("faces", []):
@@ -728,16 +744,17 @@ def _build_pairs_from_file_map(temp_frame_path: str) -> list:
     return pairs
 
 
-def _build_pairs_live(processed_frame: Frame) -> list:
+def _build_pairs_live(processed_frame: Frame, config=None) -> list:
     """Build (source_face, target_face) pairs for live/webcam mode."""
+    config = config or build_config_from_globals()
     pairs = []
-    detected_faces = get_faces_optimized(processed_frame)
+    detected_faces = get_faces_optimized(processed_frame, config=config)
     if not detected_faces:
         return pairs
 
     simple_map = _MAP_STORE.get_simple_map()
 
-    if modules.globals.many_faces:
+    if config.many_faces:
         source_face = default_source_face()
         if source_face:
             for target_face in detected_faces:
@@ -774,9 +791,11 @@ def _build_pairs_live(processed_frame: Frame) -> list:
     return pairs
 
 
-def process_frame_v2(temp_frame: Frame, temp_frame_path: str = "") -> Frame:
+def process_frame_v2(temp_frame: Frame, temp_frame_path: str = "", config=None) -> Frame:
     """Handles complex mapping scenarios (map_faces=True) and live streams."""
-    if getattr(modules.globals, "opacity", 1.0) == 0:
+    config = config or build_config_from_globals()
+
+    if config.opacity == 0:
         # If opacity is 0, no swap happens, so no post-processing needed.
         # Also reset interpolation state if it was active.
         _set_previous_frame(None)
@@ -786,14 +805,14 @@ def process_frame_v2(temp_frame: Frame, temp_frame_path: str = "") -> Frame:
     swapped_face_bboxes = [] # Keep track of where swaps happened
 
     # Determine source/target pairs based on mode
-    is_file_target = modules.globals.target_path and (
-        is_image(modules.globals.target_path) or is_video(modules.globals.target_path)
+    is_file_target = config.target_path and (
+        is_image(config.target_path) or is_video(config.target_path)
     )
 
     if is_file_target:
-        source_target_pairs = _build_pairs_from_file_map(temp_frame_path)
+        source_target_pairs = _build_pairs_from_file_map(temp_frame_path, config)
     else:
-        source_target_pairs = _build_pairs_live(processed_frame)
+        source_target_pairs = _build_pairs_live(processed_frame, config)
 
 
     # Perform swaps based on the collected pairs
@@ -805,14 +824,14 @@ def process_frame_v2(temp_frame: Frame, temp_frame_path: str = "") -> Frame:
     if len(valid_pairs) >= 2:
         source_list = [s for s, _ in valid_pairs]
         target_list = [t for _, t in valid_pairs]
-        processed_frame = batch_swap_faces(source_list, target_list, processed_frame)
+        processed_frame = batch_swap_faces(source_list, target_list, processed_frame, config)
     elif len(valid_pairs) == 1:
         source_face, target_face = valid_pairs[0]
-        processed_frame = swap_face(source_face, target_face, processed_frame)
+        processed_frame = swap_face(source_face, target_face, processed_frame, config)
 
 
     # Apply sharpening and interpolation
-    final_frame = apply_post_processing(processed_frame, swapped_face_bboxes)
+    final_frame = apply_post_processing(processed_frame, swapped_face_bboxes, config)
 
     return final_frame
 
@@ -887,10 +906,11 @@ def _process_single_frame(
 
 
 def process_frames(
-    source_path: str, temp_frame_paths: List[str], progress: Any = None
+    source_path: str, temp_frame_paths: List[str], progress: Any = None, config=None
 ) -> None:
     """Process a list of frame paths for video — read, swap, write back."""
-    use_v2 = getattr(modules.globals, "map_faces", False)
+    config = config or build_config_from_globals()
+    use_v2 = config.map_faces
     source_face = None
 
     if not use_v2:
@@ -906,12 +926,13 @@ def process_frames(
         _process_single_frame(temp_frame_path, use_v2, source_face, progress)
 
 
-def process_image(source_path: str, target_path: str, output_path: str) -> None:
+def process_image(source_path: str, target_path: str, output_path: str, config=None) -> None:
     """Processes a single target image."""
+    config = config or build_config_from_globals()
     # Reset per-thread interpolation state for single image processing
     _set_previous_frame(None)
 
-    use_v2 = getattr(modules.globals, "map_faces", False)
+    use_v2 = config.map_faces
 
     # Read target first
     try:
@@ -926,11 +947,11 @@ def process_image(source_path: str, target_path: str, output_path: str) -> None:
     result = None
     try:
         if use_v2:
-            if getattr(modules.globals, "many_faces", False):
+            if config.many_faces:
                  update_status("Processing image with 'map_faces' and 'many_faces'. Using pre-analysis map.", NAME)
             # V2 processes based on global maps, doesn't need source_path here directly
             # Assumes maps are pre-populated. Pass target_path for map lookup.
-            result = process_frame_v2(target_frame, target_path)
+            result = process_frame_v2(target_frame, target_path, config)
 
         else: # Simple mode
             try:
@@ -946,7 +967,7 @@ def process_image(source_path: str, target_path: str, output_path: str) -> None:
                  update_status(f"Error reading or analyzing source image {source_path}: {src_e}", NAME)
                  return
 
-            result = process_frame(source_face, target_frame)
+            result = process_frame(source_face, target_frame, config)
 
         # Write the result if processing was successful
         if result is not None:
@@ -965,19 +986,24 @@ def process_image(source_path: str, target_path: str, output_path: str) -> None:
          # traceback.print_exc()
 
 
-def process_video(source_path: str, temp_frame_paths: List[str]) -> None:
+def process_video(source_path: str, temp_frame_paths: List[str], config=None) -> None:
     """Sets up and calls the frame processing for video."""
+    config = config or build_config_from_globals()
     # Reset per-thread interpolation state before starting video processing
     _set_previous_frame(None)
 
-    mode_desc = "'map_faces'" if getattr(modules.globals, "map_faces", False) else "'simple'"
-    if getattr(modules.globals, "map_faces", False) and getattr(modules.globals, "many_faces", False):
+    mode_desc = "'map_faces'" if config.map_faces else "'simple'"
+    if config.map_faces and config.many_faces:
         mode_desc += " and 'many_faces'. Using pre-analysis map."
     update_status(f"Processing video with {mode_desc} mode.", NAME)
 
-    # Pass the correct source_path (needed for simple mode in process_frames)
-    # The core processing logic handles calling the right frame function (process_frames)
+    # Use a closure to capture config and thread it through the callback.
+    # frame/core.process_video calls process_frames(source_path, batch, progress)
+    # without config; the closure adapts the interface.
+    def _process_frames_with_config(sp, tfps, progress=None):
+        return process_frames(sp, tfps, progress, config)
+
     modules.processors.frame.core.process_video(
-        source_path, temp_frame_paths, process_frames # Pass the newly modified process_frames
+        source_path, temp_frame_paths, _process_frames_with_config
     )
 

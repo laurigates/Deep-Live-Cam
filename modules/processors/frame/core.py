@@ -10,6 +10,8 @@ import cv2
 
 import modules
 import modules.globals
+from modules.processing_config import ProcessingConfig
+from modules.processing_config_factory import build_config_from_globals
 
 FRAME_PROCESSORS_MODULES: List[ModuleType] = []
 _PROCESSORS_LOCK = threading.Lock()  # Protects FRAME_PROCESSORS_MODULES from concurrent access
@@ -55,13 +57,15 @@ def get_frame_processors_modules(frame_processors: List[str]) -> List[ModuleType
     set_frame_processors_modules_from_ui(frame_processors)
     return _get_processors_snapshot()
 
-def set_frame_processors_modules_from_ui(frame_processors: List[str]) -> None:
+def set_frame_processors_modules_from_ui(frame_processors: List[str], config=None) -> None:
     global FRAME_PROCESSORS_MODULES
+
+    config = config or build_config_from_globals()
 
     with _PROCESSORS_LOCK:
         current_processor_names = [proc.__name__.split('.')[-1] for proc in FRAME_PROCESSORS_MODULES]
 
-        for frame_processor, state in modules.globals.fp_ui.items():
+        for frame_processor, state in config.fp_ui.items():
             if state == True and frame_processor not in current_processor_names:
                 try:
                     frame_processor_module = load_frame_processor_module(frame_processor)
@@ -91,7 +95,7 @@ def set_frame_processors_modules_from_ui(frame_processors: List[str]) -> None:
                 except Exception as e:
                      print(f"Warning: Error removing frame processor {frame_processor}: {e}")
 
-def multi_process_frame(source_path: str, temp_frame_paths: List[str], process_frames: Callable[[str, List[str], Any], None], progress: Any = None) -> None:
+def multi_process_frame(source_path: str, temp_frame_paths: List[str], process_frames: Callable[[str, List[str], Any], None], progress: Any = None, config=None) -> None:
     """Process video frames in parallel using ProcessPoolExecutor.
 
     Uses separate processes for video batch mode to bypass the GIL and fully
@@ -106,7 +110,8 @@ def multi_process_frame(source_path: str, temp_frame_paths: List[str], process_f
     For live/webcam mode, use multi_process_frame_live() instead which uses
     ThreadPoolExecutor to avoid per-process model loading latency.
     """
-    max_workers = modules.globals.execution_threads
+    config = config or build_config_from_globals()
+    max_workers = config.execution_threads
 
     # Split frame paths into batches — one batch per worker process.
     # This amortises the per-process ONNX model loading (~2-5s) across
@@ -132,7 +137,7 @@ def multi_process_frame(source_path: str, temp_frame_paths: List[str], process_f
                 progress.update(len(batch))
 
 
-def multi_process_frame_live(source_path: str, temp_frame_paths: List[str], process_frames: Callable[[str, List[str], Any], None], progress: Any = None) -> None:
+def multi_process_frame_live(source_path: str, temp_frame_paths: List[str], process_frames: Callable[[str, List[str], Any], None], progress: Any = None, config=None) -> None:
     """Process frames in parallel using ThreadPoolExecutor for live mode.
 
     ThreadPoolExecutor avoids the ~2-5s per-worker model loading overhead of
@@ -140,7 +145,8 @@ def multi_process_frame_live(source_path: str, temp_frame_paths: List[str], proc
     matters. ONNX Runtime releases the GIL during inference, so threads still
     get reasonable parallelism on the dominant cost (model inference).
     """
-    max_workers = modules.globals.execution_threads
+    config = config or build_config_from_globals()
+    max_workers = config.execution_threads
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = {
@@ -179,9 +185,10 @@ def process_frames_io(
             progress.update(1)
 
 
-def process_video(source_path: str, frame_paths: list[str], process_frames: Callable[[str, List[str], Any], None]) -> None:
+def process_video(source_path: str, frame_paths: list[str], process_frames: Callable[[str, List[str], Any], None], config=None) -> None:
+    config = config or build_config_from_globals()
     progress_bar_format = '{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}{postfix}]'
     total = len(frame_paths)
     with tqdm(total=total, desc='Processing', unit='frame', dynamic_ncols=True, bar_format=progress_bar_format) as progress:
-        progress.set_postfix({'execution_providers': modules.globals.execution_providers, 'execution_threads': modules.globals.execution_threads, 'max_memory': modules.globals.max_memory})
-        multi_process_frame(source_path, frame_paths, process_frames, progress)
+        progress.set_postfix({'execution_providers': config.execution_providers, 'execution_threads': config.execution_threads, 'max_memory': config.max_memory})
+        multi_process_frame(source_path, frame_paths, process_frames, progress, config)

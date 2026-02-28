@@ -45,7 +45,7 @@ def build_config_from_globals() -> ProcessingConfig:
         keep_frames=modules.globals.keep_frames,
         # Face Swapper Options
         face_swapper_enabled=modules.globals.face_swapper_enabled,
-        opacity=modules.globals.opacity,
+        opacity=max(0.0, min(1.0, getattr(modules.globals, 'opacity', 1.0))),
         sharpness=modules.globals.sharpness,
         prepaste_upscale=modules.globals.prepaste_upscale,
         color_correction=modules.globals.color_correction,

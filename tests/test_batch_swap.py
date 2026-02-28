@@ -153,7 +153,7 @@ class TestBatchSwapFaces:
         mock_get_swapper.return_value = swapper
 
         frame = np.random.randint(0, 256, (480, 640, 3), dtype=np.uint8)
-        mock_swap_face.side_effect = lambda s, t, f: f  # pass-through
+        mock_swap_face.side_effect = lambda s, t, f, cfg=None: f  # pass-through
 
         sources = [_make_face(), _make_face()]
         targets = [_make_face(), _make_face()]
@@ -195,7 +195,7 @@ class TestBatchSwapFaces:
 
 class TestProcessFrameRouting:
 
-    @patch("modules.processors.frame.face_swapper.apply_post_processing", side_effect=lambda f, b: f)
+    @patch("modules.processors.frame.face_swapper.apply_post_processing", side_effect=lambda f, b, cfg=None: f)
     @patch("modules.processors.frame.face_swapper.batch_swap_faces")
     @patch("modules.processors.frame.face_swapper.get_many_faces")
     def test_many_faces_uses_batch_when_two_or_more(self, mock_get_many, mock_batch, _mock_post):
@@ -218,7 +218,7 @@ class TestProcessFrameRouting:
         assert len(args[0][0]) == 3  # source_faces
         assert len(args[0][1]) == 3  # target_faces
 
-    @patch("modules.processors.frame.face_swapper.apply_post_processing", side_effect=lambda f, b: f)
+    @patch("modules.processors.frame.face_swapper.apply_post_processing", side_effect=lambda f, b, cfg=None: f)
     @patch("modules.processors.frame.face_swapper.swap_face")
     @patch("modules.processors.frame.face_swapper.get_many_faces")
     def test_single_many_face_uses_swap_face(self, mock_get_many, mock_swap, _mock_post):
@@ -244,7 +244,7 @@ class TestProcessFrameRouting:
 
 class TestProcessFrameV2Routing:
 
-    @patch("modules.processors.frame.face_swapper.apply_post_processing", side_effect=lambda f, b: f)
+    @patch("modules.processors.frame.face_swapper.apply_post_processing", side_effect=lambda f, b, cfg=None: f)
     @patch("modules.processors.frame.face_swapper.batch_swap_faces")
     @patch("modules.processors.frame.face_swapper._build_pairs_live")
     def test_v2_uses_batch_when_two_pairs(self, mock_build, mock_batch, _mock_post):
@@ -263,7 +263,7 @@ class TestProcessFrameV2Routing:
 
         mock_batch.assert_called_once()
 
-    @patch("modules.processors.frame.face_swapper.apply_post_processing", side_effect=lambda f, b: f)
+    @patch("modules.processors.frame.face_swapper.apply_post_processing", side_effect=lambda f, b, cfg=None: f)
     @patch("modules.processors.frame.face_swapper.swap_face")
     @patch("modules.processors.frame.face_swapper._build_pairs_live")
     def test_v2_uses_swap_face_for_single_pair(self, mock_build, mock_swap, _mock_post):
@@ -282,7 +282,7 @@ class TestProcessFrameV2Routing:
 
         mock_swap.assert_called_once()
 
-    @patch("modules.processors.frame.face_swapper.apply_post_processing", side_effect=lambda f, b: f)
+    @patch("modules.processors.frame.face_swapper.apply_post_processing", side_effect=lambda f, b, cfg=None: f)
     @patch("modules.processors.frame.face_swapper.batch_swap_faces")
     @patch("modules.processors.frame.face_swapper.swap_face")
     @patch("modules.processors.frame.face_swapper._build_pairs_live")

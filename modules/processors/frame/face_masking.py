@@ -3,6 +3,8 @@ import numpy as np
 from modules.typing import Face, Frame
 import modules.globals
 from modules.gpu_processing import gpu_gaussian_blur, gpu_resize, gpu_cvt_color
+from modules.processing_config import ProcessingConfig
+from modules.processing_config_factory import build_config_from_globals
 
 def apply_color_transfer(source, target):
     """
@@ -37,7 +39,7 @@ def apply_color_transfer(source, target):
     result_bgr = cv2.cvtColor(result_lab, cv2.COLOR_LAB2BGR)
     return np.clip(result_bgr * 255.0, 0, 255).astype(np.uint8)
 
-def create_face_mask(face: Face, frame: Frame) -> np.ndarray:
+def create_face_mask(face: Face, frame: Frame, config=None) -> np.ndarray:
     """Creates a feathered mask covering the whole face area based on landmarks."""
     mask = np.zeros(frame.shape[:2], dtype=np.uint8)
 
@@ -81,7 +83,8 @@ def create_face_mask(face: Face, frame: Frame) -> np.ndarray:
             print(f"Error creating convex hull for face mask: {hull_e}")
             return mask
 
-        blur_k_size = getattr(modules.globals, "face_mask_blur", 31)
+        # face_mask_blur is not a standard config field — use getattr with fallback
+        blur_k_size = getattr(config, 'face_mask_blur', getattr(modules.globals, "face_mask_blur", 31))
         blur_k_size = max(1, blur_k_size // 2 * 2 + 1)
         mask = gpu_gaussian_blur(mask, (blur_k_size, blur_k_size), 0)
 
@@ -93,7 +96,7 @@ def create_face_mask(face: Face, frame: Frame) -> np.ndarray:
     return mask
 
 def create_lower_mouth_mask(
-    face: Face, frame: Frame
+    face: Face, frame: Frame, config=None
 ) -> tuple[np.ndarray, np.ndarray, tuple, np.ndarray]:
     mask = np.zeros(frame.shape[:2], dtype=np.uint8)
     mouth_cutout = None
@@ -118,13 +121,15 @@ def create_lower_mouth_mask(
         if not np.all(np.isfinite(lower_lip_landmarks)):
             return mask, mouth_cutout, mouth_box, lower_lip_polygon
 
+        config = config or build_config_from_globals()
+
         center = np.mean(lower_lip_landmarks, axis=0)
         if not np.all(np.isfinite(center)):
             return mask, mouth_cutout, mouth_box, lower_lip_polygon
 
         # Correct formula: use both mask_down_size and mouth_mask_size
         expansion_factor = (
-            1 + modules.globals.mask_down_size * modules.globals.mouth_mask_size
+            1 + config.mask_down_size * config.mouth_mask_size
         )
         expanded_landmarks = (lower_lip_landmarks - center) * expansion_factor + center
 
@@ -150,7 +155,8 @@ def create_lower_mouth_mask(
             polygon_relative_to_roi = expanded_landmarks - [min_x, min_y]
             cv2.fillPoly(mask_roi, [polygon_relative_to_roi], 255)
 
-            blur_k_size = getattr(modules.globals, "mask_blur_kernel", 15)
+            # mask_blur_kernel is not a standard config field — use getattr with fallback
+            blur_k_size = getattr(config, 'mask_blur_kernel', getattr(modules.globals, "mask_blur_kernel", 15))
             blur_k_size = max(1, blur_k_size // 2 * 2 + 1)
             mask_roi = gpu_gaussian_blur(mask_roi, (blur_k_size, blur_k_size), 0)
 
@@ -189,7 +195,8 @@ def _ellipse_polygon(center: tuple[int, int], axes: tuple[int, int], n: int = 32
     return np.column_stack((x, y)).astype(np.int32)
 
 
-def create_eyes_mask(face: Face, frame: Frame) -> tuple:
+def create_eyes_mask(face: Face, frame: Frame, config=None) -> tuple:
+    config = config or build_config_from_globals()
     mask = np.zeros(frame.shape[:2], dtype=np.uint8)
     landmarks = face.landmark_2d_106
     if landmarks is None:
@@ -201,7 +208,7 @@ def create_eyes_mask(face: Face, frame: Frame) -> tuple:
     left_eye_center = np.mean(left_eye, axis=0).astype(np.int32)
     right_eye_center = np.mean(right_eye, axis=0).astype(np.int32)
 
-    scale = 1 + modules.globals.mask_down_size * modules.globals.eyes_mask_size
+    scale = 1 + config.mask_down_size * config.eyes_mask_size
     left_width, left_height = _eye_dimensions(left_eye, scale)
     right_width, right_height = _eye_dimensions(right_eye, scale)
 
@@ -272,7 +279,8 @@ def _curved_eyebrow_contour(points: np.ndarray) -> np.ndarray:
     return center + (contour - center) * 1.2
 
 
-def create_eyebrows_mask(face: Face, frame: Frame) -> tuple:
+def create_eyebrows_mask(face: Face, frame: Frame, config=None) -> tuple:
+    config = config or build_config_from_globals()
     mask = np.zeros(frame.shape[:2], dtype=np.uint8)
     landmarks = face.landmark_2d_106
     if landmarks is None:
@@ -282,7 +290,7 @@ def create_eyebrows_mask(face: Face, frame: Frame) -> tuple:
     right_eyebrow = landmarks[43:51].astype(np.float32)
 
     all_points = np.vstack([left_eyebrow, right_eyebrow])
-    pf = modules.globals.eyebrows_mask_size
+    pf = config.eyebrows_mask_size
     min_x = max(0, int(np.min(all_points[:, 0]) - 25 * pf))
     min_y = max(0, int(np.min(all_points[:, 1]) - 20 * pf))
     max_x = min(frame.shape[1], int(np.max(all_points[:, 0]) + 25 * pf))
@@ -329,6 +337,7 @@ def apply_mask_area(
     box: tuple,
     face_mask: np.ndarray,
     polygon: np.ndarray,
+    config=None,
 ) -> np.ndarray:
     min_x, min_y, max_x, max_y = box
     box_width = max_x - min_x
@@ -368,14 +377,15 @@ def apply_mask_area(
             adjusted_polygon = polygon - [min_x, min_y]
             cv2.fillPoly(polygon_mask, [adjusted_polygon], 255)
 
+        _config = config or build_config_from_globals()
         # Feather the polygon mask in a single pass.
         # Combine the initial sigma (7) with the adaptive feather amount and
         # the final smoothing sigma (1) into one equivalent sigma:
         #   σ_total = √(σ_initial² + σ_adaptive² + σ_final²)
         feather_amount = min(
-            modules.globals.MOUTH_FEATHER_RADIUS * 3,  # MOUTH_FEATHER_RADIUS * 3 = 30, preserving original cap
-            box_width // modules.globals.mask_feather_ratio,
-            box_height // modules.globals.mask_feather_ratio,
+            _config.mouth_feather_radius * 3,  # mouth_feather_radius * 3 = 30, preserving original cap
+            box_width // _config.mask_feather_ratio,
+            box_height // _config.mask_feather_ratio,
         )
         combined_sigma = (49 + feather_amount ** 2 + 1) ** 0.5
         feathered_mask = cv2.GaussianBlur(
@@ -525,6 +535,7 @@ def apply_mouth_area(
     mouth_box: tuple,
     face_mask: np.ndarray,
     mouth_polygon: np.ndarray,
+    config=None,
 ) -> np.ndarray:
     if (frame is None or mouth_cutout is None or mouth_box is None or
             face_mask is None or mouth_polygon is None):
@@ -576,7 +587,8 @@ def apply_mouth_area(
         adjusted_polygon = mouth_polygon - [min_x, min_y]
         cv2.fillPoly(polygon_mask_roi, [adjusted_polygon.astype(np.int32)], 255)
 
-        mask_feather_ratio = getattr(modules.globals, "mask_feather_ratio", 12)
+        _config = config or build_config_from_globals()
+        mask_feather_ratio = _config.mask_feather_ratio
         feather_base_dim = min(box_width, box_height)
         feather_amount = max(1, min(30, feather_base_dim // max(1, mask_feather_ratio)))
         kernel_size = 2 * feather_amount + 1
