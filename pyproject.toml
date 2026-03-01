@@ -80,3 +80,52 @@ markers = [
     "integration: integration tests requiring real models (deselect with '-m \"not integration\"')",
 ]
 addopts = "-m 'not benchmark and not integration'"
+
+# ── Ruff ──────────────────────────────────────────────────────────────
+[tool.ruff]
+target-version = "py313"
+line-length = 120
+
+[tool.ruff.lint]
+select = [
+    "E",     # pycodestyle errors
+    "W",     # pycodestyle warnings
+    "F",     # pyflakes
+    "I",     # isort
+    "N",     # pep8-naming
+    "UP",    # pyupgrade
+    "B",     # flake8-bugbear
+    "A",     # flake8-builtins
+    "SIM",   # flake8-simplify
+    "TCH",   # flake8-type-checking
+    "RUF",   # ruff-specific rules
+]
+ignore = [
+    "E501",   # line too long (handled by formatter)
+    "E731",   # lambda-assignment (used in UI callbacks)
+    "E741",   # ambiguous variable name (common in ML/CV code: H, W, C)
+    "B905",   # zip without strict= (many existing patterns)
+    "SIM108", # ternary operator (readability in complex CV pipelines)
+    "UP007",  # use X | Y for union types (not yet adopted in codebase)
+    "N806",   # non-lowercase variable in function (ML convention: H, W, C, BGR)
+    "RUF059", # unused-unpacked-variable (common: x, y, w, h = bbox)
+    "RUF001", # ambiguous unicode character in string (locales)
+    "RUF002", # ambiguous unicode character in docstring (locales)
+    "RUF003", # ambiguous unicode character in comment (locales)
+    "SIM105", # suppressible-exception (try/except pass is clearer in CV pipelines)
+    "A006",   # builtin-lambda-argument-shadowing (UI callbacks)
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["modules"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["B", "SIM", "N", "F401", "F841"]  # relaxed rules for test code
+"modules/**/__init__.py" = ["F401"]               # re-exports in __init__ files
+"modules/processors/**" = ["F841", "N803"]        # ML/CV conventions (unused vars, uppercase args)
+"locales/**" = ["RUF001", "RUF002"]               # unicode in translations
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+docstring-code-format = true
