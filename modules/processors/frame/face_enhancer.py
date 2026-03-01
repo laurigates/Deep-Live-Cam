@@ -23,6 +23,11 @@ from modules.utilities import (
 )
 from modules.processing_config import ProcessingConfig
 from modules.processing_config_factory import build_config_from_globals
+from modules.face_preprocessing import (
+    preprocess_enhancement_input,
+    postprocess_enhancement_output,
+)
+from modules.paste_back import inverse_affine_warp
 
 # Allow up to min(cpu_count, 8) concurrent GFPGAN calls to better utilise multi-core hardware.
 _SEMAPHORE_COUNT = min(max(1, (os.cpu_count() or 1)), 8)
@@ -241,26 +246,18 @@ def _paste_back(
     inverse affine transform with feathered-edge blending.
     """
     h, w = frame.shape[:2]
+    target_size = (w, h)
 
-    # Inverse the affine warp
-    inv_matrix = cv2.invertAffineTransform(affine_matrix)
-    inv_restored = cv2.warpAffine(
-        enhanced_face,
-        inv_matrix,
-        (w, h),
-        borderMode=cv2.BORDER_CONSTANT,
-        borderValue=(0, 0, 0),
+    inv_restored = inverse_affine_warp(
+        enhanced_face, affine_matrix, target_size,
+        border_value=(0, 0, 0),
     )
 
     face_mask_3c = _get_feathered_mask(output_size)
 
-    # Warp mask back to original frame space
-    inv_mask = cv2.warpAffine(
-        face_mask_3c,
-        inv_matrix,
-        (w, h),
-        borderMode=cv2.BORDER_CONSTANT,
-        borderValue=(0, 0, 0),
+    inv_mask = inverse_affine_warp(
+        face_mask_3c, affine_matrix, target_size,
+        border_value=(0, 0, 0),
     )
     inv_mask = np.clip(inv_mask, 0.0, 1.0)
 
@@ -290,32 +287,13 @@ def _paste_back(
 
 
 def _preprocess_face(aligned_face: np.ndarray) -> np.ndarray:
-    """
-    Convert an aligned BGR uint8 face image to the ONNX model input tensor.
-    Format: NCHW float32, normalised to [-1, 1].
-    """
-    # BGR -> RGB
-    rgb = cv2.cvtColor(aligned_face, cv2.COLOR_BGR2RGB).astype(np.float32)
-    # [0, 255] -> [0, 1] -> [-1, 1]
-    rgb = rgb / 255.0
-    rgb = (rgb - 0.5) / 0.5
-    # HWC -> CHW, add batch dim
-    chw = np.transpose(rgb, (2, 0, 1))
-    return np.expand_dims(chw, axis=0)  # shape: (1, 3, H, W)
+    """Convert an aligned BGR uint8 face image to the ONNX model input tensor."""
+    return preprocess_enhancement_input(aligned_face)
 
 
 def _postprocess_face(output: np.ndarray) -> np.ndarray:
-    """
-    Convert the ONNX model output tensor back to a BGR uint8 image.
-    Expects input in NCHW format with values in [-1, 1].
-    """
-    face = np.squeeze(output)  # remove batch dim -> (3, H, W)
-    face = np.transpose(face, (1, 2, 0))  # CHW -> HWC
-    # [-1, 1] -> [0, 1] -> [0, 255]
-    face = (face + 1.0) / 2.0
-    face = np.clip(face * 255.0, 0, 255).astype(np.uint8)
-    # RGB -> BGR
-    return cv2.cvtColor(face, cv2.COLOR_RGB2BGR)
+    """Convert the ONNX model output tensor back to a BGR uint8 image."""
+    return postprocess_enhancement_output(output)
 
 
 def enhance_face(temp_frame: Frame, faces=None, live_mode: bool = False, config=None) -> Frame:

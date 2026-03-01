@@ -14,6 +14,14 @@ import onnxruntime
 
 import modules.globals
 from modules.onnx_providers import build_providers_config
+from modules.face_preprocessing import (
+    preprocess_enhancement_input,
+    postprocess_enhancement_output,
+)
+from modules.paste_back import (
+    create_feathered_mask_1c,
+    blend_with_mask,
+)
 
 # Limit concurrent ONNX calls to avoid VRAM exhaustion on multi-face frames
 _SEMAPHORE_COUNT = min(max(1, (os.cpu_count() or 1)), 8)
@@ -46,27 +54,15 @@ def preprocess_face(face_img: np.ndarray, input_size: int) -> np.ndarray:
     """Resize, normalize, and convert a BGR face crop to ONNX input blob.
 
     GPEN-BFR expects [1, 3, H, W] float32 in RGB, normalized to [-1, 1].
+    Resizes to input_size first, then delegates to shared preprocessing.
     """
     resized = cv2.resize(face_img, (input_size, input_size), interpolation=cv2.INTER_LINEAR)
-    # BGR -> RGB
-    rgb = cv2.cvtColor(resized, cv2.COLOR_BGR2RGB)
-    # Normalize to [-1, 1]
-    blob = rgb.astype(np.float32) / 255.0 * 2.0 - 1.0
-    # HWC -> CHW -> NCHW
-    blob = np.transpose(blob, (2, 0, 1))[np.newaxis, ...]
-    return blob
+    return preprocess_enhancement_input(resized)
 
 
 def postprocess_face(output: np.ndarray) -> np.ndarray:
     """Convert ONNX output [1, 3, H, W] float32 back to BGR uint8 image."""
-    # NCHW -> CHW -> HWC
-    img = output[0].transpose(1, 2, 0)
-    # [-1, 1] -> [0, 255]
-    img = ((img + 1.0) / 2.0 * 255.0)
-    img = np.clip(img, 0, 255).astype(np.uint8)
-    # RGB -> BGR
-    img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
-    return img
+    return postprocess_enhancement_output(output)
 
 
 def _get_face_affine(face: Any, input_size: int):
@@ -143,13 +139,8 @@ def enhance_face_onnx(
         output = session.run(None, input_feed)[0]
     enhanced = postprocess_face(output)
 
-    # Create mask for blending (feathered edges)
-    mask = np.ones((input_size, input_size), dtype=np.float32)
-    border = max(1, input_size // 16)
-    mask[:border, :] = np.linspace(0, 1, border)[:, np.newaxis]
-    mask[-border:, :] = np.linspace(1, 0, border)[:, np.newaxis]
-    mask[:, :border] = np.minimum(mask[:, :border], np.linspace(0, 1, border)[np.newaxis, :])
-    mask[:, -border:] = np.minimum(mask[:, -border:], np.linspace(1, 0, border)[np.newaxis, :])
+    # Create feathered blending mask
+    mask = create_feathered_mask_1c(input_size, border_fraction=1 / 16)
 
     # Warp enhanced face and mask back to original frame space
     h, w = frame.shape[:2]
@@ -162,8 +153,4 @@ def enhance_face_onnx(
         flags=cv2.INTER_LINEAR, borderValue=0,
     )
 
-    # Blend: enhanced face where mask > 0, original elsewhere
-    mask_3ch = warped_mask[:, :, np.newaxis]
-    result = (warped_enhanced.astype(np.float32) * mask_3ch +
-              frame.astype(np.float32) * (1.0 - mask_3ch))
-    return np.clip(result, 0, 255).astype(np.uint8)
+    return blend_with_mask(warped_enhanced, frame, warped_mask)
