@@ -3,9 +3,11 @@
 Verifies that face_enhancer processor methods accept ProcessingConfig and
 read values from config rather than modules.globals when config is provided.
 """
+
 import inspect
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock
 
 from modules.processing_config import ProcessingConfig
 
@@ -15,33 +17,39 @@ class TestFaceEnhancerConfigSignatures:
 
     def test_process_frame_accepts_config(self):
         from modules.processors.frame.face_enhancer import process_frame
+
         sig = inspect.signature(process_frame)
-        assert 'config' in sig.parameters
+        assert "config" in sig.parameters
 
     def test_process_frame_v2_accepts_config(self):
         from modules.processors.frame.face_enhancer import process_frame_v2
+
         sig = inspect.signature(process_frame_v2)
-        assert 'config' in sig.parameters
+        assert "config" in sig.parameters
 
     def test_process_frames_accepts_config(self):
         from modules.processors.frame.face_enhancer import process_frames
+
         sig = inspect.signature(process_frames)
-        assert 'config' in sig.parameters
+        assert "config" in sig.parameters
 
     def test_process_image_accepts_config(self):
         from modules.processors.frame.face_enhancer import process_image
+
         sig = inspect.signature(process_image)
-        assert 'config' in sig.parameters
+        assert "config" in sig.parameters
 
     def test_process_video_accepts_config(self):
         from modules.processors.frame.face_enhancer import process_video
+
         sig = inspect.signature(process_video)
-        assert 'config' in sig.parameters
+        assert "config" in sig.parameters
 
     def test_pre_start_accepts_config(self):
         from modules.processors.frame.face_enhancer import pre_start
+
         sig = inspect.signature(pre_start)
-        assert 'config' in sig.parameters
+        assert "config" in sig.parameters
 
 
 class TestFaceEnhancerConfigBehavior:
@@ -49,15 +57,15 @@ class TestFaceEnhancerConfigBehavior:
 
     def test_pre_start_uses_config_target_path(self):
         """pre_start reads target_path from config, not globals."""
-        from modules.processors.frame.face_enhancer import pre_start
         import modules.globals
+        from modules.processors.frame.face_enhancer import pre_start
 
         original = modules.globals.target_path
         modules.globals.target_path = None  # globals says no target
 
         # config provides a valid image path — pre_start should use config
-        config = ProcessingConfig(target_path='some_image.jpg')
-        with patch('modules.processors.frame.face_enhancer.is_image', return_value=True):
+        config = ProcessingConfig(target_path="some_image.jpg")
+        with patch("modules.processors.frame.face_enhancer.is_image", return_value=True):
             result = pre_start(config=config)
             assert result is True
 
@@ -65,9 +73,10 @@ class TestFaceEnhancerConfigBehavior:
 
     def test_enhance_face_uses_config_live_enhance_size(self):
         """enhance_face reads live_enhance_size from config in live mode."""
-        from modules.processors.frame.face_enhancer import enhance_face
-        import modules.globals
         import numpy as np
+
+        import modules.globals
+        from modules.processors.frame.face_enhancer import enhance_face
 
         original = modules.globals.live_enhance_size
         modules.globals.live_enhance_size = 512  # globals says 512
@@ -90,11 +99,11 @@ class TestFaceEnhancerConfigBehavior:
         fake_session = MagicMock()
         input_info = MagicMock()
         input_info.shape = [1, 3, 512, 512]
-        input_info.name = 'input'
+        input_info.name = "input"
         fake_session.get_inputs.return_value = [input_info]
 
-        with patch('modules.processors.frame.face_enhancer.get_face_enhancer', return_value=fake_session):
-            with patch('modules.processors.frame.face_enhancer._align_face', side_effect=mock_align_face):
+        with patch("modules.processors.frame.face_enhancer.get_face_enhancer", return_value=fake_session):
+            with patch("modules.processors.frame.face_enhancer._align_face", side_effect=mock_align_face):
                 enhance_face(frame, faces=[mock_face], live_mode=True, config=config)
 
         modules.globals.live_enhance_size = original

@@ -9,8 +9,9 @@ Each call to ``create_onnx_enhancer_module`` returns a dict suitable for
 functions as module-level attributes.
 """
 
-from typing import Any, Callable, List, Optional
 import os
+from collections.abc import Callable
+from typing import Any
 
 import cv2
 
@@ -20,13 +21,13 @@ from modules.core import update_status
 from modules.face_analyser import detect_faces
 from modules.model_loader import ModelHolder
 from modules.paths import MODELS_DIR
-from modules.typing import Frame, Face
-from modules.utilities import download_model_if_needed, is_image, is_video
 from modules.processors.frame._onnx_enhancer import (
     create_onnx_session,
-    warmup_session,
     enhance_face_onnx,
+    warmup_session,
 )
+from modules.typing import Face, Frame
+from modules.utilities import download_model_if_needed, is_image, is_video
 
 
 def create_onnx_enhancer_module(
@@ -34,7 +35,7 @@ def create_onnx_enhancer_module(
     input_size: int,
     model_url: str,
     model_file: str,
-    extra_input_fn: Optional[Callable[[], dict]] = None,
+    extra_input_fn: Callable[[], dict] | None = None,
 ) -> dict:
     """Create a complete set of frame processor functions for an ONNX enhancer.
 
@@ -82,8 +83,7 @@ def create_onnx_enhancer_module(
             return temp_frame
         try:
             extra_inputs = extra_input_fn() if extra_input_fn else None
-            return enhance_face_onnx(temp_frame, face, session, input_size,
-                                     extra_inputs=extra_inputs)
+            return enhance_face_onnx(temp_frame, face, session, input_size, extra_inputs=extra_inputs)
         except Exception as e:
             print(f"{name}: Error during face enhancement: {e}")
             return temp_frame
@@ -104,9 +104,7 @@ def create_onnx_enhancer_module(
     def process_frame_v2(temp_frame: Frame, faces=None, live_mode: bool = False) -> Frame:
         return process_frame(None, temp_frame, faces=faces, live_mode=live_mode)
 
-    def process_frames(
-        source_path: str | None, temp_frame_paths: List[str], progress: Any = None
-    ) -> None:
+    def process_frames(source_path: str | None, temp_frame_paths: list[str], progress: Any = None) -> None:
         modules.processors.frame.core.process_frames_io(
             temp_frame_paths,
             process_fn=lambda frame: process_frame(None, frame),
@@ -122,19 +120,19 @@ def create_onnx_enhancer_module(
         cv2.imwrite(output_path, result_frame)
         print(f"{name}: Enhanced image saved to {output_path}")
 
-    def process_video(source_path: str | None, temp_frame_paths: List[str]) -> None:
+    def process_video(source_path: str | None, temp_frame_paths: list[str]) -> None:
         modules.processors.frame.core.process_video(source_path, temp_frame_paths, process_frames)
 
     return {
-        'NAME': name,
-        'INPUT_SIZE': input_size,
-        'pre_check': pre_check,
-        'pre_start': pre_start,
-        'get_enhancer': get_enhancer,
-        'enhance_face': enhance_face,
-        'process_frame': process_frame,
-        'process_frame_v2': process_frame_v2,
-        'process_frames': process_frames,
-        'process_image': process_image,
-        'process_video': process_video,
+        "NAME": name,
+        "INPUT_SIZE": input_size,
+        "pre_check": pre_check,
+        "pre_start": pre_start,
+        "get_enhancer": get_enhancer,
+        "enhance_face": enhance_face,
+        "process_frame": process_frame,
+        "process_frame_v2": process_frame_v2,
+        "process_frames": process_frames,
+        "process_image": process_image,
+        "process_video": process_video,
     }

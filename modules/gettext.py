@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 
+
 class LanguageManager:
     def __init__(self, default_language="en"):
         self.current_language = default_language
@@ -13,7 +14,7 @@ class LanguageManager:
             return True
         try:
             file_path = Path(__file__).parent.parent / f"locales/{language_code}.json"
-            with open(file_path, "r", encoding="utf-8") as file:
+            with open(file_path, encoding="utf-8") as file:
                 self.translations = json.load(file)
             self.current_language = language_code
             return True

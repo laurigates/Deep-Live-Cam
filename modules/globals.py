@@ -1,17 +1,17 @@
 # --- START OF FILE globals.py ---
 
 import os
-from typing import List, Dict, Any
+from typing import Any
 
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 WORKFLOW_DIR = os.path.join(ROOT_DIR, "workflow")
 
 # Processing Constants
-FACE_CONFIDENCE_THRESHOLD: float = 0.5    # Minimum confidence score to accept a detected face
-DETECTION_INTERVAL: float = 0.033          # Face detection cache TTL in seconds (~30 FPS)
-DETECTION_CACHE_SIZE: int = 128            # Max entries in face detection LRU cache
-live_max_fps: int = 30                     # Maximum preview frame rate for live mode (UI-adjustable)
-MOUTH_FEATHER_RADIUS: int = 10             # Pixel radius for mouth mask edge feathering
+FACE_CONFIDENCE_THRESHOLD: float = 0.5  # Minimum confidence score to accept a detected face
+DETECTION_INTERVAL: float = 0.033  # Face detection cache TTL in seconds (~30 FPS)
+DETECTION_CACHE_SIZE: int = 128  # Max entries in face detection LRU cache
+live_max_fps: int = 30  # Maximum preview frame rate for live mode (UI-adjustable)
+MOUTH_FEATHER_RADIUS: int = 10  # Pixel radius for mouth mask edge feathering
 
 file_types = [
     ("Image", ("*.png", "*.jpg", "*.jpeg", "*.gif", "*.bmp")),
@@ -24,38 +24,38 @@ target_path: str | None = None
 output_path: str | None = None
 
 # Processing Options
-frame_processors: List[str] = []
+frame_processors: list[str] = []
 keep_fps: bool = True
 keep_audio: bool = True
 keep_frames: bool = False
-many_faces: bool = False         # Process all detected faces with default source
-map_faces: bool = False          # Use source_target_map or simple_map for specific swaps
-poisson_blend: bool = False      # Enable Poisson Blending for smoother face swaps
-color_correction: bool = False   # Enable color correction (implementation specific)
+many_faces: bool = False  # Process all detected faces with default source
+map_faces: bool = False  # Use source_target_map or simple_map for specific swaps
+poisson_blend: bool = False  # Enable Poisson Blending for smoother face swaps
+color_correction: bool = False  # Enable color correction (implementation specific)
 nsfw_filter: bool = False
 
 # Video Output Options
 video_encoder: str | None = None
-video_quality: int | None = None # Typically a CRF value or bitrate
-use_png_frames: bool = False     # Use lossless PNG for intermediate frames (vs JPEG)
+video_quality: int | None = None  # Typically a CRF value or bitrate
+use_png_frames: bool = False  # Use lossless PNG for intermediate frames (vs JPEG)
 
 # Live Mode Options
 live_mirror: bool = False
 live_resizable: bool = True
-camera_input_combobox: Any | None = None # Placeholder for UI element if needed
+camera_input_combobox: Any | None = None  # Placeholder for UI element if needed
 webcam_preview_running: bool = False
 show_fps: bool = False
 virtual_cam: bool = False
 
 # System Configuration
-max_memory: int | None = None        # Memory limit in GB? (Needs clarification)
-execution_providers: List[str] = []  # e.g., ['CUDAExecutionProvider', 'CPUExecutionProvider']
-execution_threads: int | None = None # Number of threads for CPU execution
-headless: bool | None = None         # Run without UI?
-log_level: str = "error"             # Logging level (e.g., 'debug', 'info', 'warning', 'error')
+max_memory: int | None = None  # Memory limit in GB? (Needs clarification)
+execution_providers: list[str] = []  # e.g., ['CUDAExecutionProvider', 'CPUExecutionProvider']
+execution_threads: int | None = None  # Number of threads for CPU execution
+headless: bool | None = None  # Run without UI?
+log_level: str = "error"  # Logging level (e.g., 'debug', 'info', 'warning', 'error')
 
 # Face Processor UI Toggles (Example)
-fp_ui: Dict[str, bool] = {
+fp_ui: dict[str, bool] = {
     "face_enhancer": False,
     "face_enhancer_gpen256": False,
     "face_enhancer_gpen512": False,
@@ -66,44 +66,44 @@ fp_ui: Dict[str, bool] = {
 codeformer_fidelity: float = 0.7
 
 # Face Swapper Specific Options
-face_swapper_enabled: bool = True # General toggle for the swapper processor
-opacity: float = 1.0              # Blend factor for the swapped face (0.0-1.0)
-sharpness: float = 0.0            # Sharpness enhancement for swapped face (0.0-1.0+)
-prepaste_upscale: bool = True     # upscale swap crop before paste-back (reduces stretch artifact)
+face_swapper_enabled: bool = True  # General toggle for the swapper processor
+opacity: float = 1.0  # Blend factor for the swapped face (0.0-1.0)
+sharpness: float = 0.0  # Sharpness enhancement for swapped face (0.0-1.0+)
+prepaste_upscale: bool = True  # upscale swap crop before paste-back (reduces stretch artifact)
 
 # Mouth Mask Options
-mouth_mask: bool = False           # Enable mouth area masking/pasting
+mouth_mask: bool = False  # Enable mouth area masking/pasting
 show_mouth_mask_box: bool = False  # Visualize the mouth mask area (for debugging)
-mask_feather_ratio: int = 12       # Denominator for feathering calculation (higher = smaller feather)
-mask_down_size: float = 0.1        # Expansion factor for lower lip mask (relative)
-mask_size: float = 1.0             # Expansion factor for upper lip mask (relative)
-mouth_mask_size: float = 1.0       # Scale factor for mouth mask region
-eyes_mask_size: float = 1.0        # Scale factor for eyes mask region
-eyebrows_mask_size: float = 1.0    # Scale factor for eyebrows mask region
+mask_feather_ratio: int = 12  # Denominator for feathering calculation (higher = smaller feather)
+mask_down_size: float = 0.1  # Expansion factor for lower lip mask (relative)
+mask_size: float = 1.0  # Expansion factor for upper lip mask (relative)
+mouth_mask_size: float = 1.0  # Scale factor for mouth mask region
+eyes_mask_size: float = 1.0  # Scale factor for eyes mask region
+eyebrows_mask_size: float = 1.0  # Scale factor for eyebrows mask region
 
 # --- START: Added for Frame Interpolation ---
-enable_interpolation: bool = True # Toggle temporal smoothing
+enable_interpolation: bool = True  # Toggle temporal smoothing
 interpolation_weight: float = 0  # Blend weight for current frame (0.0-1.0). Lower=smoother.
 # --- END: Added for Frame Interpolation ---
 
 # --- RIFE Frame Interpolation (rife-ncnn-vulkan) ---
-rife_enabled: bool = False            # Toggle RIFE frame interpolation for video output
-rife_model: str = "rife-v4.25-lite"   # Model to use: "rife-v4.25" or "rife-v4.25-lite"
-rife_multiplier: int = 2              # Frame rate multiplier: 2 = double fps, 4 = quadruple fps
+rife_enabled: bool = False  # Toggle RIFE frame interpolation for video output
+rife_model: str = "rife-v4.25-lite"  # Model to use: "rife-v4.25" or "rife-v4.25-lite"
+rife_multiplier: int = 2  # Frame rate multiplier: 2 = double fps, 4 = quadruple fps
 
 # --- Half-Rate Processing ---
-half_rate_processing: bool = False    # Process every Nth frame; use RIFE to fill skipped frames
-keyframe_interval: int = 2            # Run face processing every Nth frame (2-10)
+half_rate_processing: bool = False  # Process every Nth frame; use RIFE to fill skipped frames
+keyframe_interval: int = 2  # Run face processing every Nth frame (2-10)
 
 # --- Enhancer Skip-Frame ---
-enhancer_skip_interval: int = 1      # Enhance every Nth frame (1=every, 2=every other, etc.)
+enhancer_skip_interval: int = 1  # Enhance every Nth frame (1=every, 2=every other, etc.)
 
 # --- Live Enhance Size ---
-live_enhance_size: int = 256         # Face alignment/paste resolution in live mode (smaller = faster warp ops)
+live_enhance_size: int = 256  # Face alignment/paste resolution in live mode (smaller = faster warp ops)
 
 # --- Motion-Adaptive Enhancement ---
-motion_adaptive_enhancement: bool = False    # Skip enhancement when face hasn't moved significantly
-motion_adaptive_iou_threshold: float = 0.9   # Min bbox IoU to reuse previous enhanced result
+motion_adaptive_enhancement: bool = False  # Skip enhancement when face hasn't moved significantly
+motion_adaptive_iou_threshold: float = 0.9  # Min bbox IoU to reuse previous enhanced result
 motion_adaptive_cosine_threshold: float = 0.95  # Min embedding cosine to reuse previous enhanced result
 
 # --- END OF FILE globals.py ---

@@ -4,6 +4,7 @@
 Usage:
     uv run scripts/convert_gfpgan_fp16.py [--input models/gfpgan-1024.onnx] [--output models/gfpgan-1024-fp16.onnx]
 """
+
 import argparse
 import os
 import sys

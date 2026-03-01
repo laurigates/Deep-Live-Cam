@@ -129,18 +129,20 @@
     "feature-tracker-sync": {
       "enabled": true,
       "auto_run": false,
-      "last_completed_at": "2026-02-18T00:00:00Z",
+      "last_completed_at": "2026-03-01T00:00:00Z",
       "last_result": "success",
       "schedule": "daily",
       "stats": {
-        "runs_total": 1,
-        "features_synced": 10,
-        "features_added": 10
+        "runs_total": 2,
+        "features_synced": 11,
+        "features_added": 11,
+        "items_processed": 11
       },
       "context": {
         "source_document": "docs/prds/deep-live-cam-overview.md",
-        "features_implemented": 10,
-        "features_in_progress": 0
+        "features_implemented": 11,
+        "features_in_progress": 0,
+        "format_upgraded": "1.0.0 -> 1.1.0"
       }
     },
     "sync-ids": {

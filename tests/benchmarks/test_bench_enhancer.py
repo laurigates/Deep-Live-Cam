@@ -2,14 +2,15 @@
 
 Run with: uv run pytest tests/benchmarks/test_bench_enhancer.py -m benchmark -v
 """
+
 import numpy as np
 import pytest
 
 from tests.benchmarks.conftest import (
     Timer,
+    _make_face,
     detect_providers,
     requires_enhancer_model,
-    _make_face,
 )
 
 pytestmark = [pytest.mark.benchmark, pytest.mark.integration]
@@ -34,7 +35,9 @@ def _setup_globals(providers: list[str]) -> None:
 class TestFaceEnhancerInference:
     """Benchmark GFPGAN face enhancement."""
 
-    def test_single_face_enhance_latency(self, execution_providers, timer, synthetic_frame, synthetic_face, baseline_manager):
+    def test_single_face_enhance_latency(
+        self, execution_providers, timer, synthetic_frame, synthetic_face, baseline_manager
+    ):
         """Measure per-face enhancement latency."""
         _setup_globals(execution_providers)
 
@@ -62,7 +65,7 @@ class TestFaceEnhancerInference:
             "single_face_enhance": stats,
         }
 
-        print(f"\n--- Single Face Enhancement ---")
+        print("\n--- Single Face Enhancement ---")
         print(f"  Providers: {execution_providers}")
         print(f"  Mean: {stats['mean_ms']:.2f} ms")
         print(f"  Median: {stats['median_ms']:.2f} ms")
@@ -72,7 +75,9 @@ class TestFaceEnhancerInference:
         comparison = baseline_manager.compare("single_face_enhance", results)
         if comparison.get("regressions"):
             for r in comparison["regressions"]:
-                print(f"  REGRESSION: {r['metric']}: {r['baseline']:.2f} -> {r['current']:.2f} ({r['change_pct']:+.1f}%)")
+                print(
+                    f"  REGRESSION: {r['metric']}: {r['baseline']:.2f} -> {r['current']:.2f} ({r['change_pct']:+.1f}%)"
+                )
 
         assert stats["mean_ms"] > 0
 
@@ -97,7 +102,7 @@ class TestFaceEnhancerInference:
                     result = enhance_face(face, result)
 
         stats = timer.stats
-        print(f"\n--- Multi-Face Enhancement (3 faces) ---")
+        print("\n--- Multi-Face Enhancement (3 faces) ---")
         print(f"  Mean: {stats['mean_ms']:.2f} ms  |  FPS: {stats['fps']:.1f}")
 
     @pytest.mark.parametrize(
@@ -109,6 +114,7 @@ class TestFaceEnhancerInference:
         """Measure how live_enhance_size affects enhancement speed."""
         _setup_globals(execution_providers)
         import modules.globals
+
         modules.globals.live_enhance_size = enhance_size
 
         from modules.processors.frame.face_enhancer import enhance_face, get_face_enhancer

@@ -3,6 +3,7 @@
 Tests _build_encoder_args and _build_video_ffmpeg_args which are both
 documented as pure functions with no side effects.
 """
+
 import pytest
 
 
@@ -11,6 +12,7 @@ class TestBuildEncoderArgs:
 
     def _get_fn(self):
         from modules.utilities import _build_encoder_args
+
         return _build_encoder_args
 
     # --- CUDA / NVIDIA ---
@@ -108,6 +110,7 @@ class TestBuildVideoFfmpegArgs:
 
     def _get_fn(self):
         from modules.utilities import _build_video_ffmpeg_args
+
         return _build_video_ffmpeg_args
 
     def test_basic_structure(self):

@@ -1,7 +1,71 @@
 {
-  "version": "1.0.0",
+  "version": "1.1.0",
+  "project": "Deep-Live-Cam",
   "source_document": "docs/prds/deep-live-cam-overview.md",
-  "last_sync": "2026-02-18T00:00:00Z",
+  "last_updated": "2026-03-01",
+  "current_phase": "phase-3",
+  "statistics": {
+    "total_features": 11,
+    "complete": 11,
+    "partial": 0,
+    "in_progress": 0,
+    "not_started": 0,
+    "blocked": 0,
+    "completion_percentage": 100.0
+  },
+  "tasks": {
+    "in_progress": [],
+    "pending": [],
+    "completed": [
+      {
+        "id": "FR-011",
+        "description": "EMA smoothing on face landmarks and bounding boxes",
+        "source": "Issue #67",
+        "added": "2026-03-01",
+        "completed": "2026-03-01"
+      },
+      {
+        "id": "FR-002-refactor",
+        "description": "Injectable FaceAnalyser class + webcam detection separation",
+        "source": "Issues #58, #60",
+        "added": "2026-02-27",
+        "completed": "2026-02-27"
+      },
+      {
+        "id": "FR-ARCH-refactor",
+        "description": "Thread-safe FaceMapStore, StatusBus, ProcessingConfig, injectable providers",
+        "source": "Issues #55, #56, #59, #62",
+        "added": "2026-02-27",
+        "completed": "2026-02-27"
+      }
+    ]
+  },
+  "phases": [
+    {
+      "id": "phase-0",
+      "name": "Core Features",
+      "status": "complete",
+      "features": ["FR-001", "FR-002", "FR-006", "FR-007", "FR-008"]
+    },
+    {
+      "id": "phase-1",
+      "name": "Optional Enhancements",
+      "status": "complete",
+      "features": ["FR-003", "FR-004", "FR-005", "FR-009", "FR-010"]
+    },
+    {
+      "id": "phase-2",
+      "name": "Architecture Refactoring",
+      "status": "complete",
+      "features": ["FR-ARCH-refactor", "FR-002-refactor"]
+    },
+    {
+      "id": "phase-3",
+      "name": "Quality & Smoothing",
+      "status": "complete",
+      "features": ["FR-011"]
+    }
+  ],
   "features": [
     {
       "id": "FR-001",
@@ -38,7 +102,7 @@
         "Time-based detection cache (~30 FPS)"
       ],
       "version_introduced": "0.x (Sep 2023)",
-      "notes": "Optimized in Feb 2026 for Apple Silicon performance"
+      "notes": "Optimized Feb 2026 for Apple Silicon; injectable FaceAnalyser class added (Issue #58)"
     },
     {
       "id": "FR-003",
@@ -93,7 +157,7 @@
         "Support for 2+ source faces per scene"
       ],
       "version_introduced": "1.x (Sep 2024)",
-      "notes": "Fixed live-mode face count mismatch (>maps available) in PR #572"
+      "notes": "Thread-safe FaceMapStore singleton added (Issue #59, Feb 2026)"
     },
     {
       "id": "FR-006",
@@ -103,7 +167,8 @@
       "status": "implemented",
       "source_files": [
         "modules/video_capture.py",
-        "modules/ui.py"
+        "modules/ui.py",
+        "modules/ui_webcam.py"
       ],
       "acceptance_criteria": [
         "30-60 FPS preview at target GPU spec",
@@ -113,7 +178,7 @@
         "Clean stop when preview window is closed"
       ],
       "version_introduced": "1.x (Aug 2024)",
-      "notes": "Mirror + resizable options added; live-stop-on-close fixed (PR #321)"
+      "notes": "Decoupled detection thread (Issue #60); async swap/enhance threads added Feb 2026"
     },
     {
       "id": "FR-007",
@@ -194,18 +259,31 @@
       ],
       "version_introduced": "1.x (Jan 2025)",
       "notes": "8 languages added Jan-May 2025; community-driven contributions"
+    },
+    {
+      "id": "FR-011",
+      "title": "EMA Landmark Smoothing",
+      "description": "Exponential moving average smoothing on face detection results (bbox, kps, landmarks) to reduce jitter in live mode",
+      "scope": "optional",
+      "status": "implemented",
+      "source_files": [
+        "modules/landmark_smoother.py",
+        "modules/ui_webcam.py"
+      ],
+      "acceptance_criteria": [
+        "EMA smoothing applied transparently in detection thread",
+        "Per-identity tracks matched via IoU + embedding cosine",
+        "Stale tracks expire after configurable max_gap",
+        "Configurable alpha (default 0.7) and toggle via UI/CLI",
+        "No FPS regression (<1% overhead)"
+      ],
+      "version_introduced": "2.0.4 (Mar 2026)",
+      "notes": "Implemented Issue #67; 29 unit tests in tests/test_landmark_smoother.py"
     }
   ],
   "sync_config": {
     "targets": ["README.md"],
     "auto_sync": false,
     "source_document": "docs/prds/deep-live-cam-overview.md"
-  },
-  "stats": {
-    "total_features": 10,
-    "completed": 10,
-    "in_progress": 0,
-    "blocked": 0,
-    "not_started": 0
   }
 }

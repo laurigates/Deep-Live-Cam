@@ -6,13 +6,14 @@ Verifies:
 - Round-trip (postprocess(preprocess(img))) approximates original
 - Delegating callers produce identical output to the shared functions
 """
+
 import cv2
 import numpy as np
 import pytest
 
 from modules.face_preprocessing import (
-    preprocess_enhancement_input,
     postprocess_enhancement_output,
+    preprocess_enhancement_input,
 )
 
 
@@ -109,7 +110,7 @@ class TestRoundTrip:
         """Ensure BGR→RGB→BGR round-trip preserves channel ordering."""
         # Create image with distinct channels
         face = np.zeros((64, 64, 3), dtype=np.uint8)
-        face[:, :, 0] = 50   # B
+        face[:, :, 0] = 50  # B
         face[:, :, 1] = 100  # G
         face[:, :, 2] = 200  # R
 

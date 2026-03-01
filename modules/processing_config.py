@@ -19,9 +19,9 @@ This enables:
 - Thread-safe configuration without mutable shared state
 - Clearer module dependencies (config is explicit parameter, not hidden global read)
 """
-from dataclasses import dataclass, field
-from typing import List, Dict, Any, Optional
+
 import threading
+from dataclasses import dataclass, field
 
 
 @dataclass
@@ -33,13 +33,13 @@ class ProcessingConfig:
     """
 
     # ======================== Execution Configuration ========================
-    execution_providers: List[str] = field(default_factory=list)
+    execution_providers: list[str] = field(default_factory=list)
     """ONNX Runtime providers, e.g., ['CUDAExecutionProvider', 'CPUExecutionProvider']"""
 
-    execution_threads: Optional[int] = None
+    execution_threads: int | None = None
     """Number of threads for parallel frame processing"""
 
-    max_memory: Optional[int] = None
+    max_memory: int | None = None
     """Memory limit in GB (optional)"""
 
     headless: bool = False
@@ -49,17 +49,17 @@ class ProcessingConfig:
     """Logging level: 'debug', 'info', 'warning', 'error'"""
 
     # ======================== Input/Output Paths ========================
-    source_path: Optional[str] = None
+    source_path: str | None = None
     """Path to source image or video for face swapping"""
 
-    target_path: Optional[str] = None
+    target_path: str | None = None
     """Path to target image or video for face detection"""
 
-    output_path: Optional[str] = None
+    output_path: str | None = None
     """Path where the processed output will be saved"""
 
     # ======================== Frame Processor Pipeline ========================
-    frame_processors: List[str] = field(default_factory=list)
+    frame_processors: list[str] = field(default_factory=list)
     """List of enabled frame processors: ['face_swapper', 'face_enhancer', ...]"""
 
     # ======================== Face Detection ========================
@@ -223,10 +223,10 @@ class ProcessingConfig:
     """Output to virtual camera device"""
 
     # ======================== Video Output Options ========================
-    video_encoder: Optional[str] = None
+    video_encoder: str | None = None
     """Video encoder (codec) for output"""
 
-    video_quality: Optional[int] = None
+    video_quality: int | None = None
     """Video quality parameter (CRF or bitrate)"""
 
     # ======================== NSFW Filter ========================
@@ -235,12 +235,14 @@ class ProcessingConfig:
 
     # ======================== UI Toggle State ========================
     # Face processor UI toggles (which enhancers are enabled in UI)
-    fp_ui: Dict[str, bool] = field(default_factory=lambda: {
-        "face_enhancer": False,
-        "face_enhancer_gpen256": False,
-        "face_enhancer_gpen512": False,
-        "face_enhancer_codeformer": False,
-    })
+    fp_ui: dict[str, bool] = field(
+        default_factory=lambda: {
+            "face_enhancer": False,
+            "face_enhancer_gpen256": False,
+            "face_enhancer_gpen512": False,
+            "face_enhancer_codeformer": False,
+        }
+    )
     """UI toggle state for frame processors"""
 
     # ======================== Threading / Synchronization ========================

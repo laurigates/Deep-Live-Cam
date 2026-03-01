@@ -4,6 +4,7 @@
 1B: Verify enhancer pre-model upscale uses LANCZOS4.
 1C: Verify batch path preserves float32 through paste-back.
 """
+
 import cv2
 import numpy as np
 import pytest
@@ -24,11 +25,16 @@ class TestSwapFaceReusesM:
         frame = rng.randint(0, 256, (480, 640, 3), dtype=np.uint8)
 
         # Simulate 5 key-points roughly centred in the frame
-        kps = np.array([
-            [260, 200], [380, 200],
-            [320, 280],
-            [270, 340], [370, 340],
-        ], dtype=np.float32)
+        kps = np.array(
+            [
+                [260, 200],
+                [380, 200],
+                [320, 280],
+                [270, 340],
+                [370, 340],
+            ],
+            dtype=np.float32,
+        )
 
         input_size = 128
 
@@ -36,12 +42,11 @@ class TestSwapFaceReusesM:
         aimg_ref, M_ref = face_align.norm_crop2(frame, kps, input_size)
 
         # Optimised path: reuse M, warp directly
-        aimg_opt = cv2.warpAffine(
-            frame, M_ref, (input_size, input_size), borderValue=0.0
-        )
+        aimg_opt = cv2.warpAffine(frame, M_ref, (input_size, input_size), borderValue=0.0)
 
         np.testing.assert_array_equal(
-            aimg_ref, aimg_opt,
+            aimg_ref,
+            aimg_opt,
             err_msg="warpAffine(M) should produce identical output to norm_crop2",
         )
 
@@ -62,14 +67,14 @@ class TestEnhancerUpscaleLanczos:
         lanczos = cv2.resize(face, (512, 512), interpolation=cv2.INTER_LANCZOS4)
 
         # They should differ for a non-trivial image
-        assert not np.array_equal(linear, lanczos), \
-            "LANCZOS4 should produce different output than LINEAR"
+        assert not np.array_equal(linear, lanczos), "LANCZOS4 should produce different output than LINEAR"
 
         # LANCZOS4 should have higher edge contrast (sharper)
         linear_edges = cv2.Laplacian(cv2.cvtColor(linear, cv2.COLOR_BGR2GRAY), cv2.CV_64F)
         lanczos_edges = cv2.Laplacian(cv2.cvtColor(lanczos, cv2.COLOR_BGR2GRAY), cv2.CV_64F)
-        assert np.std(lanczos_edges) >= np.std(linear_edges) * 0.99, \
+        assert np.std(lanczos_edges) >= np.std(linear_edges) * 0.99, (
             "LANCZOS4 should produce at least comparable edge sharpness"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -117,8 +122,7 @@ class TestBatchFloat32PasteBack:
         # Results may differ slightly due to preserved precision
         # The float32 path should not be worse
         diff = np.abs(result_f32.astype(np.int16) - result_u8.astype(np.int16))
-        assert diff.max() <= 2, \
-            f"Float32 and uint8 paths should produce similar output (max diff: {diff.max()})"
+        assert diff.max() <= 2, f"Float32 and uint8 paths should produce similar output (max diff: {diff.max()})"
 
     def test_paste_back_handles_mixed_dtypes(self):
         """_paste_back should handle float32 bgr_fake with uint8 aimg."""

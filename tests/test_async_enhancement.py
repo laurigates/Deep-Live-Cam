@@ -4,6 +4,7 @@ The enhancement thread decouples face enhancement (GFPGAN/GPEN) from the
 processing thread, allowing swap+masking to run at full speed while
 enhancement catches up asynchronously on a dedicated thread.
 """
+
 import threading
 import time
 from unittest.mock import MagicMock
@@ -26,13 +27,11 @@ def _make_frame(fill: int = 0, shape=(480, 640, 3)) -> np.ndarray:
 class TestEnhancementThreadFunc:
     """Unit tests for _enhancement_thread_func with a mock processor."""
 
-    def _run_thread(self, enhancement_input, enhancement_output,
-                    enhancement_lock, stop_event, timeout=1.0):
+    def _run_thread(self, enhancement_input, enhancement_output, enhancement_lock, stop_event, timeout=1.0):
         """Start the enhancement thread and return the thread handle."""
         t = threading.Thread(
             target=_enhancement_thread_func,
-            args=(enhancement_input, enhancement_output,
-                  enhancement_lock, stop_event),
+            args=(enhancement_input, enhancement_output, enhancement_lock, stop_event),
             daemon=True,
         )
         t.start()
@@ -53,11 +52,11 @@ class TestEnhancementThreadFunc:
 
         with lock:
             inp[0] = {
-                'frame': _make_frame(100),
-                'faces': [MagicMock()],
-                'map_faces': False,
-                'processor': processor,
-                'seq': 1,
+                "frame": _make_frame(100),
+                "faces": [MagicMock()],
+                "map_faces": False,
+                "processor": processor,
+                "seq": 1,
             }
 
         # Wait for output
@@ -73,8 +72,8 @@ class TestEnhancementThreadFunc:
         t.join(timeout=2.0)
 
         assert result is not None
-        assert result['seq'] == 1
-        assert np.array_equal(result['frame'], enhanced_frame)
+        assert result["seq"] == 1
+        assert np.array_equal(result["frame"], enhanced_frame)
         processor.process_frame.assert_called_once()
         processor.process_frame_v2.assert_not_called()
 
@@ -93,11 +92,11 @@ class TestEnhancementThreadFunc:
 
         with lock:
             inp[0] = {
-                'frame': _make_frame(100),
-                'faces': None,
-                'map_faces': True,
-                'processor': processor,
-                'seq': 1,
+                "frame": _make_frame(100),
+                "faces": None,
+                "map_faces": True,
+                "processor": processor,
+                "seq": 1,
             }
 
         deadline = time.monotonic() + 2.0
@@ -112,8 +111,8 @@ class TestEnhancementThreadFunc:
         t.join(timeout=2.0)
 
         assert result is not None
-        assert result['seq'] == 1
-        assert np.array_equal(result['frame'], enhanced_frame)
+        assert result["seq"] == 1
+        assert np.array_equal(result["frame"], enhanced_frame)
         processor.process_frame_v2.assert_called_once()
         processor.process_frame.assert_not_called()
 
@@ -132,11 +131,11 @@ class TestEnhancementThreadFunc:
         # Submit seq=1
         with lock:
             inp[0] = {
-                'frame': _make_frame(100),
-                'faces': None,
-                'map_faces': False,
-                'processor': processor,
-                'seq': 1,
+                "frame": _make_frame(100),
+                "faces": None,
+                "map_faces": False,
+                "processor": processor,
+                "seq": 1,
             }
 
         deadline = time.monotonic() + 2.0
@@ -172,43 +171,43 @@ class TestEnhancementThreadFunc:
         # Submit seq=1
         with lock:
             inp[0] = {
-                'frame': _make_frame(100),
-                'faces': None,
-                'map_faces': False,
-                'processor': processor,
-                'seq': 1,
+                "frame": _make_frame(100),
+                "faces": None,
+                "map_faces": False,
+                "processor": processor,
+                "seq": 1,
             }
 
         deadline = time.monotonic() + 2.0
         while time.monotonic() < deadline:
             with lock:
                 result = out[0]
-            if result is not None and result['seq'] == 1:
+            if result is not None and result["seq"] == 1:
                 break
             time.sleep(0.01)
 
         # Submit seq=2
         with lock:
             inp[0] = {
-                'frame': _make_frame(120),
-                'faces': None,
-                'map_faces': False,
-                'processor': processor,
-                'seq': 2,
+                "frame": _make_frame(120),
+                "faces": None,
+                "map_faces": False,
+                "processor": processor,
+                "seq": 2,
             }
 
         deadline = time.monotonic() + 2.0
         while time.monotonic() < deadline:
             with lock:
                 result = out[0]
-            if result is not None and result['seq'] == 2:
+            if result is not None and result["seq"] == 2:
                 break
             time.sleep(0.01)
 
         stop.set()
         t.join(timeout=2.0)
 
-        assert result['seq'] == 2
+        assert result["seq"] == 2
         assert processor.process_frame.call_count == 2
 
     def test_stops_on_stop_event(self):
@@ -271,10 +270,10 @@ class TestAsyncEnhancementIntegration:
         last_consumed_enh_seq = -1
         latest_enhanced_frame = None
 
-        enh_out = {'frame': _make_frame(200), 'seq': 1}
-        if enh_out is not None and enh_out['seq'] != last_consumed_enh_seq:
-            last_consumed_enh_seq = enh_out['seq']
-            latest_enhanced_frame = enh_out['frame']
+        enh_out = {"frame": _make_frame(200), "seq": 1}
+        if enh_out is not None and enh_out["seq"] != last_consumed_enh_seq:
+            last_consumed_enh_seq = enh_out["seq"]
+            latest_enhanced_frame = enh_out["frame"]
 
         assert last_consumed_enh_seq == 1
         assert latest_enhanced_frame is not None
@@ -285,10 +284,10 @@ class TestAsyncEnhancementIntegration:
         last_consumed_enh_seq = 3
         latest_enhanced_frame = _make_frame(100)
 
-        enh_out = {'frame': _make_frame(200), 'seq': 3}
-        if enh_out is not None and enh_out['seq'] != last_consumed_enh_seq:
-            last_consumed_enh_seq = enh_out['seq']
-            latest_enhanced_frame = enh_out['frame']
+        enh_out = {"frame": _make_frame(200), "seq": 3}
+        if enh_out is not None and enh_out["seq"] != last_consumed_enh_seq:
+            last_consumed_enh_seq = enh_out["seq"]
+            latest_enhanced_frame = enh_out["frame"]
 
         # Should not have changed
         assert last_consumed_enh_seq == 3
@@ -297,8 +296,8 @@ class TestAsyncEnhancementIntegration:
     def test_disabled_enhancer_clears_state(self):
         """When enhancer is toggled off, async state is cleared."""
         lock = threading.Lock()
-        enhancement_input = [{'frame': _make_frame(100), 'seq': 1}]
-        enhancement_output = [{'frame': _make_frame(200), 'seq': 1}]
+        enhancement_input = [{"frame": _make_frame(100), "seq": 1}]
+        enhancement_output = [{"frame": _make_frame(200), "seq": 1}]
         latest_enhanced_frame = _make_frame(200)
 
         # Simulate toggling off
@@ -315,7 +314,7 @@ class TestAsyncEnhancementIntegration:
         """On skip frames, no submission but latest result is still consumed."""
         lock = threading.Lock()
         enhancement_input = [None]
-        enhancement_output = [{'frame': _make_frame(200), 'seq': 5}]
+        enhancement_output = [{"frame": _make_frame(200), "seq": 5}]
         last_consumed_enh_seq = -1
         latest_enhanced_frame = None
 
@@ -325,9 +324,9 @@ class TestAsyncEnhancementIntegration:
         # But still read
         with lock:
             enh_out = enhancement_output[0]
-        if enh_out is not None and enh_out['seq'] != last_consumed_enh_seq:
-            last_consumed_enh_seq = enh_out['seq']
-            latest_enhanced_frame = enh_out['frame']
+        if enh_out is not None and enh_out["seq"] != last_consumed_enh_seq:
+            last_consumed_enh_seq = enh_out["seq"]
+            latest_enhanced_frame = enh_out["frame"]
 
         assert last_consumed_enh_seq == 5
         assert np.array_equal(latest_enhanced_frame, _make_frame(200))

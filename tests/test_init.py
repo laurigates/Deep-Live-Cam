@@ -1,6 +1,8 @@
 """Tests for modules/__init__.py — imwrite_unicode correctness."""
+
 import os
 import tempfile
+
 import numpy as np
 import pytest
 

@@ -3,6 +3,7 @@
 These fixtures skip ML-module stubbing so real ONNX models load properly.
 Only activated when running with: pytest -m benchmark or pytest -m integration
 """
+
 import json
 import os
 import sys

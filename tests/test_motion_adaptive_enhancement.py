@@ -3,6 +3,7 @@
 RED phase: tests are written before the implementation so they initially fail,
 then pass once the utilities are added to face_analyser.py.
 """
+
 import numpy as np
 import pytest
 
@@ -12,10 +13,10 @@ from modules.face_analyser import (
     faces_are_similar,
 )
 
-
 # ---------------------------------------------------------------------------
 # compute_bbox_iou
 # ---------------------------------------------------------------------------
+
 
 class TestComputeBboxIou:
     def test_identical_boxes_returns_one(self):
@@ -35,8 +36,8 @@ class TestComputeBboxIou:
         assert iou == pytest.approx(50.0 / 150.0, rel=1e-5)
 
     def test_one_inside_other(self):
-        outer = np.array([0.0, 0.0, 20.0, 20.0])   # area 400
-        inner = np.array([5.0, 5.0, 15.0, 15.0])    # area 100
+        outer = np.array([0.0, 0.0, 20.0, 20.0])  # area 400
+        inner = np.array([5.0, 5.0, 15.0, 15.0])  # area 100
         # intersection = 100, union = 400
         iou = compute_bbox_iou(outer, inner)
         assert iou == pytest.approx(100.0 / 400.0, rel=1e-5)
@@ -55,6 +56,7 @@ class TestComputeBboxIou:
 # ---------------------------------------------------------------------------
 # compute_embedding_cosine
 # ---------------------------------------------------------------------------
+
 
 class TestComputeEmbeddingCosine:
     def test_identical_embeddings_returns_one(self):
@@ -88,10 +90,13 @@ class TestComputeEmbeddingCosine:
 # faces_are_similar
 # ---------------------------------------------------------------------------
 
+
 def _make_face(bbox, embedding=None):
     """Minimal face-like object with bbox and normed_embedding."""
+
     class _Face:
         pass
+
     f = _Face()
     f.bbox = np.array(bbox, dtype=np.float32)
     if embedding is not None:

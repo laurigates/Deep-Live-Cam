@@ -1,8 +1,9 @@
-import cv2
-import numpy as np
-from typing import Optional, Tuple, Callable
 import platform
 import threading
+from collections.abc import Callable
+
+import cv2
+import numpy as np
 
 # Only import Windows-specific library if on Windows
 if platform.system() == "Windows":
@@ -24,9 +25,7 @@ class VideoCapturer:
             # Verify device exists
             devices = self.graph.get_input_devices()
             if self.device_index >= len(devices):
-                raise ValueError(
-                    f"Invalid device index {device_index}. Available devices: {len(devices)}"
-                )
+                raise ValueError(f"Invalid device index {device_index}. Available devices: {len(devices)}")
 
     def start(self, width: int = 960, height: int = 540, fps: int = 60) -> bool:
         """Initialize and start video capture"""
@@ -64,12 +63,12 @@ class VideoCapturer:
             return True
 
         except Exception as e:
-            print(f"Failed to start capture: {str(e)}")
+            print(f"Failed to start capture: {e!s}")
             if self.cap:
                 self.cap.release()
             return False
 
-    def read(self) -> Tuple[bool, Optional[np.ndarray]]:
+    def read(self) -> tuple[bool, np.ndarray | None]:
         """Read a frame from the camera"""
         if not self.is_running or self.cap is None:
             return False, None

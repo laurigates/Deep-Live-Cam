@@ -1,14 +1,21 @@
 """Tests for modules/processors/frame/_onnx_enhancer_factory.py (Phase 3)."""
 
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
+
 import numpy as np
 
-
 REQUIRED_KEYS = {
-    'NAME', 'INPUT_SIZE',
-    'pre_check', 'pre_start', 'get_enhancer', 'enhance_face',
-    'process_frame', 'process_frame_v2', 'process_frames',
-    'process_image', 'process_video',
+    "NAME",
+    "INPUT_SIZE",
+    "pre_check",
+    "pre_start",
+    "get_enhancer",
+    "enhance_face",
+    "process_frame",
+    "process_frame_v2",
+    "process_frames",
+    "process_image",
+    "process_video",
 }
 
 
@@ -33,8 +40,8 @@ def test_name_and_input_size_match():
         model_url="http://example.com/model.onnx",
         model_file="model.onnx",
     )
-    assert ns['NAME'] == "TEST.GPEN256"
-    assert ns['INPUT_SIZE'] == 256
+    assert ns["NAME"] == "TEST.GPEN256"
+    assert ns["INPUT_SIZE"] == 256
 
 
 def test_all_functions_are_callable():
@@ -46,7 +53,7 @@ def test_all_functions_are_callable():
         model_url="http://example.com/model.onnx",
         model_file="model.onnx",
     )
-    for key in REQUIRED_KEYS - {'NAME', 'INPUT_SIZE'}:
+    for key in REQUIRED_KEYS - {"NAME", "INPUT_SIZE"}:
         assert callable(ns[key]), f"{key} should be callable"
 
 
@@ -61,7 +68,7 @@ def test_pre_check_delegates_to_download_helper(mock_download):
         model_url="http://example.com/model.onnx",
         model_file="model.onnx",
     )
-    result = ns['pre_check']()
+    result = ns["pre_check"]()
     assert result is True
     mock_download.assert_called_once_with("model.onnx", ["http://example.com/model.onnx"], "TEST.PRECHECK")
 
@@ -78,8 +85,8 @@ def test_process_frame_v2_delegates_to_process_frame():
     )
     # With empty faces list, both should return the frame unchanged
     frame = np.zeros((100, 100, 3), dtype=np.uint8)
-    result_v1 = ns['process_frame'](None, frame.copy(), faces=[])
-    result_v2 = ns['process_frame_v2'](frame.copy(), faces=[])
+    result_v1 = ns["process_frame"](None, frame.copy(), faces=[])
+    result_v2 = ns["process_frame_v2"](frame.copy(), faces=[])
     np.testing.assert_array_equal(result_v1, result_v2)
 
 
@@ -96,7 +103,7 @@ def test_extra_input_fn_passed_to_enhance():
         extra_input_fn=extra_fn,
     )
     # enhance_face will fail to load model, which is fine — we're testing the factory structure
-    assert ns['NAME'] == "TEST.EXTRA"
+    assert ns["NAME"] == "TEST.EXTRA"
     # The extra_input_fn is captured but only called during actual enhancement
     # We verified it's properly stored by checking the factory returns successfully
 
@@ -106,12 +113,16 @@ def test_two_independent_instances():
     from modules.processors.frame._onnx_enhancer_factory import create_onnx_enhancer_module
 
     ns1 = create_onnx_enhancer_module(
-        name="INST1", input_size=256,
-        model_url="http://example.com/m1.onnx", model_file="m1.onnx",
+        name="INST1",
+        input_size=256,
+        model_url="http://example.com/m1.onnx",
+        model_file="m1.onnx",
     )
     ns2 = create_onnx_enhancer_module(
-        name="INST2", input_size=512,
-        model_url="http://example.com/m2.onnx", model_file="m2.onnx",
+        name="INST2",
+        input_size=512,
+        model_url="http://example.com/m2.onnx",
+        model_file="m2.onnx",
     )
-    assert ns1['NAME'] != ns2['NAME']
-    assert ns1['INPUT_SIZE'] != ns2['INPUT_SIZE']
+    assert ns1["NAME"] != ns2["NAME"]
+    assert ns1["INPUT_SIZE"] != ns2["INPUT_SIZE"]

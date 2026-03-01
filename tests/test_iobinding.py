@@ -1,11 +1,18 @@
 """Tests for modules/iobinding.py — IOBinding utility for CUDA GPU buffer reuse."""
+
+from unittest.mock import MagicMock, PropertyMock, patch
+
 import numpy as np
 import pytest
-from unittest.mock import MagicMock, patch, PropertyMock
 
 
-def _mock_session(provider: str, input_name: str = "input", output_name: str = "output",
-                  output_shape: list | None = None, output_type: str = "tensor(float)"):
+def _mock_session(
+    provider: str,
+    input_name: str = "input",
+    output_name: str = "output",
+    output_shape: list | None = None,
+    output_type: str = "tensor(float)",
+):
     """Create a mock ONNX InferenceSession with the given provider."""
     session = MagicMock()
     session.get_providers.return_value = [provider]
@@ -31,16 +38,19 @@ class TestSupportsIOBinding:
     def test_cuda_provider_returns_true(self):
         session = _mock_session("CUDAExecutionProvider")
         from modules.iobinding import supports_iobinding
+
         assert supports_iobinding(session) is True
 
     def test_coreml_provider_returns_false(self):
         session = _mock_session("CoreMLExecutionProvider")
         from modules.iobinding import supports_iobinding
+
         assert supports_iobinding(session) is False
 
     def test_cpu_provider_returns_false(self):
         session = _mock_session("CPUExecutionProvider")
         from modules.iobinding import supports_iobinding
+
         assert supports_iobinding(session) is False
 
 
@@ -50,12 +60,14 @@ class TestCreateIOBindingContext:
     def test_returns_none_for_cpu(self):
         session = _mock_session("CPUExecutionProvider")
         from modules.iobinding import create_iobinding_context
+
         assert create_iobinding_context(session) is None
 
     def test_returns_none_on_error(self):
         session = _mock_session("CUDAExecutionProvider")
         session.io_binding.side_effect = RuntimeError("IOBinding not supported")
         from modules.iobinding import create_iobinding_context
+
         result = create_iobinding_context(session)
         assert result is None
 
@@ -63,7 +75,8 @@ class TestCreateIOBindingContext:
         session = _mock_session("CUDAExecutionProvider")
         # io_binding() returns a mock binding object
         session.io_binding.return_value = MagicMock()
-        from modules.iobinding import create_iobinding_context, IOBindingContext
+        from modules.iobinding import IOBindingContext, create_iobinding_context
+
         with patch("modules.iobinding.onnxruntime") as mock_ort:
             mock_ort.OrtValue.ortvalue_from_shape_and_type.return_value = MagicMock()
             ctx = create_iobinding_context(session)
@@ -80,6 +93,7 @@ class TestIOBindingContextRun:
         session.io_binding.return_value = mock_binding
 
         from modules.iobinding import IOBindingContext
+
         with patch("modules.iobinding.onnxruntime") as mock_ort:
             mock_ort_value = MagicMock()
             mock_ort_value.numpy.return_value = np.zeros((1, 3, 1024, 1024), dtype=np.float32)
@@ -97,6 +111,7 @@ class TestIOBindingContextRun:
         session.io_binding.return_value = mock_binding
 
         from modules.iobinding import IOBindingContext
+
         with patch("modules.iobinding.onnxruntime") as mock_ort:
             expected = np.zeros((1, 3, 1024, 1024), dtype=np.float32)
             mock_ort_value = MagicMock()
@@ -112,12 +127,11 @@ class TestIOBindingContextRun:
 
     def test_preallocates_output_buffers(self):
         """IOBindingContext should pre-allocate GPU output OrtValues from session metadata."""
-        session = _mock_session("CUDAExecutionProvider",
-                                output_shape=[1, 3, 1024, 1024],
-                                output_type="tensor(float)")
+        session = _mock_session("CUDAExecutionProvider", output_shape=[1, 3, 1024, 1024], output_type="tensor(float)")
         session.io_binding.return_value = MagicMock()
 
         from modules.iobinding import IOBindingContext
+
         with patch("modules.iobinding.onnxruntime") as mock_ort:
             mock_ort.OrtValue.ortvalue_from_shape_and_type.return_value = MagicMock()
             IOBindingContext(session)

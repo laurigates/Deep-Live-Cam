@@ -3,9 +3,10 @@
 This module checks if NumPy is using Apple Accelerate BLAS on macOS ARM64.
 If not, it provides guidance on how to build NumPy with Accelerate BLAS.
 """
-import sys
-import platform
+
 import logging
+import platform
+import sys
 
 logger = logging.getLogger(__name__)
 
@@ -16,11 +17,12 @@ def get_numpy_blas_info():
     Returns:
         dict: Contains 'uses_accelerate' (bool), 'blas_type' (str), 'config' (str)
     """
-    import numpy as np
+    import contextlib
 
     # Get full config output (not just string representation)
     import io
-    import contextlib
+
+    import numpy as np
 
     f = io.StringIO()
     with contextlib.redirect_stdout(f):

@@ -2,6 +2,7 @@
 
 Verifies the event bus that decouples core.py from ui.py for status updates.
 """
+
 import threading
 from unittest.mock import MagicMock
 
@@ -9,6 +10,7 @@ from unittest.mock import MagicMock
 class TestStatusBusBasics:
     def test_subscribe_and_publish(self):
         from modules.status_bus import StatusBus
+
         bus = StatusBus()
         received = []
         bus.subscribe(lambda msg, caller: received.append((msg, caller)))
@@ -17,6 +19,7 @@ class TestStatusBusBasics:
 
     def test_multiple_subscribers(self):
         from modules.status_bus import StatusBus
+
         bus = StatusBus()
         a, b = [], []
         bus.subscribe(lambda m, c: a.append(m))
@@ -27,6 +30,7 @@ class TestStatusBusBasics:
 
     def test_unsubscribe_stops_delivery(self):
         from modules.status_bus import StatusBus
+
         bus = StatusBus()
         received = []
         cb = lambda m, c: received.append(m)
@@ -37,6 +41,7 @@ class TestStatusBusBasics:
 
     def test_clear_removes_all_subscribers(self):
         from modules.status_bus import StatusBus
+
         bus = StatusBus()
         received = []
         bus.subscribe(lambda m, c: received.append(m))
@@ -47,17 +52,20 @@ class TestStatusBusBasics:
 
     def test_publish_with_no_subscribers_is_safe(self):
         from modules.status_bus import StatusBus
+
         bus = StatusBus()
         bus.publish("nobody listening", "test")  # must not raise
 
     def test_module_level_bus_singleton(self):
         from modules.status_bus import BUS, StatusBus
+
         assert isinstance(BUS, StatusBus)
 
 
 class TestStatusBusThreadSafety:
     def test_concurrent_publishes_deliver_to_all_subscribers(self):
         from modules.status_bus import StatusBus
+
         bus = StatusBus()
         received = []
         lock = threading.Lock()
@@ -76,6 +84,7 @@ class TestStatusBusThreadSafety:
 
     def test_subscribe_during_publish_is_safe(self):
         from modules.status_bus import StatusBus
+
         bus = StatusBus()
         errors = []
 
@@ -106,8 +115,8 @@ class TestStatusBusThreadSafety:
 class TestCoreUsesStatusBus:
     def test_update_status_publishes_to_bus(self):
         """core.update_status must publish to the global BUS."""
-        from modules.status_bus import BUS
         import modules.globals
+        from modules.status_bus import BUS
 
         received = []
         cb = lambda msg, caller: received.append((msg, caller))
@@ -115,6 +124,7 @@ class TestCoreUsesStatusBus:
         try:
             modules.globals.headless = True  # avoid UI calls
             from modules.core import update_status
+
             update_status("test message", "TEST")
         finally:
             BUS.unsubscribe(cb)
@@ -125,22 +135,26 @@ class TestCoreUsesStatusBus:
         """modules.core must not import modules.ui at the top level."""
         import ast
         import inspect
+
         import modules.core
 
         source = inspect.getsource(modules.core)
         tree = ast.parse(source)
 
         top_level_ui_imports = [
-            node for node in ast.walk(tree)
+            node
+            for node in ast.walk(tree)
             if isinstance(node, (ast.Import, ast.ImportFrom))
             and (
-                (isinstance(node, ast.Import) and any('ui' in alias.name for alias in node.names if alias.name == 'modules.ui'))
-                or (isinstance(node, ast.ImportFrom) and node.module == 'modules.ui')
+                (
+                    isinstance(node, ast.Import)
+                    and any("ui" in alias.name for alias in node.names if alias.name == "modules.ui")
+                )
+                or (isinstance(node, ast.ImportFrom) and node.module == "modules.ui")
             )
             and isinstance(node.col_offset, int)
             and node.col_offset == 0  # top-level (not inside a function/class)
         ]
         assert top_level_ui_imports == [], (
-            "modules.core imports modules.ui at module level — "
-            "this forces UI initialization in headless mode"
+            "modules.core imports modules.ui at module level — this forces UI initialization in headless mode"
         )

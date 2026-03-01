@@ -3,6 +3,7 @@
 These exercise _paste_back, _paste_scale_from_M, _upscale_crop_for_paste,
 _clamp_opacity, and apply_post_processing without loading real models.
 """
+
 import cv2
 import numpy as np
 import pytest
@@ -31,6 +32,7 @@ class TestPasteScaleFromM:
 
     def _get_fn(self):
         from modules.processors.frame.face_swapper import _paste_scale_from_M
+
         return _paste_scale_from_M
 
     def test_identity_returns_1(self):
@@ -60,10 +62,13 @@ class TestPasteScaleFromM:
         """A 45-degree rotation without scaling should give k≈1."""
         fn = self._get_fn()
         angle = np.pi / 4
-        M = np.array([
-            [np.cos(angle), -np.sin(angle), 0],
-            [np.sin(angle), np.cos(angle), 0],
-        ], dtype=np.float64)
+        M = np.array(
+            [
+                [np.cos(angle), -np.sin(angle), 0],
+                [np.sin(angle), np.cos(angle), 0],
+            ],
+            dtype=np.float64,
+        )
         assert fn(M) == pytest.approx(1.0, abs=0.05)
 
     def test_half_scale(self):
@@ -87,6 +92,7 @@ class TestUpscaleCropForPaste:
 
     def _get_fn(self):
         from modules.processors.frame.face_swapper import _upscale_crop_for_paste
+
         return _upscale_crop_for_paste
 
     def test_k_near_1_returns_unchanged(self):
@@ -141,6 +147,7 @@ class TestPasteBack:
 
     def _get_fn(self):
         from modules.processors.frame.face_swapper import _paste_back
+
         return _paste_back
 
     def test_output_shape_matches_target(self):
@@ -180,28 +187,32 @@ class TestPasteBack:
 # _clamp_opacity
 # ---------------------------------------------------------------------------
 class TestClampOpacity:
-
     def _get_fn(self):
         from modules.processors.frame.face_swapper import _clamp_opacity
+
         return _clamp_opacity
 
     def test_normal_range(self):
         import modules.globals
+
         modules.globals.opacity = 0.5
         assert self._get_fn()() == pytest.approx(0.5)
 
     def test_clamps_above_1(self):
         import modules.globals
+
         modules.globals.opacity = 1.5
         assert self._get_fn()() == pytest.approx(1.0)
 
     def test_clamps_below_0(self):
         import modules.globals
+
         modules.globals.opacity = -0.3
         assert self._get_fn()() == pytest.approx(0.0)
 
     def test_missing_attr_returns_1(self):
         import modules.globals
+
         if hasattr(modules.globals, "opacity"):
             saved = modules.globals.opacity
             delattr(modules.globals, "opacity")
@@ -219,11 +230,13 @@ class TestApplyPostProcessing:
 
     def _get_fn(self):
         from modules.processors.frame.face_swapper import apply_post_processing
+
         return apply_post_processing
 
     def test_no_bboxes_returns_frame_unchanged(self):
         fn = self._get_fn()
         import modules.globals
+
         modules.globals.sharpness = 0.5
         modules.globals.enable_interpolation = False
 
@@ -234,6 +247,7 @@ class TestApplyPostProcessing:
     def test_sharpness_zero_skips_sharpening(self):
         fn = self._get_fn()
         import modules.globals
+
         modules.globals.sharpness = 0.0
         modules.globals.enable_interpolation = False
 
@@ -246,6 +260,7 @@ class TestApplyPostProcessing:
     def test_sharpening_modifies_face_region(self):
         fn = self._get_fn()
         import modules.globals
+
         modules.globals.sharpness = 1.0
         modules.globals.enable_interpolation = False
 
@@ -262,6 +277,7 @@ class TestApplyPostProcessing:
     def test_invalid_bbox_skipped(self):
         fn = self._get_fn()
         import modules.globals
+
         modules.globals.sharpness = 1.0
         modules.globals.enable_interpolation = False
 
@@ -276,6 +292,7 @@ class TestApplyPostProcessing:
     def test_bbox_clamped_to_frame_bounds(self):
         fn = self._get_fn()
         import modules.globals
+
         modules.globals.sharpness = 0.5
         modules.globals.enable_interpolation = False
 
@@ -289,6 +306,7 @@ class TestApplyPostProcessing:
     def test_multiple_bboxes(self):
         fn = self._get_fn()
         import modules.globals
+
         modules.globals.sharpness = 0.5
         modules.globals.enable_interpolation = False
 

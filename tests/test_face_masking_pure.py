@@ -3,10 +3,12 @@
 Tests create_lower_mouth_mask edge cases, _eye_dimensions, _ellipse_polygon,
 _curved_eyebrow_contour, and apply_mask_area boundary conditions.
 """
+
+from types import SimpleNamespace
+
 import cv2
 import numpy as np
 import pytest
-from types import SimpleNamespace
 
 
 def _make_face_with_landmarks(frame_h=480, frame_w=640):
@@ -65,9 +67,9 @@ def _make_face_with_landmarks(frame_h=480, frame_w=640):
 # _eye_dimensions
 # ---------------------------------------------------------------------------
 class TestEyeDimensions:
-
     def _get_fn(self):
         from modules.processors.frame.face_masking import _eye_dimensions
+
         return _eye_dimensions
 
     def test_basic_rectangle(self):
@@ -96,9 +98,9 @@ class TestEyeDimensions:
 # _ellipse_polygon
 # ---------------------------------------------------------------------------
 class TestEllipsePolygon:
-
     def _get_fn(self):
         from modules.processors.frame.face_masking import _ellipse_polygon
+
         return _ellipse_polygon
 
     def test_returns_correct_number_of_points(self):
@@ -134,9 +136,9 @@ class TestEllipsePolygon:
 # _curved_eyebrow_contour
 # ---------------------------------------------------------------------------
 class TestCurvedEyebrowContour:
-
     def _get_fn(self):
         from modules.processors.frame.face_masking import _curved_eyebrow_contour
+
         return _curved_eyebrow_contour
 
     def test_fewer_than_5_points_returns_input(self):
@@ -147,18 +149,14 @@ class TestCurvedEyebrowContour:
 
     def test_5_points_produces_contour(self):
         fn = self._get_fn()
-        pts = np.array([
-            [10, 30], [20, 25], [30, 20], [40, 25], [50, 30]
-        ], dtype=np.float32)
+        pts = np.array([[10, 30], [20, 25], [30, 20], [40, 25], [50, 30]], dtype=np.float32)
         result = fn(pts)
         assert result.shape[0] > 5  # More points than input (interpolated)
         assert result.shape[1] == 2
 
     def test_output_does_not_mutate_input(self):
         fn = self._get_fn()
-        pts = np.array([
-            [10, 30], [20, 25], [30, 20], [40, 25], [50, 30]
-        ], dtype=np.float32)
+        pts = np.array([[10, 30], [20, 25], [30, 20], [40, 25], [50, 30]], dtype=np.float32)
         pts_copy = pts.copy()
         fn(pts)
         np.testing.assert_array_equal(pts, pts_copy)
@@ -168,13 +166,14 @@ class TestCurvedEyebrowContour:
 # create_lower_mouth_mask
 # ---------------------------------------------------------------------------
 class TestCreateLowerMouthMask:
-
     def _get_fn(self):
         from modules.processors.frame.face_masking import create_lower_mouth_mask
+
         return create_lower_mouth_mask
 
     def _setup_globals(self):
         import modules.globals
+
         modules.globals.mask_down_size = 0.1
         modules.globals.mouth_mask_size = 1.0
         modules.globals.mask_blur_kernel = 15
@@ -243,13 +242,14 @@ class TestCreateLowerMouthMask:
 # apply_mask_area boundary conditions
 # ---------------------------------------------------------------------------
 class TestApplyMaskArea:
-
     def _get_fn(self):
         from modules.processors.frame.face_masking import apply_mask_area
+
         return apply_mask_area
 
     def _setup_globals(self):
         import modules.globals
+
         modules.globals.MOUTH_FEATHER_RADIUS = 10
         modules.globals.mask_feather_ratio = 12
 
@@ -257,7 +257,13 @@ class TestApplyMaskArea:
         fn = self._get_fn()
         self._setup_globals()
         frame = np.zeros((200, 200, 3), dtype=np.uint8)
-        result = fn(frame, None, (10, 10, 50, 50), np.zeros((200, 200), dtype=np.uint8), np.array([[10, 10], [50, 10], [50, 50], [10, 50]], dtype=np.int32))
+        result = fn(
+            frame,
+            None,
+            (10, 10, 50, 50),
+            np.zeros((200, 200), dtype=np.uint8),
+            np.array([[10, 10], [50, 10], [50, 50], [10, 50]], dtype=np.int32),
+        )
         np.testing.assert_array_equal(result, frame)
 
     def test_none_polygon_returns_frame(self):

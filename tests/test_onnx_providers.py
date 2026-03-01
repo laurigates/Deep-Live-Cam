@@ -1,7 +1,7 @@
 """Tests for modules/onnx_providers.py (Phase 2)."""
 
-from unittest.mock import patch
 import os
+from unittest.mock import patch
 
 
 def test_non_coreml_providers_pass_through():
@@ -45,9 +45,7 @@ def test_coreml_not_on_apple_silicon_passes_through():
 def test_mixed_providers(mock_makedirs):
     from modules.onnx_providers import build_providers_config
 
-    result = build_providers_config(
-        ["CoreMLExecutionProvider", "CPUExecutionProvider"]
-    )
+    result = build_providers_config(["CoreMLExecutionProvider", "CPUExecutionProvider"])
     assert len(result) == 2
     assert isinstance(result[0], tuple)
     assert result[1] == "CPUExecutionProvider"

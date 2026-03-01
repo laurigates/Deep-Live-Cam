@@ -1,8 +1,10 @@
 """Tests for FP16 GFPGAN model preference and conversion script."""
+
 import os
-import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
+
 import numpy as np
+import pytest
 
 
 def test_get_face_enhancer_prefers_fp16(tmp_path):

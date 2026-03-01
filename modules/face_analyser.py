@@ -1,31 +1,32 @@
 import os
 import shutil
-from dataclasses import dataclass, field
-from typing import Any, Optional
-import insightface
-from insightface.app import FaceAnalysis as _FaceAnalysis
 import threading
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
 
 import cv2
 import numpy as np
-import modules.globals
+from insightface.app import FaceAnalysis as _FaceAnalysis
 from tqdm import tqdm
-from modules.typing import Frame
-from modules.cluster_analysis import find_cluster_centroids, find_closest_centroid
-from modules.utilities import get_temp_directory_path, create_temp, extract_frames, clean_temp, get_temp_frame_paths
-from pathlib import Path
+
+import modules.globals
+from modules.cluster_analysis import find_closest_centroid, find_cluster_centroids
+from modules.face_map_store import STORE as _MAP_STORE
 from modules.platform_info import IS_APPLE_SILICON
 from modules.processing_config import ProcessingConfig
-from modules.face_map_store import STORE as _MAP_STORE
-
+from modules.typing import Frame
+from modules.utilities import clean_temp, create_temp, extract_frames, get_temp_directory_path, get_temp_frame_paths
 
 # ---------------------------------------------------------------------------
 # Class-based injectable API (Issue #58)
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class FaceAnalyserConfig:
     """Configuration for a FaceAnalyser instance."""
+
     providers: list[str]
     det_size: tuple[int, int] = (320, 320)
 
@@ -45,7 +46,7 @@ class FaceAnalyser:
 
         from modules.face_analyser import FaceAnalyser, FaceAnalyserConfig
 
-        cfg = FaceAnalyserConfig(providers=['CPUExecutionProvider'])
+        cfg = FaceAnalyserConfig(providers=["CPUExecutionProvider"])
         analyser = FaceAnalyser(cfg)
         face = analyser.get_one_face(frame)
     """
@@ -67,15 +68,15 @@ class FaceAnalyser:
     @staticmethod
     def _filter_providers(providers: list[str]) -> list[str]:
         """Remove CoreML from InsightFace sessions (dynamic-shape incompatibility)."""
-        filtered = [p for p in providers if p != 'CoreMLExecutionProvider']
-        return filtered or ['CPUExecutionProvider']
+        filtered = [p for p in providers if p != "CoreMLExecutionProvider"]
+        return filtered or ["CPUExecutionProvider"]
 
     def _build(self, providers: list[str], det_size: tuple[int, int]) -> Any:
         safe_providers = self._filter_providers(providers)
         inner = _FaceAnalysis(
-            name='buffalo_l',
+            name="buffalo_l",
             providers=safe_providers,
-            allowed_modules=['detection', 'recognition', 'landmark_2d_106'],
+            allowed_modules=["detection", "recognition", "landmark_2d_106"],
         )
         inner.prepare(ctx_id=0, det_size=det_size)
         return inner
@@ -128,7 +129,7 @@ _LIVE_DET_SIZE = (160, 160) if IS_APPLE_SILICON else (320, 320)
 _DEFAULT_DET_SIZE = (320, 320)
 
 
-def get_face_analyser(config: Optional[ProcessingConfig] = None) -> Any:
+def get_face_analyser(config: ProcessingConfig | None = None) -> Any:
     """Get face analyser with thread-safe initialization.
 
     When *config* is provided its ``execution_providers`` are used instead of
@@ -144,24 +145,19 @@ def get_face_analyser(config: Optional[ProcessingConfig] = None) -> Any:
                 # CoreML provider fails with InsightFace detection models due to
                 # dynamic output shape incompatibility, so always use CPU for face analysis
                 source_providers = (
-                    config.execution_providers
-                    if config is not None
-                    else modules.globals.execution_providers
+                    config.execution_providers if config is not None else modules.globals.execution_providers
                 )
-                providers = [
-                    p for p in source_providers
-                    if p != 'CoreMLExecutionProvider'
-                ] or ['CPUExecutionProvider']
+                providers = [p for p in source_providers if p != "CoreMLExecutionProvider"] or ["CPUExecutionProvider"]
                 FACE_ANALYSER = _FaceAnalysis(
-                    name='buffalo_l',
+                    name="buffalo_l",
                     providers=providers,
-                    allowed_modules=['detection', 'recognition', 'landmark_2d_106']
+                    allowed_modules=["detection", "recognition", "landmark_2d_106"],
                 )
                 FACE_ANALYSER.prepare(ctx_id=0, det_size=_CURRENT_DET_SIZE)
     return FACE_ANALYSER
 
 
-def set_det_size(det_size: tuple[int, int], config: Optional[ProcessingConfig] = None) -> None:
+def set_det_size(det_size: tuple[int, int], config: ProcessingConfig | None = None) -> None:
     """Recreate the face analyser with a different detection size.
 
     InsightFace ignores ``prepare()`` after the first call, so the only
@@ -181,19 +177,10 @@ def set_det_size(det_size: tuple[int, int], config: Optional[ProcessingConfig] =
 
     with FACE_ANALYSER_LOCK:
         _CURRENT_DET_SIZE = det_size
-        source_providers = (
-            config.execution_providers
-            if config is not None
-            else modules.globals.execution_providers
-        )
-        providers = [
-            p for p in source_providers
-            if p != 'CoreMLExecutionProvider'
-        ] or ['CPUExecutionProvider']
+        source_providers = config.execution_providers if config is not None else modules.globals.execution_providers
+        providers = [p for p in source_providers if p != "CoreMLExecutionProvider"] or ["CPUExecutionProvider"]
         FACE_ANALYSER = _FaceAnalysis(
-            name='buffalo_l',
-            providers=providers,
-            allowed_modules=['detection', 'recognition', 'landmark_2d_106']
+            name="buffalo_l", providers=providers, allowed_modules=["detection", "recognition", "landmark_2d_106"]
         )
         FACE_ANALYSER.prepare(ctx_id=0, det_size=det_size)
 
@@ -217,7 +204,7 @@ def get_many_faces(frame: Frame) -> Any:
         return None
 
 
-def detect_faces(frame: Frame, config: Optional[ProcessingConfig] = None) -> list:
+def detect_faces(frame: Frame, config: ProcessingConfig | None = None) -> list:
     """Return detected faces based on the current many_faces setting.
 
     When *config* is provided its ``many_faces`` flag is used instead of
@@ -247,10 +234,10 @@ def detect_faces_for_webcam(frame: Frame, many_faces: bool) -> dict:
     """
     if many_faces:
         faces = get_many_faces(frame)
-        return {'target_face': None, 'many_faces': faces if faces else []}
+        return {"target_face": None, "many_faces": faces if faces else []}
     else:
         face = get_one_face(frame)
-        return {'target_face': face, 'many_faces': None}
+        return {"target_face": face, "many_faces": None}
 
 
 def has_valid_map() -> bool:
@@ -275,48 +262,48 @@ def get_unique_faces_from_target_image() -> None:
         many_faces = get_many_faces(target_frame)
         new_map = [
             {
-                'id': i,
-                'target': {
-                    'cv2': target_frame[int(y_min):int(y_max), int(x_min):int(x_max)],
-                    'face': face,
+                "id": i,
+                "target": {
+                    "cv2": target_frame[int(y_min) : int(y_max), int(x_min) : int(x_max)],
+                    "face": face,
                 },
             }
             for i, face in enumerate(many_faces)
-            for x_min, y_min, x_max, y_max in [face['bbox']]
+            for x_min, y_min, x_max, y_max in [face["bbox"]]
         ]
         _MAP_STORE.set_entries(new_map)
     except ValueError:
         return
-    
-    
+
+
 def _extract_frame_embeddings(temp_frame_paths: list) -> list:
     """Return a list of {frame, faces, location} dicts for all frames."""
     result = []
     for i, path in enumerate(tqdm(temp_frame_paths, desc="Extracting face embeddings from frames")):
         frame = cv2.imread(path)
         faces = get_many_faces(frame)
-        result.append({'frame': i, 'faces': faces, 'location': path})
+        result.append({"frame": i, "faces": faces, "location": path})
     return result
 
 
 def _assign_centroids(frame_face_embeddings: list, centroids) -> None:
     """Tag each face in-place with the index of its closest centroid."""
     for frame in frame_face_embeddings:
-        for face in frame['faces']:
+        for face in frame["faces"]:
             closest_idx, _ = find_closest_centroid(centroids, face.normed_embedding)
-            face['target_centroid'] = closest_idx
+            face["target_centroid"] = closest_idx
 
 
 def _build_centroid_map(frame_face_embeddings: list, centroids) -> list:
     """Build the source_target_map skeleton grouped by centroid index."""
     return [
         {
-            'id': i,
-            'target_faces_in_frame': [
+            "id": i,
+            "target_faces_in_frame": [
                 {
-                    'frame': frame['frame'],
-                    'faces': [f for f in frame['faces'] if f['target_centroid'] == i],
-                    'location': frame['location'],
+                    "frame": frame["frame"],
+                    "faces": [f for f in frame["faces"] if f["target_centroid"] == i],
+                    "location": frame["location"],
                 }
                 for frame in tqdm(frame_face_embeddings, desc=f"Mapping frame embeddings to centroids-{i}")
             ],
@@ -327,20 +314,16 @@ def _build_centroid_map(frame_face_embeddings: list, centroids) -> list:
 
 def get_unique_faces_from_target_video() -> None:
     try:
-        print('Creating temp resources...')
+        print("Creating temp resources...")
         clean_temp(modules.globals.target_path)
         create_temp(modules.globals.target_path)
-        print('Extracting frames...')
+        print("Extracting frames...")
         extract_frames(modules.globals.target_path)
 
         temp_frame_paths = get_temp_frame_paths(modules.globals.target_path)
         frame_face_embeddings = _extract_frame_embeddings(temp_frame_paths)
 
-        all_embeddings = [
-            face.normed_embedding
-            for frame in frame_face_embeddings
-            for face in frame['faces']
-        ]
+        all_embeddings = [face.normed_embedding for frame in frame_face_embeddings for face in frame["faces"]]
         centroids = find_cluster_centroids(all_embeddings)
 
         _assign_centroids(frame_face_embeddings, centroids)
@@ -355,26 +338,22 @@ def get_unique_faces_from_target_video() -> None:
 
 def _find_best_face_in_frames(frames: list):
     """Return (best_face, best_frame) with the highest det_score, or (None, None)."""
-    all_scored = [
-        (face, frame)
-        for frame in frames
-        for face in frame['faces']
-    ]
+    all_scored = [(face, frame) for frame in frames for face in frame["faces"]]
     if not all_scored:
         return None, None
-    return max(all_scored, key=lambda pair: pair[0]['det_score'])
+    return max(all_scored, key=lambda pair: pair[0]["det_score"])
 
 
 def default_target_face() -> None:
     for face_map in _MAP_STORE.get_entries():
-        best_face, best_frame = _find_best_face_in_frames(face_map['target_faces_in_frame'])
+        best_face, best_frame = _find_best_face_in_frames(face_map["target_faces_in_frame"])
         if best_face is None:
             continue
-        x_min, y_min, x_max, y_max = best_face['bbox']
-        target_frame = cv2.imread(best_frame['location'])
-        face_map['target'] = {
-            'cv2': target_frame[int(y_min):int(y_max), int(x_min):int(x_max)],
-            'face': best_face,
+        x_min, y_min, x_max, y_max = best_face["bbox"]
+        target_frame = cv2.imread(best_frame["location"])
+        face_map["target"] = {
+            "cv2": target_frame[int(y_min) : int(y_max), int(x_min) : int(x_max)],
+            "face": best_face,
         }
 
 
@@ -409,15 +388,17 @@ def _face_pair_similar(
     cosine_threshold: float,
 ) -> bool:
     """Return True when a single face pair passes both spatial and embedding checks."""
-    if not hasattr(face, 'bbox') or face.bbox is None:
+    if not hasattr(face, "bbox") or face.bbox is None:
         return False
-    if not hasattr(prev_face, 'bbox') or prev_face.bbox is None:
+    if not hasattr(prev_face, "bbox") or prev_face.bbox is None:
         return False
     if compute_bbox_iou(face.bbox, prev_face.bbox) < iou_threshold:
         return False
     both_have_embedding = (
-        hasattr(face, 'normed_embedding') and face.normed_embedding is not None
-        and hasattr(prev_face, 'normed_embedding') and prev_face.normed_embedding is not None
+        hasattr(face, "normed_embedding")
+        and face.normed_embedding is not None
+        and hasattr(prev_face, "normed_embedding")
+        and prev_face.normed_embedding is not None
     )
     if both_have_embedding:
         if compute_embedding_cosine(face.normed_embedding, prev_face.normed_embedding) < cosine_threshold:
@@ -457,10 +438,10 @@ def dump_faces(centroids: Any, frame_face_embeddings: list):
         Path(centroid_dir).mkdir(parents=True, exist_ok=True)
 
         for frame in tqdm(frame_face_embeddings, desc=f"Copying faces to temp/./{i}"):
-            temp_frame = cv2.imread(frame['location'])
-            centroid_faces = [f for f in frame['faces'] if f['target_centroid'] == i]
+            temp_frame = cv2.imread(frame["location"])
+            centroid_faces = [f for f in frame["faces"] if f["target_centroid"] == i]
             for j, face in enumerate(centroid_faces):
-                x_min, y_min, x_max, y_max = face['bbox']
-                crop = temp_frame[int(y_min):int(y_max), int(x_min):int(x_max)]
+                x_min, y_min, x_max, y_max = face["bbox"]
+                crop = temp_frame[int(y_min) : int(y_max), int(x_min) : int(x_max)]
                 if crop.size > 0:
                     cv2.imwrite(os.path.join(centroid_dir, f"{frame['frame']}_{j}.png"), crop)

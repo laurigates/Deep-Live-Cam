@@ -19,7 +19,6 @@ import shutil
 import subprocess
 import sys
 import threading
-from typing import List, Optional
 
 import modules.globals
 from modules.paths import MODELS_DIR
@@ -56,6 +55,7 @@ def _update_status(message: str) -> None:
 # Backend detection
 # ---------------------------------------------------------------------------
 
+
 def has_native_binding() -> bool:
     """Check if the native Python binding is available."""
     try:
@@ -73,7 +73,7 @@ def _binary_name() -> str:
     return "rife-ncnn-vulkan"
 
 
-def find_binary() -> Optional[str]:
+def find_binary() -> str | None:
     """Find rife-ncnn-vulkan binary on PATH or in models directory."""
     path_binary = shutil.which("rife-ncnn-vulkan")
     if path_binary:
@@ -86,7 +86,7 @@ def find_binary() -> Optional[str]:
     return None
 
 
-def find_model_dir(model_name: str) -> Optional[str]:
+def find_model_dir(model_name: str) -> str | None:
     """Find model directory for the given model name.
 
     Searches in order:
@@ -152,6 +152,7 @@ def pre_check() -> bool:
 # Frame counting
 # ---------------------------------------------------------------------------
 
+
 def _count_frames(directory: str) -> int:
     """Count image files in a directory."""
     count = 0
@@ -163,6 +164,7 @@ def _count_frames(directory: str) -> int:
 # ---------------------------------------------------------------------------
 # Native Python binding backend
 # ---------------------------------------------------------------------------
+
 
 def _get_native_rife(should_stop=None):
     """Get or create a cached native Rife instance.
@@ -178,7 +180,7 @@ def _get_native_rife(should_stop=None):
     model_name = getattr(modules.globals, "rife_model", DEFAULT_MODEL)
 
     # Fast path: instance already exists for current model
-    if _NATIVE_RIFE is not None and _NATIVE_RIFE_MODEL == model_name:
+    if _NATIVE_RIFE is not None and model_name == _NATIVE_RIFE_MODEL:
         return _NATIVE_RIFE
 
     # Abort early if shutdown has been requested
@@ -189,7 +191,7 @@ def _get_native_rife(should_stop=None):
         # Re-check under lock (another thread may have created it, or we're shutting down)
         if should_stop is not None and should_stop():
             return None
-        if _NATIVE_RIFE is not None and _NATIVE_RIFE_MODEL == model_name:
+        if _NATIVE_RIFE is not None and model_name == _NATIVE_RIFE_MODEL:
             return _NATIVE_RIFE
 
         from rife_ncnn_vulkan_python import Rife
@@ -216,7 +218,7 @@ def cleanup_rife() -> None:
         _NATIVE_RIFE_MODEL = None
 
 
-def _interpolate_native(temp_directory_path: str) -> Optional[int]:
+def _interpolate_native(temp_directory_path: str) -> int | None:
     """Interpolate frames using the native Python binding."""
     import cv2
 
@@ -279,9 +281,7 @@ def _interpolate_native(temp_directory_path: str) -> Optional[int]:
         cv2.imwrite(out_path, frame, [cv2.IMWRITE_JPEG_QUALITY, 95])
 
     final_count = len(output_frames)
-    _update_status(
-        f"RIFE interpolation complete: {input_count} -> {final_count} frames"
-    )
+    _update_status(f"RIFE interpolation complete: {input_count} -> {final_count} frames")
     return final_count
 
 
@@ -290,7 +290,7 @@ def _interpolate_native(temp_directory_path: str) -> Optional[int]:
 # ---------------------------------------------------------------------------
 
 
-def interpolate_frame_pair(frame0, frame1, multiplier: int = 2, should_stop=None) -> List:
+def interpolate_frame_pair(frame0, frame1, multiplier: int = 2, should_stop=None) -> list:
     """Interpolate intermediate frames between two BGR numpy arrays.
 
     Returns only the intermediate frames (not frame0 or frame1).
@@ -304,7 +304,6 @@ def interpolate_frame_pair(frame0, frame1, multiplier: int = 2, should_stop=None
     Returns an empty list on any failure (no native binding, shape mismatch,
     GPU error) so callers can safely skip interpolation.
     """
-    import numpy as np
 
     if should_stop is not None and should_stop():
         return []
@@ -337,6 +336,7 @@ def interpolate_frame_pair(frame0, frame1, multiplier: int = 2, should_stop=None
 # CLI binary backend
 # ---------------------------------------------------------------------------
 
+
 def _build_command(
     binary: str,
     input_dir: str,
@@ -344,7 +344,7 @@ def _build_command(
     model_dir: str,
     input_frame_count: int,
     multiplier: int,
-) -> List[str]:
+) -> list[str]:
     """Build the rife-ncnn-vulkan command line."""
     target_frames = input_frame_count * multiplier
 
@@ -366,7 +366,7 @@ def _build_command(
     return cmd
 
 
-def _interpolate_cli(temp_directory_path: str) -> Optional[int]:
+def _interpolate_cli(temp_directory_path: str) -> int | None:
     """Interpolate frames using the CLI binary."""
     binary = find_binary()
     if not binary:
@@ -392,14 +392,15 @@ def _interpolate_cli(temp_directory_path: str) -> Optional[int]:
     os.makedirs(rife_output_dir, exist_ok=True)
 
     cmd = _build_command(
-        binary, temp_directory_path, rife_output_dir, model_dir,
-        input_frame_count, multiplier,
+        binary,
+        temp_directory_path,
+        rife_output_dir,
+        model_dir,
+        input_frame_count,
+        multiplier,
     )
 
-    _update_status(
-        f"Running RIFE interpolation (CLI, {model_name}, {multiplier}x) "
-        f"on {input_frame_count} frames..."
-    )
+    _update_status(f"Running RIFE interpolation (CLI, {model_name}, {multiplier}x) on {input_frame_count} frames...")
 
     try:
         result = subprocess.run(
@@ -460,9 +461,7 @@ def _interpolate_cli(temp_directory_path: str) -> Optional[int]:
     shutil.rmtree(rife_output_dir, ignore_errors=True)
 
     final_count = _count_frames(temp_directory_path)
-    _update_status(
-        f"RIFE interpolation complete: {input_frame_count} -> {final_count} frames"
-    )
+    _update_status(f"RIFE interpolation complete: {input_frame_count} -> {final_count} frames")
     return final_count
 
 
@@ -470,7 +469,8 @@ def _interpolate_cli(temp_directory_path: str) -> Optional[int]:
 # Public API
 # ---------------------------------------------------------------------------
 
-def interpolate_frames(temp_directory_path: str) -> Optional[int]:
+
+def interpolate_frames(temp_directory_path: str) -> int | None:
     """Run RIFE frame interpolation on extracted video frames.
 
     Automatically selects the best available backend (native > CLI).

@@ -3,8 +3,8 @@
 Updated in Issue #61: verifies the on_status injectable callback parameter.
 """
 
-from unittest.mock import patch, MagicMock, call
 import os
+from unittest.mock import MagicMock, call, patch
 
 
 @patch("modules.utilities.conditional_download")
@@ -43,6 +43,7 @@ def test_uses_default_models_dir(mock_exists, mock_download):
 # ---------------------------------------------------------------------------
 # Injectable on_status callback (#61)
 # ---------------------------------------------------------------------------
+
 
 @patch("modules.utilities.conditional_download")
 @patch("modules.utilities.os.path.exists")
@@ -94,16 +95,17 @@ def test_on_status_called_on_download_failure(mock_exists, mock_download):
 @patch("modules.utilities.os.path.exists")
 def test_no_core_import_when_on_status_provided(mock_exists, mock_download):
     """When on_status callback is provided, modules.core must not be imported."""
-    from modules.utilities import download_model_if_needed
     import sys
+
+    from modules.utilities import download_model_if_needed
 
     mock_exists.side_effect = [False, True]
     on_status = MagicMock()
 
     # Ensure modules.core is not in sys.modules so import would be detectable
-    core_was_loaded = 'modules.core' in sys.modules
+    core_was_loaded = "modules.core" in sys.modules
     if core_was_loaded:
-        original_core = sys.modules.pop('modules.core')
+        original_core = sys.modules.pop("modules.core")
 
     try:
         download_model_if_needed(
@@ -115,12 +117,10 @@ def test_no_core_import_when_on_status_provided(mock_exists, mock_download):
         )
         # If on_status was used, modules.core should not have been imported
         if not core_was_loaded:
-            assert 'modules.core' not in sys.modules, (
-                "modules.core was imported despite on_status being provided"
-            )
+            assert "modules.core" not in sys.modules, "modules.core was imported despite on_status being provided"
     finally:
         if core_was_loaded:
-            sys.modules['modules.core'] = original_core
+            sys.modules["modules.core"] = original_core
 
     on_status.assert_called()
 
@@ -142,7 +142,8 @@ def test_on_status_not_required(mock_exists, mock_download):
 def test_on_status_signature_is_accepted(mock_exists, mock_download):
     """Verify on_status parameter exists in the function signature."""
     import inspect
+
     from modules.utilities import download_model_if_needed
 
     sig = inspect.signature(download_model_if_needed)
-    assert 'on_status' in sig.parameters
+    assert "on_status" in sig.parameters

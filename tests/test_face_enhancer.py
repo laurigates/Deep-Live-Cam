@@ -1,8 +1,10 @@
 """Tests for modules/processors/frame/face_enhancer.py."""
+
+from unittest.mock import MagicMock, patch
+
 import cv2
 import numpy as np
 import pytest
-from unittest.mock import patch, MagicMock
 
 
 def _blank_frame(h=64, w=64):
@@ -12,6 +14,7 @@ def _blank_frame(h=64, w=64):
 def test_process_frame_v2_is_callable():
     """process_frame_v2 must exist and be callable after Wave 5 fix."""
     from modules.processors.frame import face_enhancer
+
     assert callable(face_enhancer.process_frame_v2)
 
 
@@ -20,6 +23,7 @@ def test_process_frame_v2_returns_frame_when_no_face():
     frame = _blank_frame()
     with patch("modules.processors.frame.face_enhancer.get_many_faces", return_value=None):
         from modules.processors.frame import face_enhancer
+
         result = face_enhancer.process_frame_v2(frame)
         assert result is not None
         assert isinstance(result, np.ndarray)
@@ -36,8 +40,9 @@ def test_enhance_face_handles_runtime_error():
     mock_face = MagicMock()
     mock_face.kps = np.array([[10, 10], [20, 10], [15, 20], [10, 25], [20, 25]], dtype=np.float32)
     with patch("modules.processors.frame.face_enhancer.get_many_faces", return_value=[mock_face]):
-        with patch("modules.processors.frame.face_enhancer.get_face_enhancer",
-                   side_effect=RuntimeError("Model load failed")):
+        with patch(
+            "modules.processors.frame.face_enhancer.get_face_enhancer", side_effect=RuntimeError("Model load failed")
+        ):
             result = face_enhancer.enhance_face(frame)
             assert np.array_equal(result, frame)
 
@@ -48,9 +53,7 @@ def test_enhance_face_uses_inter_area_for_downscale():
 
     # Mock face with valid landmarks
     mock_face = MagicMock()
-    mock_face.kps = np.array(
-        [[10, 10], [20, 10], [15, 20], [10, 25], [20, 25]], dtype=np.float32
-    )
+    mock_face.kps = np.array([[10, 10], [20, 10], [15, 20], [10, 25], [20, 25]], dtype=np.float32)
 
     # Mock session that outputs larger resolution than input
     mock_session = MagicMock()
@@ -93,7 +96,8 @@ def test_enhance_face_uses_inter_area_for_downscale():
 
 def test_get_feathered_mask_shape():
     """Cached mask should have correct shape (output_size, output_size, 3)."""
-    from modules.processors.frame.face_enhancer import _get_feathered_mask, _MASK_CACHE
+    from modules.processors.frame.face_enhancer import _MASK_CACHE, _get_feathered_mask
+
     _MASK_CACHE.clear()
     mask = _get_feathered_mask(512)
     assert mask.shape == (512, 512, 3)
@@ -102,7 +106,8 @@ def test_get_feathered_mask_shape():
 
 def test_get_feathered_mask_cache_identity():
     """Second call should return the exact same object (cache hit)."""
-    from modules.processors.frame.face_enhancer import _get_feathered_mask, _MASK_CACHE
+    from modules.processors.frame.face_enhancer import _MASK_CACHE, _get_feathered_mask
+
     _MASK_CACHE.clear()
     mask1 = _get_feathered_mask(512)
     mask2 = _get_feathered_mask(512)
@@ -111,7 +116,8 @@ def test_get_feathered_mask_cache_identity():
 
 def test_get_feathered_mask_border_values():
     """Border pixels should be feathered (less than 1.0), center should be 1.0."""
-    from modules.processors.frame.face_enhancer import _get_feathered_mask, _MASK_CACHE
+    from modules.processors.frame.face_enhancer import _MASK_CACHE, _get_feathered_mask
+
     _MASK_CACHE.clear()
     mask = _get_feathered_mask(100)
     # Center should be 1.0
@@ -122,7 +128,8 @@ def test_get_feathered_mask_border_values():
 
 def test_get_feathered_mask_immutable():
     """Cached mask should be read-only to prevent accidental modification."""
-    from modules.processors.frame.face_enhancer import _get_feathered_mask, _MASK_CACHE
+    from modules.processors.frame.face_enhancer import _MASK_CACHE, _get_feathered_mask
+
     _MASK_CACHE.clear()
     mask = _get_feathered_mask(256)
     assert not mask.flags.writeable
@@ -130,7 +137,8 @@ def test_get_feathered_mask_immutable():
 
 def test_get_feathered_mask_different_sizes():
     """Different sizes should produce different cache entries."""
-    from modules.processors.frame.face_enhancer import _get_feathered_mask, _MASK_CACHE
+    from modules.processors.frame.face_enhancer import _MASK_CACHE, _get_feathered_mask
+
     _MASK_CACHE.clear()
     mask256 = _get_feathered_mask(256)
     mask512 = _get_feathered_mask(512)
@@ -180,9 +188,7 @@ def test_paste_back_empty_mask_returns_frame():
 def _make_mock_session_and_face():
     """Helper: mock session + mock face for enhance_face tests."""
     mock_face = MagicMock()
-    mock_face.kps = np.array(
-        [[10, 10], [20, 10], [15, 20], [10, 25], [20, 25]], dtype=np.float32
-    )
+    mock_face.kps = np.array([[10, 10], [20, 10], [15, 20], [10, 25], [20, 25]], dtype=np.float32)
 
     mock_session = MagicMock()
     mock_input = MagicMock()

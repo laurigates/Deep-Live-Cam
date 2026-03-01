@@ -11,6 +11,7 @@ use automatically on the next run (bypassing ONNX Runtime's CoreML EP).
 
 Conversion path: ONNX → onnx2torch → TorchScript trace → coremltools → .mlpackage
 """
+
 import argparse
 import os
 import sys
@@ -32,10 +33,10 @@ def convert(models_dir: str) -> int:
         return 0
 
     try:
+        import coremltools as ct
         import onnx
         import onnx2torch
         import torch
-        import coremltools as ct
     except ImportError as exc:
         print(f"ERROR: Missing dependency: {exc}")
         print("Run: uv sync")
@@ -104,6 +105,7 @@ def main() -> int:
     except Exception as exc:
         print(f"ERROR: Conversion failed: {exc}")
         import traceback
+
         traceback.print_exc()
         print()
         print("Common causes:")

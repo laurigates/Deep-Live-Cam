@@ -1,10 +1,11 @@
 import cv2
 import numpy as np
-from modules.typing import Face, Frame
+
 import modules.globals
-from modules.gpu_processing import gpu_gaussian_blur, gpu_resize, gpu_cvt_color
-from modules.processing_config import ProcessingConfig
+from modules.gpu_processing import gpu_gaussian_blur, gpu_resize
 from modules.processing_config_factory import build_config_from_globals
+from modules.typing import Face, Frame
+
 
 def apply_color_transfer(source, target):
     """
@@ -39,11 +40,12 @@ def apply_color_transfer(source, target):
     result_bgr = cv2.cvtColor(result_lab, cv2.COLOR_LAB2BGR)
     return np.clip(result_bgr * 255.0, 0, 255).astype(np.uint8)
 
+
 def create_face_mask(face: Face, frame: Frame, config=None) -> np.ndarray:
     """Creates a feathered mask covering the whole face area based on landmarks."""
     mask = np.zeros(frame.shape[:2], dtype=np.uint8)
 
-    if face is None or not hasattr(face, 'landmark_2d_106') or frame is None:
+    if face is None or not hasattr(face, "landmark_2d_106") or frame is None:
         return mask
 
     landmarks = face.landmark_2d_106
@@ -70,9 +72,7 @@ def create_face_mask(face: Face, frame: Frame, config=None) -> np.ndarray:
                 forehead_points = eyebrows + forehead_offset
                 top_center = np.mean(forehead_points, axis=0)
                 forehead_points = (forehead_points - top_center) * 1.2 + top_center
-                face_outline = np.concatenate(
-                    (face_outline, forehead_points.astype(np.int32)), axis=0
-                )
+                face_outline = np.concatenate((face_outline, forehead_points.astype(np.int32)), axis=0)
 
         try:
             hull = cv2.convexHull(face_outline.astype(np.float32))
@@ -84,7 +84,7 @@ def create_face_mask(face: Face, frame: Frame, config=None) -> np.ndarray:
             return mask
 
         # face_mask_blur is not a standard config field — use getattr with fallback
-        blur_k_size = getattr(config, 'face_mask_blur', getattr(modules.globals, "face_mask_blur", 31))
+        blur_k_size = getattr(config, "face_mask_blur", getattr(modules.globals, "face_mask_blur", 31))
         blur_k_size = max(1, blur_k_size // 2 * 2 + 1)
         mask = gpu_gaussian_blur(mask, (blur_k_size, blur_k_size), 0)
 
@@ -95,15 +95,14 @@ def create_face_mask(face: Face, frame: Frame, config=None) -> np.ndarray:
 
     return mask
 
-def create_lower_mouth_mask(
-    face: Face, frame: Frame, config=None
-) -> tuple[np.ndarray, np.ndarray, tuple, np.ndarray]:
+
+def create_lower_mouth_mask(face: Face, frame: Frame, config=None) -> tuple[np.ndarray, np.ndarray, tuple, np.ndarray]:
     mask = np.zeros(frame.shape[:2], dtype=np.uint8)
     mouth_cutout = None
     lower_lip_polygon = None
     mouth_box = (0, 0, 0, 0)
 
-    if face is None or not hasattr(face, 'landmark_2d_106'):
+    if face is None or not hasattr(face, "landmark_2d_106"):
         return mask, mouth_cutout, mouth_box, lower_lip_polygon
 
     landmarks = face.landmark_2d_106
@@ -128,9 +127,7 @@ def create_lower_mouth_mask(
             return mask, mouth_cutout, mouth_box, lower_lip_polygon
 
         # Correct formula: use both mask_down_size and mouth_mask_size
-        expansion_factor = (
-            1 + config.mask_down_size * config.mouth_mask_size
-        )
+        expansion_factor = 1 + config.mask_down_size * config.mouth_mask_size
         expanded_landmarks = (lower_lip_landmarks - center) * expansion_factor + center
 
         if not np.all(np.isfinite(expanded_landmarks)):
@@ -156,7 +153,7 @@ def create_lower_mouth_mask(
             cv2.fillPoly(mask_roi, [polygon_relative_to_roi], 255)
 
             # mask_blur_kernel is not a standard config field — use getattr with fallback
-            blur_k_size = getattr(config, 'mask_blur_kernel', getattr(modules.globals, "mask_blur_kernel", 15))
+            blur_k_size = getattr(config, "mask_blur_kernel", getattr(modules.globals, "mask_blur_kernel", 15))
             blur_k_size = max(1, blur_k_size // 2 * 2 + 1)
             mask_roi = gpu_gaussian_blur(mask_roi, (blur_k_size, blur_k_size), 0)
 
@@ -171,6 +168,7 @@ def create_lower_mouth_mask(
         print(f"Error in create_lower_mouth_mask: {e}")
 
     return mask, mouth_cutout, mouth_box, lower_lip_polygon
+
 
 def _eye_dimensions(eye_points: np.ndarray, scale: float) -> tuple[int, int]:
     """Compute (width, height) for an eye region scaled by the mask size factor.
@@ -215,9 +213,13 @@ def create_eyes_mask(face: Face, frame: Frame, config=None) -> tuple:
     padding = int(max(left_width, right_width) * 0.2)
 
     min_x = max(0, min(left_eye_center[0] - left_width // 2, right_eye_center[0] - right_width // 2) - padding)
-    max_x = min(frame.shape[1], max(left_eye_center[0] + left_width // 2, right_eye_center[0] + right_width // 2) + padding)
+    max_x = min(
+        frame.shape[1], max(left_eye_center[0] + left_width // 2, right_eye_center[0] + right_width // 2) + padding
+    )
     min_y = max(0, min(left_eye_center[1] - left_height // 2, right_eye_center[1] - right_height // 2) - padding)
-    max_y = min(frame.shape[0], max(left_eye_center[1] + left_height // 2, right_eye_center[1] + right_height // 2) + padding)
+    max_y = min(
+        frame.shape[0], max(left_eye_center[1] + left_height // 2, right_eye_center[1] + right_height // 2) + padding
+    )
 
     mask_roi = np.zeros((max_y - min_y, max_x - min_x), dtype=np.uint8)
 
@@ -237,6 +239,7 @@ def create_eyes_mask(face: Face, frame: Frame, config=None) -> tuple:
     eyes_polygon = np.vstack([left_points, right_points])
 
     return mask, eyes_cutout, (min_x, min_y, max_x, max_y), eyes_polygon
+
 
 def _curved_eyebrow_contour(points: np.ndarray) -> np.ndarray:
     """Fit a smooth arch contour through eyebrow landmark points.
@@ -268,12 +271,14 @@ def _curved_eyebrow_contour(points: np.ndarray) -> np.ndarray:
     start_curve = np.column_stack((start_x, np.linspace(bottom_curve[0], top_curve[0], end_points)))
     end_curve = np.column_stack((end_x, np.linspace(bottom_curve[-1], top_curve[-1], end_points)))
 
-    contour = np.vstack([
-        start_curve,
-        np.column_stack((x, top_curve)),
-        end_curve,
-        np.column_stack((x[::-1], bottom_curve[::-1])),
-    ])
+    contour = np.vstack(
+        [
+            start_curve,
+            np.column_stack((x, top_curve)),
+            end_curve,
+            np.column_stack((x[::-1], bottom_curve[::-1])),
+        ]
+    )
 
     center = np.mean(contour, axis=0)
     return center + (contour - center) * 1.2
@@ -314,10 +319,12 @@ def create_eyebrows_mask(face: Face, frame: Frame, config=None) -> tuple:
         mask[min_y:max_y, min_x:max_x] = mask_roi
 
         eyebrows_cutout = frame[min_y:max_y, min_x:max_x].copy()
-        eyebrows_polygon = np.vstack([
-            left_shape + origin,
-            right_shape + origin,
-        ]).astype(np.int32)
+        eyebrows_polygon = np.vstack(
+            [
+                left_shape + origin,
+                right_shape + origin,
+            ]
+        ).astype(np.int32)
     except Exception:
         # Fallback to simple polygons if curve fitting fails
         left_local = (left_eyebrow - origin).astype(np.int32)
@@ -331,6 +338,7 @@ def create_eyebrows_mask(face: Face, frame: Frame, config=None) -> tuple:
 
     return mask, eyebrows_cutout, (min_x, min_y, max_x, max_y), eyebrows_polygon
 
+
 def apply_mask_area(
     frame: np.ndarray,
     cutout: np.ndarray,
@@ -343,13 +351,7 @@ def apply_mask_area(
     box_width = max_x - min_x
     box_height = max_y - min_y
 
-    if (
-        cutout is None
-        or box_width is None
-        or box_height is None
-        or face_mask is None
-        or polygon is None
-    ):
+    if cutout is None or box_width is None or box_height is None or face_mask is None or polygon is None:
         return frame
 
     try:
@@ -357,15 +359,13 @@ def apply_mask_area(
         roi = frame[min_y:max_y, min_x:max_x]
 
         if roi.shape != resized_cutout.shape:
-            resized_cutout = gpu_resize(
-                resized_cutout, (roi.shape[1], roi.shape[0])
-            )
+            resized_cutout = gpu_resize(resized_cutout, (roi.shape[1], roi.shape[0]))
 
         color_corrected_area = apply_color_transfer(resized_cutout, roi)
 
         # Create mask for the area
         polygon_mask = np.zeros(roi.shape[:2], dtype=np.uint8)
-        
+
         # Split points for left and right parts if needed
         if len(polygon) > 50:  # Arbitrary threshold to detect if we have multiple parts
             mid_point = len(polygon) // 2
@@ -387,10 +387,8 @@ def apply_mask_area(
             box_width // _config.mask_feather_ratio,
             box_height // _config.mask_feather_ratio,
         )
-        combined_sigma = (49 + feather_amount ** 2 + 1) ** 0.5
-        feathered_mask = cv2.GaussianBlur(
-            polygon_mask.astype(np.float32), (0, 0), combined_sigma
-        )
+        combined_sigma = (49 + feather_amount**2 + 1) ** 0.5
+        feathered_mask = cv2.GaussianBlur(polygon_mask.astype(np.float32), (0, 0), combined_sigma)
         max_val = feathered_mask.max()
         if max_val > 1e-6:
             feathered_mask *= np.float32(1.0 / max_val)
@@ -400,9 +398,7 @@ def apply_mask_area(
 
         combined_mask_3ch = combined_mask[:, :, np.newaxis]
         inv_mask = np.float32(1.0) - combined_mask_3ch
-        blended = (
-            color_corrected_area * combined_mask_3ch + roi * inv_mask
-        ).astype(np.uint8)
+        blended = (color_corrected_area * combined_mask_3ch + roi * inv_mask).astype(np.uint8)
 
         # Apply face mask to blended result
         face_mask_f32 = face_mask_roi[:, :, np.newaxis].astype(np.float32) * np.float32(1.0 / 255.0)
@@ -415,12 +411,8 @@ def apply_mask_area(
 
     return frame
 
-def draw_mask_visualization(
-    frame: Frame,
-    mask_data: tuple,
-    label: str,
-    draw_method: str = "polygon"
-) -> Frame:
+
+def draw_mask_visualization(frame: Frame, mask_data: tuple, label: str, draw_method: str = "polygon") -> Frame:
     mask, cutout, (min_x, min_y, max_x, max_y), polygon = mask_data
 
     vis_frame = frame.copy()
@@ -435,33 +427,39 @@ def draw_mask_visualization(
         mid_point = len(polygon) // 2
         left_points = polygon[:mid_point]
         right_points = polygon[mid_point:]
-        
+
         try:
             # Fit ellipses to points - need at least 5 points
             if len(left_points) >= 5 and len(right_points) >= 5:
                 # Convert points to the correct format for ellipse fitting
                 left_points = left_points.astype(np.float32)
                 right_points = right_points.astype(np.float32)
-                
+
                 # Fit ellipses
                 left_ellipse = cv2.fitEllipse(left_points)
                 right_ellipse = cv2.fitEllipse(right_points)
-                
+
                 # Draw the ellipses
                 cv2.ellipse(vis_frame, left_ellipse, (0, 255, 0), 2)
                 cv2.ellipse(vis_frame, right_ellipse, (0, 255, 0), 2)
-        except Exception as e:
+        except Exception:
             # If ellipse fitting fails, draw simple rectangles as fallback
             left_rect = cv2.boundingRect(left_points)
             right_rect = cv2.boundingRect(right_points)
-            cv2.rectangle(vis_frame, 
-                        (left_rect[0], left_rect[1]), 
-                        (left_rect[0] + left_rect[2], left_rect[1] + left_rect[3]), 
-                        (0, 255, 0), 2)
-            cv2.rectangle(vis_frame,
-                        (right_rect[0], right_rect[1]),
-                        (right_rect[0] + right_rect[2], right_rect[1] + right_rect[3]),
-                        (0, 255, 0), 2)
+            cv2.rectangle(
+                vis_frame,
+                (left_rect[0], left_rect[1]),
+                (left_rect[0] + left_rect[2], left_rect[1] + left_rect[3]),
+                (0, 255, 0),
+                2,
+            )
+            cv2.rectangle(
+                vis_frame,
+                (right_rect[0], right_rect[1]),
+                (right_rect[0] + right_rect[2], right_rect[1] + right_rect[3]),
+                (0, 255, 0),
+                2,
+            )
     else:  # For mouth and eyebrows
         # Draw the polygon
         if len(polygon) > 50:  # If we have multiple parts
@@ -487,9 +485,7 @@ def draw_mask_visualization(
     return vis_frame
 
 
-def draw_mouth_mask_visualization(
-    frame: Frame, face: Face, mouth_mask_data: tuple
-) -> Frame:
+def draw_mouth_mask_visualization(frame: Frame, face: Face, mouth_mask_data: tuple) -> Frame:
     if frame is None or face is None or mouth_mask_data is None or len(mouth_mask_data) != 4:
         return frame
 
@@ -521,8 +517,9 @@ def draw_mouth_mask_visualization(
 
     label_pos_y = min_y - 10 if min_y > 20 else max_y + 15
     try:
-        cv2.putText(vis_frame, "Mouth Mask", (min_x, label_pos_y),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1, cv2.LINE_AA)
+        cv2.putText(
+            vis_frame, "Mouth Mask", (min_x, label_pos_y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1, cv2.LINE_AA
+        )
     except Exception:
         pass
 
@@ -537,8 +534,7 @@ def apply_mouth_area(
     mouth_polygon: np.ndarray,
     config=None,
 ) -> np.ndarray:
-    if (frame is None or mouth_cutout is None or mouth_box is None or
-            face_mask is None or mouth_polygon is None):
+    if frame is None or mouth_cutout is None or mouth_box is None or face_mask is None or mouth_polygon is None:
         return frame
     if mouth_cutout.size == 0 or face_mask.size == 0 or len(mouth_polygon) < 3:
         return frame
@@ -577,8 +573,12 @@ def apply_mouth_area(
 
         color_corrected_mouth = resized_mouth_cutout
         try:
-            if (len(resized_mouth_cutout.shape) == 3 and resized_mouth_cutout.shape[2] == 3 and
-                    len(roi.shape) == 3 and roi.shape[2] == 3):
+            if (
+                len(resized_mouth_cutout.shape) == 3
+                and resized_mouth_cutout.shape[2] == 3
+                and len(roi.shape) == 3
+                and roi.shape[2] == 3
+            ):
                 color_corrected_mouth = apply_color_transfer(resized_mouth_cutout, roi)
         except Exception:
             pass
@@ -592,9 +592,7 @@ def apply_mouth_area(
         feather_base_dim = min(box_width, box_height)
         feather_amount = max(1, min(30, feather_base_dim // max(1, mask_feather_ratio)))
         kernel_size = 2 * feather_amount + 1
-        feathered_polygon_mask = cv2.GaussianBlur(
-            polygon_mask_roi.astype(np.float32), (kernel_size, kernel_size), 0
-        )
+        feathered_polygon_mask = cv2.GaussianBlur(polygon_mask_roi.astype(np.float32), (kernel_size, kernel_size), 0)
         max_val = feathered_polygon_mask.max()
         if max_val > 1e-6:
             feathered_polygon_mask = feathered_polygon_mask / max_val
@@ -612,7 +610,7 @@ def apply_mouth_area(
         if len(frame.shape) == 3 and frame.shape[2] == 3:
             combined_mask_3channel = combined_mask[:, :, np.newaxis].astype(np.float32)
             inv_mask = np.float32(1.0) - combined_mask_3channel
-            blended_roi = (color_corrected_mouth * combined_mask_3channel + roi * inv_mask)
+            blended_roi = color_corrected_mouth * combined_mask_3channel + roi * inv_mask
             frame[min_y:max_y, min_x:max_x] = blended_roi.astype(np.uint8)
 
     except Exception as e:

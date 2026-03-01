@@ -1,8 +1,9 @@
 """Tests for modules/processors/frame/core.process_frames_io."""
 
 import os
-import numpy as np
+
 import cv2
+import numpy as np
 import pytest
 
 
@@ -34,6 +35,7 @@ def test_process_frames_io_skips_missing(tmp_path):
     class FakeProgress:
         def __init__(self):
             self.count = 0
+
         def update(self, n):
             self.count += n
 

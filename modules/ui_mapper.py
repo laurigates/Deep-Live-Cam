@@ -1,15 +1,14 @@
-import cv2
 import customtkinter as ctk
+import cv2
 from PIL import Image
 
-import modules.globals
-from modules.gpu_processing import gpu_cvt_color
 from modules.face_analyser import (
-    get_one_face,
     add_blank_map,
+    get_one_face,
     has_valid_map,
     simplify_maps,
 )
+from modules.gpu_processing import gpu_cvt_color
 
 # Popup state variables
 POPUP = None
@@ -50,7 +49,7 @@ def close_mapper_window():
 
 def create_source_target_popup(start, root, source_map):
     global POPUP, popup_status_label
-    from modules.ui import _, select_output_path, RECENT_DIRECTORY_SOURCE, img_ft
+    from modules.ui import _, select_output_path
 
     POPUP = ctk.CTkToplevel(root)
     POPUP.title(_("Source x Target Mapper"))
@@ -64,9 +63,7 @@ def create_source_target_popup(start, root, source_map):
         else:
             update_pop_status("Atleast 1 source with target is required!")
 
-    scrollable_frame = ctk.CTkScrollableFrame(
-        POPUP, width=POPUP_SCROLL_WIDTH, height=POPUP_SCROLL_HEIGHT
-    )
+    scrollable_frame = ctk.CTkScrollableFrame(POPUP, width=POPUP_SCROLL_WIDTH, height=POPUP_SCROLL_HEIGHT)
     scrollable_frame.grid(row=0, column=0, padx=0, pady=0, sticky="nsew")
 
     def on_button_click(source_map, button_num):
@@ -86,16 +83,14 @@ def create_source_target_popup(start, root, source_map):
 
         x_label = ctk.CTkLabel(
             scrollable_frame,
-            text=f"X",
+            text="X",
             width=MAPPER_PREVIEW_MAX_WIDTH,
             height=MAPPER_PREVIEW_MAX_HEIGHT,
         )
         x_label.grid(row=id, column=2, padx=10, pady=10)
 
         image = Image.fromarray(gpu_cvt_color(item["target"]["cv2"], cv2.COLOR_BGR2RGB))
-        image = image.resize(
-            (MAPPER_PREVIEW_MAX_WIDTH, MAPPER_PREVIEW_MAX_HEIGHT), Image.LANCZOS
-        )
+        image = image.resize((MAPPER_PREVIEW_MAX_WIDTH, MAPPER_PREVIEW_MAX_HEIGHT), Image.LANCZOS)
         tk_image = ctk.CTkImage(image, size=image.size)
 
         target_image = ctk.CTkLabel(
@@ -110,15 +105,13 @@ def create_source_target_popup(start, root, source_map):
     popup_status_label = ctk.CTkLabel(POPUP, text=None, justify="center")
     popup_status_label.grid(row=1, column=0, pady=15)
 
-    close_button = ctk.CTkButton(
-        POPUP, text=_("Submit"), command=lambda: on_submit_click(start)
-    )
+    close_button = ctk.CTkButton(POPUP, text=_("Submit"), command=lambda: on_submit_click(start))
     close_button.grid(row=2, column=0, pady=10)
 
 
 def update_popup_source(scrollable_frame, source_map, button_num):
     global source_label_dict
-    from modules.ui import _, RECENT_DIRECTORY_SOURCE, img_ft
+    from modules.ui import RECENT_DIRECTORY_SOURCE, _, img_ft
 
     source_path = ctk.filedialog.askopenfilename(
         title=_("select an source image"),
@@ -141,16 +134,12 @@ def update_popup_source(scrollable_frame, source_map, button_num):
             x_min, y_min, x_max, y_max = face["bbox"]
 
             source_map[button_num]["source"] = {
-                "cv2": cv2_img[int(y_min): int(y_max), int(x_min): int(x_max)],
+                "cv2": cv2_img[int(y_min) : int(y_max), int(x_min) : int(x_max)],
                 "face": face,
             }
 
-            image = Image.fromarray(
-                gpu_cvt_color(source_map[button_num]["source"]["cv2"], cv2.COLOR_BGR2RGB)
-            )
-            image = image.resize(
-                (MAPPER_PREVIEW_MAX_WIDTH, MAPPER_PREVIEW_MAX_HEIGHT), Image.LANCZOS
-            )
+            image = Image.fromarray(gpu_cvt_color(source_map[button_num]["source"]["cv2"], cv2.COLOR_BGR2RGB))
+            image = image.resize((MAPPER_PREVIEW_MAX_WIDTH, MAPPER_PREVIEW_MAX_HEIGHT), Image.LANCZOS)
             tk_image = ctk.CTkImage(image, size=image.size)
 
             source_image = ctk.CTkLabel(
@@ -169,11 +158,13 @@ def update_popup_source(scrollable_frame, source_map, button_num):
 
 def update_pop_status(text):
     from modules.ui import _
+
     popup_status_label.configure(text=_(text))
 
 
 def update_pop_live_status(text):
     from modules.ui import _
+
     popup_status_label_live.configure(text=_(text))
 
 
@@ -214,9 +205,7 @@ def create_source_target_popup_for_webcam(root, source_map, camera_index):
     clear_button = ctk.CTkButton(POPUP_LIVE, text=_("Clear"), command=lambda: on_clear_click())
     clear_button.place(relx=0.4, rely=0.92, relwidth=0.2, relheight=0.05)
 
-    close_button = ctk.CTkButton(
-        POPUP_LIVE, text=_("Submit"), command=lambda: on_submit_click()
-    )
+    close_button = ctk.CTkButton(POPUP_LIVE, text=_("Submit"), command=lambda: on_submit_click())
     close_button.place(relx=0.7, rely=0.92, relwidth=0.2, relheight=0.05)
 
 
@@ -267,7 +256,7 @@ def refresh_data(source_map):
 
         x_label = ctk.CTkLabel(
             scrollable_frame,
-            text=f"X",
+            text="X",
             width=MAPPER_PREVIEW_MAX_WIDTH,
             height=MAPPER_PREVIEW_MAX_HEIGHT,
         )
@@ -283,12 +272,8 @@ def refresh_data(source_map):
         button.grid(row=id, column=3, padx=20, pady=10)
 
         if "source" in item:
-            image = Image.fromarray(
-                gpu_cvt_color(item["source"]["cv2"], cv2.COLOR_BGR2RGB)
-            )
-            image = image.resize(
-                (MAPPER_PREVIEW_MAX_WIDTH, MAPPER_PREVIEW_MAX_HEIGHT), Image.LANCZOS
-            )
+            image = Image.fromarray(gpu_cvt_color(item["source"]["cv2"], cv2.COLOR_BGR2RGB))
+            image = image.resize((MAPPER_PREVIEW_MAX_WIDTH, MAPPER_PREVIEW_MAX_HEIGHT), Image.LANCZOS)
             tk_image = ctk.CTkImage(image, size=image.size)
 
             source_image = ctk.CTkLabel(
@@ -301,12 +286,8 @@ def refresh_data(source_map):
             source_image.configure(image=tk_image)
 
         if "target" in item:
-            image = Image.fromarray(
-                gpu_cvt_color(item["target"]["cv2"], cv2.COLOR_BGR2RGB)
-            )
-            image = image.resize(
-                (MAPPER_PREVIEW_MAX_WIDTH, MAPPER_PREVIEW_MAX_HEIGHT), Image.LANCZOS
-            )
+            image = Image.fromarray(gpu_cvt_color(item["target"]["cv2"], cv2.COLOR_BGR2RGB))
+            image = image.resize((MAPPER_PREVIEW_MAX_WIDTH, MAPPER_PREVIEW_MAX_HEIGHT), Image.LANCZOS)
             tk_image = ctk.CTkImage(image, size=image.size)
 
             target_image = ctk.CTkLabel(
@@ -321,7 +302,7 @@ def refresh_data(source_map):
 
 def update_webcam_source(scrollable_frame, source_map, button_num):
     global source_label_dict_live
-    from modules.ui import _, RECENT_DIRECTORY_SOURCE, img_ft
+    from modules.ui import RECENT_DIRECTORY_SOURCE, _, img_ft
 
     source_path = ctk.filedialog.askopenfilename(
         title=_("select an source image"),
@@ -344,16 +325,12 @@ def update_webcam_source(scrollable_frame, source_map, button_num):
             x_min, y_min, x_max, y_max = face["bbox"]
 
             source_map[button_num]["source"] = {
-                "cv2": cv2_img[int(y_min): int(y_max), int(x_min): int(x_max)],
+                "cv2": cv2_img[int(y_min) : int(y_max), int(x_min) : int(x_max)],
                 "face": face,
             }
 
-            image = Image.fromarray(
-                gpu_cvt_color(source_map[button_num]["source"]["cv2"], cv2.COLOR_BGR2RGB)
-            )
-            image = image.resize(
-                (MAPPER_PREVIEW_MAX_WIDTH, MAPPER_PREVIEW_MAX_HEIGHT), Image.LANCZOS
-            )
+            image = Image.fromarray(gpu_cvt_color(source_map[button_num]["source"]["cv2"], cv2.COLOR_BGR2RGB))
+            image = image.resize((MAPPER_PREVIEW_MAX_WIDTH, MAPPER_PREVIEW_MAX_HEIGHT), Image.LANCZOS)
             tk_image = ctk.CTkImage(image, size=image.size)
 
             source_image = ctk.CTkLabel(
@@ -372,7 +349,7 @@ def update_webcam_source(scrollable_frame, source_map, button_num):
 
 def update_webcam_target(scrollable_frame, source_map, button_num):
     global target_label_dict_live
-    from modules.ui import _, RECENT_DIRECTORY_SOURCE, img_ft
+    from modules.ui import RECENT_DIRECTORY_SOURCE, _, img_ft
 
     target_path = ctk.filedialog.askopenfilename(
         title=_("select an target image"),
@@ -395,16 +372,12 @@ def update_webcam_target(scrollable_frame, source_map, button_num):
             x_min, y_min, x_max, y_max = face["bbox"]
 
             source_map[button_num]["target"] = {
-                "cv2": cv2_img[int(y_min): int(y_max), int(x_min): int(x_max)],
+                "cv2": cv2_img[int(y_min) : int(y_max), int(x_min) : int(x_max)],
                 "face": face,
             }
 
-            image = Image.fromarray(
-                gpu_cvt_color(source_map[button_num]["target"]["cv2"], cv2.COLOR_BGR2RGB)
-            )
-            image = image.resize(
-                (MAPPER_PREVIEW_MAX_WIDTH, MAPPER_PREVIEW_MAX_HEIGHT), Image.LANCZOS
-            )
+            image = Image.fromarray(gpu_cvt_color(source_map[button_num]["target"]["cv2"], cv2.COLOR_BGR2RGB))
+            image = image.resize((MAPPER_PREVIEW_MAX_WIDTH, MAPPER_PREVIEW_MAX_HEIGHT), Image.LANCZOS)
             tk_image = ctk.CTkImage(image, size=image.size)
 
             target_image = ctk.CTkLabel(

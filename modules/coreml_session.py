@@ -9,7 +9,7 @@ Only available on macOS. Import guard ensures this module is a no-op on other pl
 from __future__ import annotations
 
 import sys
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import numpy as np
 
@@ -17,7 +17,7 @@ import numpy as np
 class _NodeArg:
     """Minimal stand-in for onnxruntime.NodeArg."""
 
-    def __init__(self, name: str, shape: List, type_str: str = "tensor(float)") -> None:
+    def __init__(self, name: str, shape: list, type_str: str = "tensor(float)") -> None:
         self.name = name
         self.shape = shape
         self.type = type_str
@@ -29,18 +29,19 @@ class CoreMLSessionWrapper:
     Usage::
 
         from modules.coreml_session import CoreMLSessionWrapper
+
         wrapper = CoreMLSessionWrapper.load("models/inswapper_128.mlpackage")
         if wrapper:
             face_swapper.session = wrapper
     """
 
-    def __init__(self, mlmodel: Any, input_specs: List[_NodeArg], output_specs: List[_NodeArg]) -> None:
+    def __init__(self, mlmodel: Any, input_specs: list[_NodeArg], output_specs: list[_NodeArg]) -> None:
         self._model = mlmodel
         self._inputs = input_specs
         self._outputs = output_specs
 
     @classmethod
-    def load(cls, mlpackage_path: str) -> Optional["CoreMLSessionWrapper"]:
+    def load(cls, mlpackage_path: str) -> CoreMLSessionWrapper | None:
         """Load an .mlpackage and return a wrapper, or None on failure."""
         if sys.platform != "darwin":
             return None
@@ -72,15 +73,14 @@ class CoreMLSessionWrapper:
             print(f"CoreMLSessionWrapper: failed to load {mlpackage_path}: {exc}")
             return None
 
-    def get_inputs(self) -> List[_NodeArg]:
+    def get_inputs(self) -> list[_NodeArg]:
         return self._inputs
 
-    def get_outputs(self) -> List[_NodeArg]:
+    def get_outputs(self) -> list[_NodeArg]:
         return self._outputs
 
-    def run(self, output_names: Optional[List[str]], input_feed: Dict[str, np.ndarray]) -> List[np.ndarray]:
+    def run(self, output_names: list[str] | None, input_feed: dict[str, np.ndarray]) -> list[np.ndarray]:
         """Run inference, returning outputs as a list of numpy arrays."""
-        import coremltools as ct
 
         # coremltools expects inputs as dict of {name: numpy_array}
         # Cast to float32 — CoreML FP16 model handles precision internally

@@ -4,9 +4,9 @@ This module handles the transition from global variables to injected configurati
 Initially, it creates ProcessingConfig from modules.globals for compatibility.
 Eventually, it will build config directly from CLI args/UI state.
 """
-from typing import Optional
-from modules.processing_config import ProcessingConfig
+
 import modules.globals
+from modules.processing_config import ProcessingConfig
 
 
 def build_config_from_globals() -> ProcessingConfig:
@@ -46,7 +46,7 @@ def build_config_from_globals() -> ProcessingConfig:
         use_png_frames=modules.globals.use_png_frames,
         # Face Swapper Options
         face_swapper_enabled=modules.globals.face_swapper_enabled,
-        opacity=max(0.0, min(1.0, getattr(modules.globals, 'opacity', 1.0))),
+        opacity=max(0.0, min(1.0, getattr(modules.globals, "opacity", 1.0))),
         sharpness=modules.globals.sharpness,
         prepaste_upscale=modules.globals.prepaste_upscale,
         color_correction=modules.globals.color_correction,
@@ -113,31 +113,31 @@ def build_config_from_cli_args(args) -> ProcessingConfig:
     source_path = args.source_path
     target_path = args.target_path
     output_path = normalize_output_path(source_path, target_path, args.output_path)
-    execution_providers = decode_execution_providers(args.execution_provider or ['cpu'])
+    execution_providers = decode_execution_providers(args.execution_provider or ["cpu"])
     execution_threads = args.execution_threads
 
     # Handle deprecated arguments
-    if getattr(args, 'source_path_deprecated', None):
+    if getattr(args, "source_path_deprecated", None):
         source_path = args.source_path_deprecated
         output_path = normalize_output_path(source_path, target_path, args.output_path)
-    if getattr(args, 'cpu_cores_deprecated', None):
+    if getattr(args, "cpu_cores_deprecated", None):
         execution_threads = args.cpu_cores_deprecated
-    if getattr(args, 'gpu_vendor_deprecated', None):
-        if args.gpu_vendor_deprecated == 'apple':
-            execution_providers = decode_execution_providers(['coreml'])
-        elif args.gpu_vendor_deprecated == 'nvidia':
-            execution_providers = decode_execution_providers(['cuda'])
-        elif args.gpu_vendor_deprecated == 'amd':
-            execution_providers = decode_execution_providers(['rocm'])
-    if getattr(args, 'gpu_threads_deprecated', None):
+    if getattr(args, "gpu_vendor_deprecated", None):
+        if args.gpu_vendor_deprecated == "apple":
+            execution_providers = decode_execution_providers(["coreml"])
+        elif args.gpu_vendor_deprecated == "nvidia":
+            execution_providers = decode_execution_providers(["cuda"])
+        elif args.gpu_vendor_deprecated == "amd":
+            execution_providers = decode_execution_providers(["rocm"])
+    if getattr(args, "gpu_threads_deprecated", None):
         execution_threads = args.gpu_threads_deprecated
 
     frame_processors = list(args.frame_processor)
     fp_ui = {
-        'face_enhancer': 'face_enhancer' in frame_processors,
-        'face_enhancer_gpen256': 'face_enhancer_gpen256' in frame_processors,
-        'face_enhancer_gpen512': 'face_enhancer_gpen512' in frame_processors,
-        'face_enhancer_codeformer': 'face_enhancer_codeformer' in frame_processors,
+        "face_enhancer": "face_enhancer" in frame_processors,
+        "face_enhancer_gpen256": "face_enhancer_gpen256" in frame_processors,
+        "face_enhancer_gpen512": "face_enhancer_gpen512" in frame_processors,
+        "face_enhancer_codeformer": "face_enhancer_codeformer" in frame_processors,
     }
 
     return ProcessingConfig(

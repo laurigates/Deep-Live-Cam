@@ -1,8 +1,11 @@
 """Tests for processing config factory functions."""
+
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock
-from modules.processing_config_factory import build_config_from_globals
+
 from modules.processing_config import ProcessingConfig
+from modules.processing_config_factory import build_config_from_globals
 
 
 def test_build_config_from_globals_creates_config():
@@ -29,8 +32,8 @@ def test_build_config_from_globals_copies_mutable_fields():
     config = build_config_from_globals()
 
     # Modify the config's lists
-    config.execution_providers.append('NewProvider')
-    config.frame_processors.append('new_processor')
+    config.execution_providers.append("NewProvider")
+    config.frame_processors.append("new_processor")
 
     # Verify globals are unchanged
     assert modules.globals.execution_providers == original_providers
@@ -63,8 +66,8 @@ def test_build_config_from_globals_has_usable_map_lock():
     config = build_config_from_globals()
 
     # Lock is self-provisioned by ProcessingConfig default_factory
-    assert hasattr(config.map_lock, 'acquire')
-    assert hasattr(config.map_lock, 'release')
+    assert hasattr(config.map_lock, "acquire")
+    assert hasattr(config.map_lock, "release")
 
 
 def test_config_fields_not_mutated_by_global_changes():

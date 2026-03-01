@@ -1,6 +1,8 @@
 """Tests for modules/processors/frame/core.py."""
-import pytest
+
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 
 def test_load_frame_processor_raises_for_missing_method():

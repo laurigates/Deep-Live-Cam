@@ -1,7 +1,9 @@
 """Tests for modules/processors/frame/core.py — race condition on FRAME_PROCESSORS_MODULES."""
+
 import threading
 import time
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
+
 import pytest
 
 
@@ -56,20 +58,17 @@ def test_set_frame_processors_thread_safe():
     def writer_thread():
         """Writer that mutates the list via set_frame_processors_modules_from_ui."""
         try:
-            with patch.object(core.modules.globals, 'fp_ui', {'face_swapper': False}):
-                with patch('modules.processors.frame.core.load_frame_processor_module'):
+            with patch.object(core.modules.globals, "fp_ui", {"face_swapper": False}):
+                with patch("modules.processors.frame.core.load_frame_processor_module"):
                     for i in range(10):
-                        core.set_frame_processors_modules_from_ui(['face_swapper'])
+                        core.set_frame_processors_modules_from_ui(["face_swapper"])
                         mutation_count[0] += 1
                         time.sleep(0.0001)
         except Exception as e:
             errors.append(f"Writer error: {e}")
 
     # Start multiple readers and a writer
-    readers = [
-        threading.Thread(target=reader_thread, daemon=True)
-        for _ in range(3)
-    ]
+    readers = [threading.Thread(target=reader_thread, daemon=True) for _ in range(3)]
     writer = threading.Thread(target=writer_thread, daemon=True)
 
     for r in readers:
@@ -98,8 +97,8 @@ def test_get_frame_processors_modules_returns_snapshot():
     core.FRAME_PROCESSORS_MODULES.append(mock_proc)
 
     # Mock the necessary globals
-    with patch.object(core.modules.globals, 'fp_ui', {}):
-        result = core.get_frame_processors_modules(['test_processor'])
+    with patch.object(core.modules.globals, "fp_ui", {}):
+        result = core.get_frame_processors_modules(["test_processor"])
 
         # Result should be a copy
         assert isinstance(result, list)

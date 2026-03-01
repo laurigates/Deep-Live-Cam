@@ -2,6 +2,7 @@
 
 Run with: uv run pytest tests/benchmarks/test_bench_pipeline.py -m benchmark -v
 """
+
 import time
 
 import numpy as np
@@ -10,9 +11,9 @@ import pytest
 
 from tests.benchmarks.conftest import (
     Timer,
-    requires_swap_model,
-    requires_enhancer_model,
     _make_face,
+    requires_enhancer_model,
+    requires_swap_model,
 )
 
 pytestmark = [pytest.mark.benchmark, pytest.mark.integration]
@@ -64,10 +65,11 @@ class TestFullPipeline:
         """Swap + enhancement: the most common live-mode pipeline."""
         _setup_globals(execution_providers)
         import modules.globals
+
         modules.globals.fp_ui["face_enhancer"] = True
 
-        from modules.processors.frame.face_swapper import swap_face
         from modules.processors.frame.face_enhancer import enhance_face, get_face_enhancer
+        from modules.processors.frame.face_swapper import swap_face
 
         get_face_enhancer(providers=execution_providers)
 
@@ -95,7 +97,7 @@ class TestFullPipeline:
             "memory_delta_mb": round(mem_after - mem_before, 2),
         }
 
-        print(f"\n--- Swap + Enhance Pipeline ---")
+        print("\n--- Swap + Enhance Pipeline ---")
         print(f"  Providers: {execution_providers}")
         print(f"  Mean: {stats['mean_ms']:.2f} ms")
         print(f"  Median: {stats['median_ms']:.2f} ms")
@@ -106,7 +108,9 @@ class TestFullPipeline:
         comparison = baseline_manager.compare("swap_then_enhance", results)
         if comparison.get("regressions"):
             for r in comparison["regressions"]:
-                print(f"  REGRESSION: {r['metric']}: {r['baseline']:.2f} -> {r['current']:.2f} ({r['change_pct']:+.1f}%)")
+                print(
+                    f"  REGRESSION: {r['metric']}: {r['baseline']:.2f} -> {r['current']:.2f} ({r['change_pct']:+.1f}%)"
+                )
 
         assert stats["mean_ms"] > 0
 
@@ -114,10 +118,11 @@ class TestFullPipeline:
         """Full pipeline with mouth masking enabled."""
         _setup_globals(execution_providers, mouth_mask=True)
         import modules.globals
+
         modules.globals.fp_ui["face_enhancer"] = True
 
-        from modules.processors.frame.face_swapper import swap_face
         from modules.processors.frame.face_enhancer import enhance_face, get_face_enhancer
+        from modules.processors.frame.face_swapper import swap_face
 
         get_face_enhancer(providers=execution_providers)
 
@@ -134,7 +139,7 @@ class TestFullPipeline:
                 enhanced = enhance_face(synthetic_face, swapped)
 
         stats = timer.stats
-        print(f"\n--- Swap + Enhance + Mouth Mask ---")
+        print("\n--- Swap + Enhance + Mouth Mask ---")
         print(f"  Mean: {stats['mean_ms']:.2f} ms  |  FPS: {stats['fps']:.1f}")
 
 
@@ -154,13 +159,16 @@ class TestToggleIncrementalCost:
         ("prepaste_off", {"prepaste_upscale": False}),
         ("opacity_blend", {"opacity": 0.7}),
         ("interpolation", {"enable_interpolation": True, "interpolation_weight": 0.2}),
-        ("all_on", {
-            "mouth_mask": True,
-            "poisson_blend": True,
-            "color_correction": True,
-            "sharpness": 0.5,
-            "opacity": 0.8,
-        }),
+        (
+            "all_on",
+            {
+                "mouth_mask": True,
+                "poisson_blend": True,
+                "color_correction": True,
+                "sharpness": 0.5,
+                "opacity": 0.8,
+            },
+        ),
     ]
 
     @pytest.mark.parametrize(
@@ -217,7 +225,7 @@ class TestMemoryStability:
         mem_end = _measure_memory()
         growth_mb = mem_end - mem_start
 
-        print(f"\n--- Memory Stability (300 frames) ---")
+        print("\n--- Memory Stability (300 frames) ---")
         print(f"  Start: {mem_start:.1f} MB")
         print(f"  End: {mem_end:.1f} MB")
         print(f"  Growth: {growth_mb:.1f} MB")

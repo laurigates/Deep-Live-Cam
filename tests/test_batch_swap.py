@@ -4,24 +4,24 @@ Verifies that batch_swap_faces() batches inference correctly, falls back
 to sequential on error, and that process_frame/process_frame_v2 route
 to batch vs. single-face paths appropriately.
 """
+
+from types import SimpleNamespace
+from unittest.mock import MagicMock, PropertyMock, patch
+
 import numpy as np
 import pytest
-from unittest.mock import MagicMock, patch, PropertyMock
-from types import SimpleNamespace
-
 
 # ---------------------------------------------------------------------------
 # Helpers to build mock Face objects and sessions
 # ---------------------------------------------------------------------------
+
 
 def _make_face(embedding_dim=512, kps_shape=(5, 2)):
     """Create a minimal Face-like object with normed_embedding and kps."""
     face = SimpleNamespace()
     emb = np.random.randn(embedding_dim).astype(np.float32)
     face.normed_embedding = emb / np.linalg.norm(emb)
-    face.kps = np.array([
-        [40, 50], [88, 50], [64, 75], [45, 95], [83, 95]
-    ], dtype=np.float32)
+    face.kps = np.array([[40, 50], [88, 50], [64, 75], [45, 95], [83, 95]], dtype=np.float32)
     face.bbox = np.array([20, 30, 108, 120], dtype=np.float32)
     return face
 
@@ -40,6 +40,7 @@ def _make_swapper(emap_shape=(512, 512), input_size=(128, 128)):
 
 def _make_session_run(n_faces, size=128):
     """Return a session.run side_effect that validates batch shapes and returns fake output."""
+
     def session_run(output_names, input_feed):
         blob = input_feed["target"]
         latent = input_feed["source"]
@@ -50,6 +51,7 @@ def _make_session_run(n_faces, size=128):
         # Return random predictions: (N, 3, 128, 128)
         pred = np.random.rand(n_faces, 3, size, size).astype(np.float32)
         return [pred]
+
     return session_run
 
 
@@ -57,9 +59,11 @@ def _make_session_run(n_faces, size=128):
 # _paste_back
 # ---------------------------------------------------------------------------
 
+
 class TestPasteBack:
     def test_output_shape_matches_target(self):
         from modules.processors.frame.face_swapper import _paste_back
+
         bgr_fake = np.random.randint(0, 256, (128, 128, 3), dtype=np.uint8)
         aimg = np.random.randint(0, 256, (128, 128, 3), dtype=np.uint8)
         M = np.eye(2, 3, dtype=np.float64)
@@ -70,6 +74,7 @@ class TestPasteBack:
 
     def test_identity_transform_modifies_frame(self):
         from modules.processors.frame.face_swapper import _paste_back
+
         bgr_fake = np.full((128, 128, 3), 200, dtype=np.uint8)
         aimg = np.full((128, 128, 3), 100, dtype=np.uint8)
         M = np.eye(2, 3, dtype=np.float64)
@@ -83,15 +88,16 @@ class TestPasteBack:
 # batch_swap_faces
 # ---------------------------------------------------------------------------
 
-class TestBatchSwapFaces:
 
+class TestBatchSwapFaces:
     @patch("modules.processors.frame.face_swapper.get_face_swapper")
     @patch("modules.processors.frame.face_swapper._apply_mouth_mask", side_effect=lambda f, *a: f)
     @patch("modules.processors.frame.face_swapper._apply_poisson_blend", side_effect=lambda f, *a: f)
     def test_batch_tensor_shapes_two_faces(self, _mock_blend, _mock_mouth, mock_get_swapper):
         """With 2 faces, session.run receives (2, 3, 128, 128) blob and (2, 512) latent."""
-        from modules.processors.frame.face_swapper import batch_swap_faces
         import modules.globals
+        from modules.processors.frame.face_swapper import batch_swap_faces
+
         modules.globals.mouth_mask = False
         modules.globals.poisson_blend = False
         modules.globals.opacity = 1.0
@@ -115,8 +121,9 @@ class TestBatchSwapFaces:
     @patch("modules.processors.frame.face_swapper._apply_poisson_blend", side_effect=lambda f, *a: f)
     def test_batch_three_faces(self, _mock_blend, _mock_mouth, mock_get_swapper):
         """With 3 faces, session.run receives batch dim = 3."""
-        from modules.processors.frame.face_swapper import batch_swap_faces
         import modules.globals
+        from modules.processors.frame.face_swapper import batch_swap_faces
+
         modules.globals.mouth_mask = False
         modules.globals.poisson_blend = False
         modules.globals.opacity = 1.0
@@ -138,9 +145,10 @@ class TestBatchSwapFaces:
     @patch("modules.processors.frame.face_swapper.get_face_swapper")
     def test_fallback_on_session_error(self, mock_get_swapper, mock_swap_face):
         """If session.run raises, falls back to sequential swap_face calls."""
+        import modules.globals
         import modules.processors.frame.face_swapper as mod
         from modules.processors.frame.face_swapper import batch_swap_faces
-        import modules.globals
+
         modules.globals.mouth_mask = False
         modules.globals.poisson_blend = False
         modules.globals.opacity = 1.0
@@ -193,15 +201,16 @@ class TestBatchSwapFaces:
 # process_frame routing
 # ---------------------------------------------------------------------------
 
-class TestProcessFrameRouting:
 
+class TestProcessFrameRouting:
     @patch("modules.processors.frame.face_swapper.apply_post_processing", side_effect=lambda f, b, cfg=None: f)
     @patch("modules.processors.frame.face_swapper.batch_swap_faces")
     @patch("modules.processors.frame.face_swapper.get_many_faces")
     def test_many_faces_uses_batch_when_two_or_more(self, mock_get_many, mock_batch, _mock_post):
         """process_frame uses batch_swap_faces when many_faces and N >= 2."""
-        from modules.processors.frame.face_swapper import process_frame
         import modules.globals
+        from modules.processors.frame.face_swapper import process_frame
+
         modules.globals.many_faces = True
         modules.globals.opacity = 1.0
 
@@ -223,8 +232,9 @@ class TestProcessFrameRouting:
     @patch("modules.processors.frame.face_swapper.get_many_faces")
     def test_single_many_face_uses_swap_face(self, mock_get_many, mock_swap, _mock_post):
         """process_frame uses swap_face (not batch) when many_faces but only 1 detected."""
-        from modules.processors.frame.face_swapper import process_frame
         import modules.globals
+        from modules.processors.frame.face_swapper import process_frame
+
         modules.globals.many_faces = True
         modules.globals.opacity = 1.0
 
@@ -242,15 +252,16 @@ class TestProcessFrameRouting:
 # process_frame_v2 routing
 # ---------------------------------------------------------------------------
 
-class TestProcessFrameV2Routing:
 
+class TestProcessFrameV2Routing:
     @patch("modules.processors.frame.face_swapper.apply_post_processing", side_effect=lambda f, b, cfg=None: f)
     @patch("modules.processors.frame.face_swapper.batch_swap_faces")
     @patch("modules.processors.frame.face_swapper._build_pairs_live")
     def test_v2_uses_batch_when_two_pairs(self, mock_build, mock_batch, _mock_post):
         """process_frame_v2 routes to batch when >= 2 valid pairs."""
-        from modules.processors.frame.face_swapper import process_frame_v2
         import modules.globals
+        from modules.processors.frame.face_swapper import process_frame_v2
+
         modules.globals.opacity = 1.0
         modules.globals.target_path = None  # live mode
 
@@ -268,8 +279,9 @@ class TestProcessFrameV2Routing:
     @patch("modules.processors.frame.face_swapper._build_pairs_live")
     def test_v2_uses_swap_face_for_single_pair(self, mock_build, mock_swap, _mock_post):
         """process_frame_v2 uses swap_face when only 1 valid pair."""
-        from modules.processors.frame.face_swapper import process_frame_v2
         import modules.globals
+        from modules.processors.frame.face_swapper import process_frame_v2
+
         modules.globals.opacity = 1.0
         modules.globals.target_path = None  # live mode
 
@@ -288,8 +300,9 @@ class TestProcessFrameV2Routing:
     @patch("modules.processors.frame.face_swapper._build_pairs_live")
     def test_v2_skips_swap_when_no_pairs(self, mock_build, mock_swap, mock_batch, _mock_post):
         """process_frame_v2 does nothing when no valid pairs."""
-        from modules.processors.frame.face_swapper import process_frame_v2
         import modules.globals
+        from modules.processors.frame.face_swapper import process_frame_v2
+
         modules.globals.opacity = 1.0
         modules.globals.target_path = None
 

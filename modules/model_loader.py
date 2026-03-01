@@ -1,7 +1,8 @@
 """Reusable lazy-singleton model loader with double-check locking and optional warmup."""
 
 import threading
-from typing import Any, Callable, Optional
+from collections.abc import Callable
+from typing import Any
 
 
 class ModelHolder:
@@ -10,6 +11,7 @@ class ModelHolder:
     Usage::
 
         _model = ModelHolder()
+
 
         def get_face_enhancer():
             return _model.get(loader_fn=_load_gfpgan, warmup_fn=_warmup_gfpgan)
@@ -22,7 +24,7 @@ class ModelHolder:
     def get(
         self,
         loader_fn: Callable[[], Any],
-        warmup_fn: Optional[Callable[[Any], None]] = None,
+        warmup_fn: Callable[[Any], None] | None = None,
     ) -> Any:
         """Return the cached model, loading it on first access.
 

@@ -41,10 +41,7 @@ def start(width: int, height: int, fps: float = 30.0) -> bool:
     global _camera
 
     if not _AVAILABLE:
-        logger.warning(
-            "pyvirtualcam is not installed. "
-            "Install with: uv sync --extra virtualcam"
-        )
+        logger.warning("pyvirtualcam is not installed. Install with: uv sync --extra virtualcam")
         return False
 
     if _camera is not None:
@@ -58,8 +55,7 @@ def start(width: int, height: int, fps: float = 30.0) -> bool:
             fps=fps,
             fmt=pyvirtualcam.PixelFormat.BGR,
         )
-        logger.info("Virtual camera started: %s (%dx%d @ %.0f fps)",
-                     _camera.device, width, height, fps)
+        logger.info("Virtual camera started: %s (%dx%d @ %.0f fps)", _camera.device, width, height, fps)
         return True
     except RuntimeError as exc:
         import sys
@@ -67,9 +63,7 @@ def start(width: int, height: int, fps: float = 30.0) -> bool:
         if sys.platform == "darwin":
             hint = "Install OBS 30+, launch it, start Virtual Camera once, then close OBS."
         elif sys.platform == "linux":
-            hint = ("Install v4l2loopback: "
-                    "sudo apt install v4l2loopback-dkms && "
-                    "sudo modprobe v4l2loopback devices=1")
+            hint = "Install v4l2loopback: sudo apt install v4l2loopback-dkms && sudo modprobe v4l2loopback devices=1"
         else:
             hint = "Install OBS 26+ to provide the virtual camera backend."
 

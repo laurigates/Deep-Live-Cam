@@ -89,6 +89,7 @@ class TestFidelityWeight:
     def test_fidelity_from_globals(self):
         """Fidelity weight should be configurable via globals."""
         import modules.globals
+
         assert hasattr(modules.globals, "codeformer_fidelity")
         assert 0.0 <= modules.globals.codeformer_fidelity <= 1.0
 
@@ -97,8 +98,10 @@ class TestOnnxEnhancerExtraInputs:
     """Verify _onnx_enhancer supports extra_inputs for CodeFormer."""
 
     def test_enhance_face_onnx_accepts_extra_inputs(self):
-        from modules.processors.frame._onnx_enhancer import enhance_face_onnx
         import inspect
+
+        from modules.processors.frame._onnx_enhancer import enhance_face_onnx
+
         sig = inspect.signature(enhance_face_onnx)
         assert "extra_inputs" in sig.parameters
 
@@ -108,4 +111,5 @@ class TestCliRegistration:
 
     def test_codeformer_in_fp_ui(self):
         import modules.globals
+
         assert "face_enhancer_codeformer" in modules.globals.fp_ui

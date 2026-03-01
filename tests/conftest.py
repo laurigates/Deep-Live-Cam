@@ -1,7 +1,9 @@
 """Shared pytest configuration — stub out heavy ML imports globally."""
+
 import sys
 import types
 from unittest.mock import MagicMock
+
 import numpy as np
 
 
@@ -21,8 +23,9 @@ def _make_insightface_stub():
     insightface_utils_face_align = types.ModuleType("insightface.utils.face_align")
     insightface_utils_face_align.norm_crop2 = MagicMock(
         side_effect=lambda img, kps, size: (
-            img[:size, :size, :] if img.shape[0] >= size and img.shape[1] >= size
-            else img[:min(img.shape[0], size), :min(img.shape[1], size), :],
+            img[:size, :size, :]
+            if img.shape[0] >= size and img.shape[1] >= size
+            else img[: min(img.shape[0], size), : min(img.shape[1], size), :],
             np.eye(2, 3, dtype=np.float64),
         )
     )
@@ -66,8 +69,12 @@ def _stub_ml_packages():
     sys.modules.setdefault("_tkinter", MagicMock())
 
     for name in [
-        "onnxruntime", "torch", "tensorflow",
-        "gfpgan", "basicsr", "facexlib",
+        "onnxruntime",
+        "torch",
+        "tensorflow",
+        "gfpgan",
+        "basicsr",
+        "facexlib",
         "customtkinter",
     ]:
         if name not in sys.modules:

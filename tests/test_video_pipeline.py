@@ -2,7 +2,8 @@
 
 import os
 import tempfile
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
+
 import pytest
 
 
@@ -13,8 +14,10 @@ class TestJPEGIntermediateFrames:
         """extract_frames should write frames as .jpg files."""
         from modules import utilities
 
-        with patch.object(utilities, "run_ffmpeg") as mock_ffmpeg, \
-             patch.object(utilities, "get_temp_directory_path", return_value="/tmp/test"):
+        with (
+            patch.object(utilities, "run_ffmpeg") as mock_ffmpeg,
+            patch.object(utilities, "get_temp_directory_path", return_value="/tmp/test"),
+        ):
             utilities.extract_frames("/fake/video.mp4")
             args = mock_ffmpeg.call_args[0][0]
             # Find the output path argument (last positional arg to ffmpeg)
@@ -39,16 +42,18 @@ class TestJPEGIntermediateFrames:
 
     def test_create_video_reads_jpg_frames(self):
         """create_video should read .jpg frames as input."""
-        from modules import utilities
         import modules.globals
+        from modules import utilities
 
         modules.globals.video_encoder = "libx264"
         modules.globals.video_quality = 18
         modules.globals.execution_providers = ["CPUExecutionProvider"]
 
-        with patch.object(utilities, "run_ffmpeg") as mock_ffmpeg, \
-             patch.object(utilities, "get_temp_output_path", return_value="/tmp/test/output.mp4"), \
-             patch.object(utilities, "get_temp_directory_path", return_value="/tmp/test"):
+        with (
+            patch.object(utilities, "run_ffmpeg") as mock_ffmpeg,
+            patch.object(utilities, "get_temp_output_path", return_value="/tmp/test/output.mp4"),
+            patch.object(utilities, "get_temp_directory_path", return_value="/tmp/test"),
+        ):
             utilities.create_video("/fake/video.mp4", fps=30.0)
             args = mock_ffmpeg.call_args[0][0]
             input_pattern = [a for a in args if isinstance(a, str) and "%04d" in a][0]
@@ -56,23 +61,28 @@ class TestJPEGIntermediateFrames:
 
     def test_face_swapper_writes_jpeg_quality(self):
         """face_swapper process_frames should write with JPEG quality 95."""
-        import cv2
         from unittest.mock import ANY
 
-        with patch("cv2.imread") as mock_read, \
-             patch("cv2.imwrite") as mock_write, \
-             patch("modules.processors.frame.face_swapper.get_one_face") as mock_face, \
-             patch("modules.processors.frame.face_swapper.process_frame") as mock_proc, \
-             patch("modules.processors.frame.face_swapper.update_status"):
+        import cv2
+
+        with (
+            patch("cv2.imread") as mock_read,
+            patch("cv2.imwrite") as mock_write,
+            patch("modules.processors.frame.face_swapper.get_one_face") as mock_face,
+            patch("modules.processors.frame.face_swapper.process_frame") as mock_proc,
+            patch("modules.processors.frame.face_swapper.update_status"),
+        ):
             import numpy as np
+
             fake_frame = np.zeros((100, 100, 3), dtype=np.uint8)
             mock_read.return_value = fake_frame
             mock_face.return_value = MagicMock()
             mock_proc.return_value = fake_frame
 
-            from modules.processors.frame.face_swapper import process_frames
             # Set up globals for simple mode
             import modules.globals
+            from modules.processors.frame.face_swapper import process_frames
+
             modules.globals.map_faces = False
             modules.globals.source_path = "/fake/source.jpg"
 
@@ -91,12 +101,13 @@ class TestProcessPoolExecutor:
     def test_core_imports_process_pool_executor(self):
         """core module should have ProcessPoolExecutor available."""
         from modules.processors.frame import core
+
         assert hasattr(core, "ProcessPoolExecutor")
 
     def test_multi_process_frame_uses_process_pool(self):
         """multi_process_frame should instantiate ProcessPoolExecutor."""
-        import modules.processors.frame.core as core
         import modules.globals
+        import modules.processors.frame.core as core
 
         modules.globals.execution_threads = 1
 
@@ -116,6 +127,7 @@ class TestProcessPoolExecutor:
 
             def submit(self, fn, *args, **kwargs):
                 from concurrent.futures import Future
+
                 f = Future()
                 f.set_result(None)
                 return f
@@ -130,9 +142,11 @@ class TestProcessPoolExecutor:
     def test_multi_process_frame_live_exists_and_uses_threads(self):
         """multi_process_frame_live should exist and use ThreadPoolExecutor."""
         from modules.processors.frame import core
+
         assert hasattr(core, "multi_process_frame_live"), "multi_process_frame_live must exist for live mode"
 
         import modules.globals
+
         modules.globals.execution_threads = 1
 
         original_tpe = core.ThreadPoolExecutor
@@ -150,6 +164,7 @@ class TestProcessPoolExecutor:
 
             def submit(self, fn, *args, **kwargs):
                 from concurrent.futures import Future
+
                 f = Future()
                 f.set_result(None)
                 return f

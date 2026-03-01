@@ -1,32 +1,33 @@
+import json
 import os
+import platform
 import queue
 import threading
 import time
 import webbrowser
+from collections.abc import Callable
+
 import customtkinter as ctk
-from typing import Callable, Tuple
 import cv2
-from modules.gpu_processing import gpu_cvt_color, gpu_resize, gpu_flip
 from PIL import Image, ImageOps
-import json
+
 import modules.globals
 import modules.metadata
-from modules.face_analyser import get_one_face
+from modules.camera import get_available_cameras
 from modules.capturer import get_video_frame, get_video_frame_total
+from modules.face_analyser import get_one_face
+from modules.gettext import LanguageManager
+from modules.gpu_processing import gpu_cvt_color, gpu_resize
 from modules.processors.frame.core import get_frame_processors_modules
+from modules.ui_tooltip import ToolTip
 from modules.utilities import (
     is_image,
     is_video,
     resolve_relative_path,
-    has_image_extension,
 )
-from modules.gettext import LanguageManager
-from modules.ui_tooltip import ToolTip
-import platform
-from modules.camera import get_available_cameras
 
 if platform.system() == "Windows":
-    from pygrabber.dshow_graph import FilterGraph
+    pass
 
 # Monkey-patch CustomTkinter DropdownMenu for Tk 9.0 compatibility.
 # Tk 9.0 returns "" from Menu.index("end") on an empty menu, causing TclError
@@ -65,46 +66,45 @@ if _tk.TkVersion >= 9.0:
     _DropdownMenu._add_menu_commands = _patched_add_menu_commands
 
 # Re-export moved functions for backward compatibility
-from modules.ui_analysis import analyze_target, check_and_ignore_nsfw  # noqa: F401
-from modules.ui_webcam import (  # noqa: F401
-    webcam_preview,
-    create_webcam_preview,
-    _capture_thread_func,
-    _processing_thread_func,
-    DETECT_EVERY_N,
-)
+from modules.ui_analysis import analyze_target, check_and_ignore_nsfw
 from modules.ui_mapper import (  # noqa: F401
+    DEFAULT_BUTTON_HEIGHT,
+    DEFAULT_BUTTON_WIDTH,
+    MAPPER_PREVIEW_MAX_HEIGHT,
+    MAPPER_PREVIEW_MAX_WIDTH,
+    POPUP,
+    POPUP_HEIGHT,
+    POPUP_LIVE,
+    POPUP_LIVE_HEIGHT,
+    POPUP_LIVE_SCROLL_HEIGHT,
+    POPUP_LIVE_SCROLL_WIDTH,
+    POPUP_LIVE_WIDTH,
+    POPUP_SCROLL_HEIGHT,
+    POPUP_SCROLL_WIDTH,
+    POPUP_WIDTH,
+    clear_source_target_images,
+    close_mapper_window,
     create_source_target_popup,
     create_source_target_popup_for_webcam,
-    update_webcam_source,
-    update_webcam_target,
-    update_popup_source,
-    clear_source_target_images,
+    popup_status_label,
+    popup_status_label_live,
     refresh_data,
-    close_mapper_window,
-    update_pop_status,
-    update_pop_live_status,
-    POPUP,
-    POPUP_LIVE,
     source_label_dict,
     source_label_dict_live,
     target_label_dict_live,
-    popup_status_label,
-    popup_status_label_live,
-    POPUP_WIDTH,
-    POPUP_HEIGHT,
-    POPUP_SCROLL_WIDTH,
-    POPUP_SCROLL_HEIGHT,
-    POPUP_LIVE_WIDTH,
-    POPUP_LIVE_HEIGHT,
-    POPUP_LIVE_SCROLL_WIDTH,
-    POPUP_LIVE_SCROLL_HEIGHT,
-    MAPPER_PREVIEW_MAX_HEIGHT,
-    MAPPER_PREVIEW_MAX_WIDTH,
-    DEFAULT_BUTTON_WIDTH,
-    DEFAULT_BUTTON_HEIGHT,
+    update_pop_live_status,
+    update_pop_status,
+    update_popup_source,
+    update_webcam_source,
+    update_webcam_target,
 )
-
+from modules.ui_webcam import (  # noqa: F401
+    DETECT_EVERY_N,
+    _capture_thread_func,
+    _processing_thread_func,
+    create_webcam_preview,
+    webcam_preview,
+)
 
 ROOT = None
 ROOT_HEIGHT = 700
@@ -140,9 +140,9 @@ _resize_timer_id = None
 _selected_camera_index = 0
 
 # Embedded preview state
-_embedded_label = None          # CTkLabel inside embedded frame
-_popout_label = None            # CTkLabel inside PREVIEW CTkToplevel
-_preview_embedded = True        # True = embedded, False = pop-out window
+_embedded_label = None  # CTkLabel inside embedded frame
+_popout_label = None  # CTkLabel inside PREVIEW CTkToplevel
+_preview_embedded = True  # True = embedded, False = pop-out window
 _embedded_preview_frame = None  # the collapsible frame widget
 
 
@@ -159,6 +159,7 @@ def init(start: Callable[[], None], destroy: Callable[[], None], lang: str) -> c
 
 def _state_file_path() -> str:
     import platform as _platform
+
     if _platform.system() == "Windows":
         base = os.environ.get("APPDATA", os.path.expanduser("~"))
     else:
@@ -201,7 +202,7 @@ def save_switch_states():
 
 def load_switch_states():
     try:
-        with open(_state_file_path(), "r") as f:
+        with open(_state_file_path()) as f:
             switch_states = json.load(f)
         modules.globals.keep_fps = switch_states.get("keep_fps", True)
         modules.globals.keep_audio = switch_states.get("keep_audio", True)
@@ -218,9 +219,7 @@ def load_switch_states():
         modules.globals.show_fps = switch_states.get("show_fps", False)
         modules.globals.virtual_cam = switch_states.get("virtual_cam", False)
         modules.globals.mouth_mask = switch_states.get("mouth_mask", False)
-        modules.globals.show_mouth_mask_box = switch_states.get(
-            "show_mouth_mask_box", False
-        )
+        modules.globals.show_mouth_mask_box = switch_states.get("show_mouth_mask_box", False)
         modules.globals.rife_enabled = switch_states.get("rife_enabled", False)
         modules.globals.rife_model = switch_states.get("rife_model", "rife-v4.25-lite")
         modules.globals.rife_multiplier = switch_states.get("rife_multiplier", 2)
@@ -266,9 +265,7 @@ def _setup_window(destroy: Callable) -> ctk.CTk:
 
     root = ctk.CTk()
     root.minsize(900, 600)
-    root.title(
-        f"{modules.metadata.name} {modules.metadata.version} {modules.metadata.edition}"
-    )
+    root.title(f"{modules.metadata.name} {modules.metadata.version} {modules.metadata.edition}")
     root.configure()
     root.protocol("WM_DELETE_WINDOW", lambda: destroy())
 
@@ -301,7 +298,9 @@ def _add_top_frame(root: ctk.CTk) -> None:
     source_label.grid(row=0, column=0, pady=(5, 5))
 
     select_face_button = ctk.CTkButton(
-        source_frame, text=_("Select a face"), cursor="hand2",
+        source_frame,
+        text=_("Select a face"),
+        cursor="hand2",
         command=lambda: select_source_path(),
     )
     select_face_button.grid(row=1, column=0, pady=(0, 5), sticky="ew", padx=5)
@@ -309,7 +308,10 @@ def _add_top_frame(root: ctk.CTk) -> None:
 
     # Swap button
     swap_faces_button = ctk.CTkButton(
-        top_frame, text="\u2194", cursor="hand2", width=30,
+        top_frame,
+        text="\u2194",
+        cursor="hand2",
+        width=30,
         command=lambda: swap_faces_paths(),
     )
     swap_faces_button.grid(row=0, column=1, padx=5)
@@ -324,14 +326,18 @@ def _add_top_frame(root: ctk.CTk) -> None:
     target_label.grid(row=0, column=0, pady=(5, 5))
 
     select_target_button = ctk.CTkButton(
-        target_frame, text=_("Select a target"), cursor="hand2",
+        target_frame,
+        text=_("Select a target"),
+        cursor="hand2",
         command=lambda: select_target_path(),
     )
     select_target_button.grid(row=1, column=0, pady=(0, 2), sticky="ew", padx=5)
     ToolTip(select_target_button, _("Choose the target image or video to apply face swap to"))
 
     capture_target_button = ctk.CTkButton(
-        target_frame, text=_("Capture from camera"), cursor="hand2",
+        target_frame,
+        text=_("Capture from camera"),
+        cursor="hand2",
         command=lambda: capture_target_from_camera(),
     )
     capture_target_button.grid(row=2, column=0, pady=(0, 5), sticky="ew", padx=5)
@@ -352,11 +358,12 @@ def _add_embedded_preview(root: ctk.CTk) -> None:
     header = ctk.CTkFrame(_embedded_preview_frame, fg_color="transparent")
     header.grid(row=0, column=0, sticky="ew")
     header.columnconfigure(0, weight=1)
-    ctk.CTkLabel(header, text="Preview", anchor="w").grid(
-        row=0, column=0, sticky="w", padx=10
-    )
+    ctk.CTkLabel(header, text="Preview", anchor="w").grid(row=0, column=0, sticky="w", padx=10)
     ctk.CTkButton(
-        header, text="⤢", width=30, cursor="hand2",
+        header,
+        text="⤢",
+        width=30,
+        cursor="hand2",
         command=pop_out_preview,
     ).grid(row=0, column=1, padx=(0, 5), pady=5)
 
@@ -367,6 +374,7 @@ def _add_embedded_preview(root: ctk.CTk) -> None:
 
 # --- Data-driven switch definitions ---
 
+
 def _get_switch_defs():
     """Return switch definitions grouped by tab.
 
@@ -376,66 +384,101 @@ def _get_switch_defs():
     """
     return {
         "Processing": [
-            (_("Mouth Mask"), "mouth_mask", False,
-             _("Preserve original mouth movement in the swapped face")),
-            (_("Show Mask Outline"), "show_mouth_mask_box", False,
-             _("Display the mouth mask boundary for debugging")),
-            (_("Swap All Faces"), "many_faces", False,
-             _("Swap every detected face, not just the primary one")),
-            (_("Map Faces"), "map_faces", False,
-             _("Manually assign which source face maps to which target face")),
-            (_("Seamless Blend"), "poisson_blend", False,
-             _("Blend face edges smoothly into the target using Poisson blending")),
+            (_("Mouth Mask"), "mouth_mask", False, _("Preserve original mouth movement in the swapped face")),
+            (_("Show Mask Outline"), "show_mouth_mask_box", False, _("Display the mouth mask boundary for debugging")),
+            (_("Swap All Faces"), "many_faces", False, _("Swap every detected face, not just the primary one")),
+            (_("Map Faces"), "map_faces", False, _("Manually assign which source face maps to which target face")),
+            (
+                _("Seamless Blend"),
+                "poisson_blend",
+                False,
+                _("Blend face edges smoothly into the target using Poisson blending"),
+            ),
         ],
         "Enhancement": [
-            (_("GFPGAN Enhancer"), "fp_ui:face_enhancer", False,
-             _("Improve face quality using the GFPGAN restoration model")),
-            (_("GPEN-256"), "fp_ui:face_enhancer_gpen256", False,
-             _("Use GPEN face enhancement model at 256px resolution (faster)")),
-            (_("GPEN-512"), "fp_ui:face_enhancer_gpen512", False,
-             _("Use GPEN face enhancement model at 512px resolution (higher quality)")),
-            (_("CodeFormer"), "fp_ui:face_enhancer_codeformer", False,
-             _("Transformer-based face restoration with adjustable fidelity (best quality)")),
+            (
+                _("GFPGAN Enhancer"),
+                "fp_ui:face_enhancer",
+                False,
+                _("Improve face quality using the GFPGAN restoration model"),
+            ),
+            (
+                _("GPEN-256"),
+                "fp_ui:face_enhancer_gpen256",
+                False,
+                _("Use GPEN face enhancement model at 256px resolution (faster)"),
+            ),
+            (
+                _("GPEN-512"),
+                "fp_ui:face_enhancer_gpen512",
+                False,
+                _("Use GPEN face enhancement model at 512px resolution (higher quality)"),
+            ),
+            (
+                _("CodeFormer"),
+                "fp_ui:face_enhancer_codeformer",
+                False,
+                _("Transformer-based face restoration with adjustable fidelity (best quality)"),
+            ),
         ],
         "Output": [
-            (_("Preserve Frame Rate"), "keep_fps", True,
-             _("Output video keeps the original frame rate")),
-            (_("Preserve Audio"), "keep_audio", True,
-             _("Copy audio track from the source video to output")),
-            (_("Save Temp Frames"), "keep_frames", False,
-             _("Keep extracted frames on disk after processing (uses disk space)")),
-            (_("PNG Frames"), "use_png_frames", False,
-             _("Use lossless PNG for intermediate frames — no compression artifacts, but ~10x more disk I/O")),
-            (_("RIFE Interpolation"), "rife_enabled", False,
-             _("Generate intermediate frames for smoother video (2x or 4x)")),
+            (_("Preserve Frame Rate"), "keep_fps", True, _("Output video keeps the original frame rate")),
+            (_("Preserve Audio"), "keep_audio", True, _("Copy audio track from the source video to output")),
+            (
+                _("Save Temp Frames"),
+                "keep_frames",
+                False,
+                _("Keep extracted frames on disk after processing (uses disk space)"),
+            ),
+            (
+                _("PNG Frames"),
+                "use_png_frames",
+                False,
+                _("Use lossless PNG for intermediate frames — no compression artifacts, but ~10x more disk I/O"),
+            ),
+            (
+                _("RIFE Interpolation"),
+                "rife_enabled",
+                False,
+                _("Generate intermediate frames for smoother video (2x or 4x)"),
+            ),
         ],
         "Live Mode": [
-            (_("Color Correction"), "color_correction", False,
-             _("Fix blue/green color cast from some webcams")),
-            (_("Show FPS"), "show_fps", False,
-             _("Display frames-per-second counter on the live preview")),
-            (_("Virtual Camera"), "virtual_cam", False,
-             _("Output to a virtual camera device for use in Zoom, Meet, etc.")),
-            (_("Skip Frames"), "half_rate_processing", False,
-             _("Process every other frame for better performance at the cost of smoothness")),
+            (_("Color Correction"), "color_correction", False, _("Fix blue/green color cast from some webcams")),
+            (_("Show FPS"), "show_fps", False, _("Display frames-per-second counter on the live preview")),
+            (
+                _("Virtual Camera"),
+                "virtual_cam",
+                False,
+                _("Output to a virtual camera device for use in Zoom, Meet, etc."),
+            ),
+            (
+                _("Skip Frames"),
+                "half_rate_processing",
+                False,
+                _("Process every other frame for better performance at the cost of smoothness"),
+            ),
         ],
     }
 
 
 def _get_switch_value(attr: str) -> bool:
     if attr.startswith("fp_ui:"):
-        key = attr[len("fp_ui:"):]
+        key = attr[len("fp_ui:") :]
         return modules.globals.fp_ui.get(key, False)
     return getattr(modules.globals, attr, False)
 
 
 def _create_switch(
-    parent: ctk.CTkFrame, label: str, attr: str, tooltip: str = "",
+    parent: ctk.CTkFrame,
+    label: str,
+    attr: str,
+    tooltip: str = "",
 ) -> ctk.CTkSwitch:
     value_var = ctk.BooleanVar(value=_get_switch_value(attr))
 
     if attr.startswith("fp_ui:"):
-        key = attr[len("fp_ui:"):]
+        key = attr[len("fp_ui:") :]
         command = lambda: (
             update_tumbler(key, value_var.get()),
             save_switch_states(),
@@ -453,7 +496,11 @@ def _create_switch(
         )
 
     switch = ctk.CTkSwitch(
-        parent, text=label, variable=value_var, cursor="hand2", command=command,
+        parent,
+        text=label,
+        variable=value_var,
+        cursor="hand2",
+        command=command,
     )
     if tooltip:
         ToolTip(switch, tooltip)
@@ -513,14 +560,25 @@ def _add_sliders_to_tab(tab: ctk.CTkFrame, num_switches: int) -> None:
     transparency_label.grid(row=start_row, column=0, sticky="w", padx=8, pady=(15, 2))
 
     transparency_slider = ctk.CTkSlider(
-        tab, from_=0.0, to=1.0, variable=transparency_var,
+        tab,
+        from_=0.0,
+        to=1.0,
+        variable=transparency_var,
         command=on_transparency_change,
-        fg_color="#E0E0E0", progress_color="#007BFF",
-        button_color="#FFFFFF", button_hover_color="#CCCCCC",
-        height=5, border_width=1, corner_radius=3,
+        fg_color="#E0E0E0",
+        progress_color="#007BFF",
+        button_color="#FFFFFF",
+        button_hover_color="#CCCCCC",
+        height=5,
+        border_width=1,
+        corner_radius=3,
     )
     transparency_slider.grid(
-        row=start_row, column=1, sticky="ew", padx=(0, 8), pady=(15, 2),
+        row=start_row,
+        column=1,
+        sticky="ew",
+        padx=(0, 8),
+        pady=(15, 2),
     )
     ToolTip(transparency_slider, _("Blend between original and swapped face (0% = original, 100% = fully swapped)"))
 
@@ -534,14 +592,25 @@ def _add_sliders_to_tab(tab: ctk.CTkFrame, num_switches: int) -> None:
     sharpness_label.grid(row=start_row + 1, column=0, sticky="w", padx=8, pady=2)
 
     sharpness_slider = ctk.CTkSlider(
-        tab, from_=0.0, to=5.0, variable=sharpness_var,
+        tab,
+        from_=0.0,
+        to=5.0,
+        variable=sharpness_var,
         command=on_sharpness_change,
-        fg_color="#E0E0E0", progress_color="#007BFF",
-        button_color="#FFFFFF", button_hover_color="#CCCCCC",
-        height=5, border_width=1, corner_radius=3,
+        fg_color="#E0E0E0",
+        progress_color="#007BFF",
+        button_color="#FFFFFF",
+        button_hover_color="#CCCCCC",
+        height=5,
+        border_width=1,
+        corner_radius=3,
     )
     sharpness_slider.grid(
-        row=start_row + 1, column=1, sticky="ew", padx=(0, 8), pady=2,
+        row=start_row + 1,
+        column=1,
+        sticky="ew",
+        padx=(0, 8),
+        pady=2,
     )
     ToolTip(sharpness_slider, _("Sharpen the enhanced face output"))
 
@@ -564,11 +633,17 @@ def _add_rife_controls_to_tab(tab: ctk.CTkFrame, num_switches: int) -> None:
         update_status(f"RIFE model set to {choice}")
 
     model_optionmenu = ctk.CTkOptionMenu(
-        tab, variable=model_variable, values=model_values,
+        tab,
+        variable=model_variable,
+        values=model_values,
         command=on_model_change,
     )
     model_optionmenu.grid(
-        row=start_row, column=1, sticky="ew", padx=(0, 8), pady=(15, 2),
+        row=start_row,
+        column=1,
+        sticky="ew",
+        padx=(0, 8),
+        pady=(15, 2),
     )
     ToolTip(model_optionmenu, _("Choose RIFE interpolation model (lite = faster, full = better quality)"))
 
@@ -586,11 +661,17 @@ def _add_rife_controls_to_tab(tab: ctk.CTkFrame, num_switches: int) -> None:
         update_status(f"RIFE multiplier set to {choice}")
 
     multiplier_optionmenu = ctk.CTkOptionMenu(
-        tab, variable=multiplier_variable, values=multiplier_values,
+        tab,
+        variable=multiplier_variable,
+        values=multiplier_values,
         command=on_multiplier_change,
     )
     multiplier_optionmenu.grid(
-        row=start_row + 1, column=1, sticky="ew", padx=(0, 8), pady=2,
+        row=start_row + 1,
+        column=1,
+        sticky="ew",
+        padx=(0, 8),
+        pady=2,
     )
     ToolTip(multiplier_optionmenu, _("Frame rate multiplication factor"))
 
@@ -615,11 +696,17 @@ def _add_half_rate_controls_to_tab(tab: ctk.CTkFrame, num_switches: int) -> None
         update_status(f"Keyframe interval set to every {choice} frames")
 
     interval_optionmenu = ctk.CTkOptionMenu(
-        tab, variable=interval_variable, values=interval_values,
+        tab,
+        variable=interval_variable,
+        values=interval_values,
         command=on_interval_change,
     )
     interval_optionmenu.grid(
-        row=start_row, column=1, sticky="ew", padx=(0, 8), pady=(8, 2),
+        row=start_row,
+        column=1,
+        sticky="ew",
+        padx=(0, 8),
+        pady=(8, 2),
     )
     ToolTip(interval_optionmenu, _("Process a full detection every N frames (higher = faster, lower = more accurate)"))
 
@@ -639,17 +726,26 @@ def _add_half_rate_controls_to_tab(tab: ctk.CTkFrame, num_switches: int) -> None
         update_status(f"Preview FPS cap set to {choice}")
 
     fps_optionmenu = ctk.CTkOptionMenu(
-        tab, variable=fps_variable, values=fps_values,
+        tab,
+        variable=fps_variable,
+        values=fps_values,
         command=on_fps_change,
     )
     fps_optionmenu.grid(
-        row=start_row + 1, column=1, sticky="ew", padx=(0, 8), pady=(8, 2),
+        row=start_row + 1,
+        column=1,
+        sticky="ew",
+        padx=(0, 8),
+        pady=(8, 2),
     )
     ToolTip(fps_optionmenu, _("Cap the preview frame rate — lower values reduce CPU/GPU heat (30 FPS recommended)"))
 
 
 def _add_camera_to_tab(
-    tab: ctk.CTkFrame, root: ctk.CTk, num_switches: int, live_button: ctk.CTkButton,
+    tab: ctk.CTkFrame,
+    root: ctk.CTk,
+    num_switches: int,
+    live_button: ctk.CTkButton,
 ) -> None:
     start_row = num_switches + 1
 
@@ -658,11 +754,17 @@ def _add_camera_to_tab(
 
     camera_variable = ctk.StringVar(value=_("Detecting cameras..."))
     camera_optionmenu = ctk.CTkOptionMenu(
-        tab, variable=camera_variable,
-        values=[_("Detecting cameras...")], state="disabled",
+        tab,
+        variable=camera_variable,
+        values=[_("Detecting cameras...")],
+        state="disabled",
     )
     camera_optionmenu.grid(
-        row=start_row, column=1, sticky="ew", padx=(0, 8), pady=(15, 5),
+        row=start_row,
+        column=1,
+        sticky="ew",
+        padx=(0, 8),
+        pady=(15, 5),
     )
     ToolTip(camera_optionmenu, _("Select which camera to use for live mode"))
 
@@ -678,6 +780,7 @@ def _add_camera_to_tab(
     # Config snapshot is taken at click time so UI changes before clicking are captured.
     def _start_webcam():
         from modules.processing_config_factory import build_config_from_globals as _bcfg
+
         camera_index = (
             camera_indices[camera_names.index(camera_variable.get())]
             if camera_names and camera_names[0] != "No cameras found"
@@ -715,6 +818,7 @@ def _add_camera_to_tab(
     def _enumerate_cameras():
         if platform.system() == "Windows":
             import ctypes
+
             ctypes.windll.ole32.CoInitializeEx(0, 0)
         try:
             indices, names = get_available_cameras()
@@ -735,21 +839,27 @@ def _add_action_buttons(root: ctk.CTk, start: Callable, destroy: Callable) -> ct
     action_frame.columnconfigure(1, weight=1)
 
     start_button = ctk.CTkButton(
-        action_frame, text=_("Start"), cursor="hand2",
+        action_frame,
+        text=_("Start"),
+        cursor="hand2",
         command=lambda: analyze_target(start, root),
     )
     start_button.grid(row=0, column=0, sticky="ew", padx=3)
     ToolTip(start_button, _("Begin processing the target image/video with selected face"))
 
     stop_button = ctk.CTkButton(
-        action_frame, text=_("Destroy"), cursor="hand2",
+        action_frame,
+        text=_("Destroy"),
+        cursor="hand2",
         command=lambda: destroy(),
     )
     stop_button.grid(row=0, column=1, sticky="ew", padx=3)
     ToolTip(stop_button, _("Stop processing and close the application"))
 
     preview_button = ctk.CTkButton(
-        action_frame, text=_("Preview"), cursor="hand2",
+        action_frame,
+        text=_("Preview"),
+        cursor="hand2",
         command=lambda: toggle_preview(),
     )
     preview_button.grid(row=1, column=0, sticky="ew", padx=3, pady=(3, 0))
@@ -757,7 +867,10 @@ def _add_action_buttons(root: ctk.CTk, start: Callable, destroy: Callable) -> ct
 
     # Live button — command and state wired up by _add_camera_to_tab after detection
     live_button = ctk.CTkButton(
-        action_frame, text=_("Live"), cursor="hand2", state="disabled",
+        action_frame,
+        text=_("Live"),
+        cursor="hand2",
+        state="disabled",
     )
     live_button.grid(row=1, column=1, sticky="ew", padx=3, pady=(3, 0))
     ToolTip(live_button, _("Start real-time face swap using webcam"))
@@ -782,15 +895,14 @@ def _add_status_bar(root: ctk.CTk) -> None:
     _download_progress_bar.grid_remove()
 
     donate_label = ctk.CTkLabel(
-        status_frame, text="Deep Live Cam", justify="right", cursor="hand2",
+        status_frame,
+        text="Deep Live Cam",
+        justify="right",
+        cursor="hand2",
     )
     donate_label.grid(row=0, column=1, sticky="e")
-    donate_label.configure(
-        text_color=ctk.ThemeManager.theme.get("URL").get("text_color")
-    )
-    donate_label.bind(
-        "<Button>", lambda event: webbrowser.open("https://deeplivecam.net")
-    )
+    donate_label.configure(text_color=ctk.ThemeManager.theme.get("URL").get("text_color"))
+    donate_label.bind("<Button>", lambda event: webbrowser.open("https://deeplivecam.net"))
 
 
 def create_root(start: Callable[[], None], destroy: Callable[[], None]) -> ctk.CTk:
@@ -819,16 +931,17 @@ def create_preview(parent: ctk.CTkToplevel) -> ctk.CTkToplevel:
     header = ctk.CTkFrame(preview, fg_color="transparent")
     header.pack(fill="x", side="top", padx=5, pady=(5, 0))
     ctk.CTkButton(
-        header, text="⤡ Pop In", width=80, cursor="hand2",
+        header,
+        text="⤡ Pop In",
+        width=80,
+        cursor="hand2",
         command=pop_in_preview,
     ).pack(side="right")
 
     _popout_label = ctk.CTkLabel(preview, text="")
     _popout_label.pack(fill="both", expand=True)
 
-    preview_slider = ctk.CTkSlider(
-        preview, from_=0, to=0, command=lambda frame_value: update_preview(frame_value)
-    )
+    preview_slider = ctk.CTkSlider(preview, from_=0, to=0, command=lambda frame_value: update_preview(frame_value))
 
     return preview
 
@@ -837,7 +950,7 @@ def pop_out_preview() -> None:
     """Move preview display from the embedded panel into the floating PREVIEW window."""
     global preview_label, _preview_embedded
     _preview_embedded = False
-    img = getattr(_embedded_label, '_ctk_img', None)
+    img = getattr(_embedded_label, "_ctk_img", None)
     if img:
         _popout_label._ctk_img = img
         _popout_label.configure(image=img)
@@ -853,7 +966,7 @@ def pop_in_preview() -> None:
     """Move preview display from the floating PREVIEW window back into the embedded panel."""
     global preview_label, _preview_embedded
     _preview_embedded = True
-    img = getattr(_popout_label, '_ctk_img', None)
+    img = getattr(_popout_label, "_ctk_img", None)
     if img:
         _embedded_label._ctk_img = img
         _embedded_label.configure(image=img)
@@ -907,7 +1020,7 @@ def _hide_download_progress() -> None:
 
 
 # Enhancer processor names — keys in fp_ui and corresponding frame_processor names
-_ENHANCER_KEYS = ('face_enhancer', 'face_enhancer_gpen256', 'face_enhancer_gpen512', 'face_enhancer_codeformer')
+_ENHANCER_KEYS = ("face_enhancer", "face_enhancer_gpen256", "face_enhancer_gpen512", "face_enhancer_codeformer")
 
 # Map from processor NAME constant to fp_ui key for live-mode gating
 _ENHANCER_NAME_TO_UI_KEY = {
@@ -936,9 +1049,7 @@ def update_tumbler(var: str, value: bool) -> None:
     save_switch_states()
     if _preview_embedded or PREVIEW.state() == "normal":
         global frame_processors
-        frame_processors = get_frame_processors_modules(
-            modules.globals.frame_processors
-        )
+        frame_processors = get_frame_processors_modules(modules.globals.frame_processors)
 
 
 def select_source_path() -> None:
@@ -1008,13 +1119,17 @@ def capture_target_from_camera() -> None:
     button_frame.columnconfigure(1, weight=1)
 
     capture_btn = ctk.CTkButton(
-        button_frame, text=_("Capture"), cursor="hand2",
+        button_frame,
+        text=_("Capture"),
+        cursor="hand2",
         command=lambda: _do_capture(),
     )
     capture_btn.grid(row=0, column=0, sticky="ew", padx=5)
 
     cancel_btn = ctk.CTkButton(
-        button_frame, text=_("Cancel"), cursor="hand2",
+        button_frame,
+        text=_("Cancel"),
+        cursor="hand2",
         command=lambda: _close_capture(),
     )
     cancel_btn.grid(row=0, column=1, sticky="ew", padx=5)
@@ -1121,6 +1236,7 @@ def select_output_path(start: Callable[[], None]) -> None:
         RECENT_DIRECTORY_OUTPUT = os.path.dirname(modules.globals.output_path)
         # Snapshot globals at the moment Start is clicked; processing uses this config.
         from modules.processing_config_factory import build_config_from_globals as _bcfg
+
         start(config=_bcfg())
 
 
@@ -1139,16 +1255,14 @@ def fit_image_to_size(image, width: int, height: int):
     return gpu_resize(image, dsize=new_size)
 
 
-def render_image_preview(image_path: str, size: Tuple[int, int]) -> ctk.CTkImage:
+def render_image_preview(image_path: str, size: tuple[int, int]) -> ctk.CTkImage:
     image = Image.open(image_path)
     if size:
         image = ImageOps.fit(image, size, Image.LANCZOS)
     return ctk.CTkImage(image, size=image.size)
 
 
-def render_video_preview(
-        video_path: str, size: Tuple[int, int], frame_number: int = 0
-) -> ctk.CTkImage:
+def render_video_preview(video_path: str, size: tuple[int, int], frame_number: int = 0) -> ctk.CTkImage:
     capture = cv2.VideoCapture(video_path)
     try:
         if frame_number:
@@ -1197,24 +1311,14 @@ def update_preview(frame_number: int = 0) -> None:
         temp_frame = get_video_frame(modules.globals.target_path, frame_number)
         if modules.globals.nsfw_filter and check_and_ignore_nsfw(temp_frame):
             return
-        for frame_processor in get_frame_processors_modules(
-                modules.globals.frame_processors
-        ):
+        for frame_processor in get_frame_processors_modules(modules.globals.frame_processors):
             temp_frame = frame_processor.process_frame(
                 get_one_face(cv2.imread(modules.globals.source_path)), temp_frame
             )
         image = Image.fromarray(gpu_cvt_color(temp_frame, cv2.COLOR_BGR2RGB))
-        image = ImageOps.contain(
-            image, (PREVIEW_MAX_WIDTH, PREVIEW_MAX_HEIGHT), Image.LANCZOS
-        )
+        image = ImageOps.contain(image, (PREVIEW_MAX_WIDTH, PREVIEW_MAX_HEIGHT), Image.LANCZOS)
         image = ctk.CTkImage(image, size=image.size)
         preview_label.configure(image=image)
         update_status("Processing succeed!")
         if not _preview_embedded:
             PREVIEW.deiconify()
-
-
-
-
-
-

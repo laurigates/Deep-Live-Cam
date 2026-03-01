@@ -11,22 +11,22 @@ Usage:
 Requirements (macOS ARM only):
     uv pip install mlx onnx
 """
+
 import argparse
 import os
 import sys
 import time
-from typing import Dict, List, Optional
 
 import numpy as np
 
 
-def _stats(times: List[float]) -> dict:
+def _stats(times: list[float]) -> dict:
     arr = np.array(times)
     return {
-        "mean_ms":   float(np.mean(arr) * 1000),
+        "mean_ms": float(np.mean(arr) * 1000),
         "median_ms": float(np.median(arr) * 1000),
-        "p95_ms":    float(np.percentile(arr, 95) * 1000),
-        "fps":       float(1.0 / np.mean(arr)),
+        "p95_ms": float(np.percentile(arr, 95) * 1000),
+        "fps": float(1.0 / np.mean(arr)),
     }
 
 
@@ -39,7 +39,7 @@ def _print_stats(label: str, stats: dict) -> None:
     )
 
 
-def benchmark_onnx_coreml(onnx_path: str, runs: int, warmup: int) -> Optional[dict]:
+def benchmark_onnx_coreml(onnx_path: str, runs: int, warmup: int) -> dict | None:
     """Benchmark ONNX Runtime with CoreML EP."""
     try:
         import onnxruntime as ort
@@ -48,12 +48,15 @@ def benchmark_onnx_coreml(onnx_path: str, runs: int, warmup: int) -> Optional[di
         return None
 
     providers = [
-        ("CoreMLExecutionProvider", {
-            "ModelFormat": "MLProgram",
-            "MLComputeUnits": "ALL",
-            "RequireStaticShapes": 1,
-            "SpecializationStrategy": "FastPrediction",
-        }),
+        (
+            "CoreMLExecutionProvider",
+            {
+                "ModelFormat": "MLProgram",
+                "MLComputeUnits": "ALL",
+                "RequireStaticShapes": 1,
+                "SpecializationStrategy": "FastPrediction",
+            },
+        ),
         "CPUExecutionProvider",
     ]
     try:
@@ -64,8 +67,7 @@ def benchmark_onnx_coreml(onnx_path: str, runs: int, warmup: int) -> Optional[di
 
     target = np.random.randn(1, 3, 128, 128).astype(np.float32)
     source = np.random.randn(1, 512).astype(np.float32)
-    feed = {session.get_inputs()[0].name: target,
-            session.get_inputs()[1].name: source}
+    feed = {session.get_inputs()[0].name: target, session.get_inputs()[1].name: source}
 
     for _ in range(warmup):
         session.run(None, feed)
@@ -79,10 +81,11 @@ def benchmark_onnx_coreml(onnx_path: str, runs: int, warmup: int) -> Optional[di
     return _stats(times)
 
 
-def benchmark_mlx(onnx_path: str, runs: int, warmup: int) -> Optional[dict]:
+def benchmark_mlx(onnx_path: str, runs: int, warmup: int) -> dict | None:
     """Benchmark MLX native inference."""
     try:
         import mlx.core as mx
+
         from modules.mlx_inswapper import MLXSessionWrapper
     except ImportError as exc:
         print(f"  [skip] {exc}")
@@ -114,6 +117,7 @@ def correctness_check(onnx_path: str) -> None:
     print("\nCorrectness check (MLX vs ONNX Runtime CPUExecutionProvider):")
     try:
         import onnxruntime as ort
+
         from modules.mlx_inswapper import MLXSessionWrapper
 
         np.random.seed(42)
@@ -122,8 +126,7 @@ def correctness_check(onnx_path: str) -> None:
 
         # Use CPU provider for reproducibility (CoreML may differ in FP16 rounding)
         ort_session = ort.InferenceSession(onnx_path, providers=["CPUExecutionProvider"])
-        ort_feed = {ort_session.get_inputs()[0].name: target,
-                    ort_session.get_inputs()[1].name: source}
+        ort_feed = {ort_session.get_inputs()[0].name: target, ort_session.get_inputs()[1].name: source}
         ort_out = ort_session.run(None, ort_feed)[0]  # (1, 3, 128, 128)
 
         mlx_wrapper = MLXSessionWrapper.load(onnx_path)
@@ -140,6 +143,7 @@ def correctness_check(onnx_path: str) -> None:
     except Exception as exc:
         print(f"  [error] {exc}")
         import traceback
+
         traceback.print_exc()
 
 
@@ -148,21 +152,17 @@ def main() -> int:
         print("This benchmark is macOS-only.")
         return 1
 
-    parser = argparse.ArgumentParser(
-        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--runs", type=int, default=100, help="Number of timed inference calls (default: 100)")
+    parser.add_argument("--warmup", type=int, default=10, help="Warmup runs before timing (default: 10)")
+    parser.add_argument(
+        "--models-dir",
+        default=os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "models"),
+        help="Path to models directory",
     )
-    parser.add_argument("--runs", type=int, default=100,
-                        help="Number of timed inference calls (default: 100)")
-    parser.add_argument("--warmup", type=int, default=10,
-                        help="Warmup runs before timing (default: 10)")
-    parser.add_argument("--models-dir",
-                        default=os.path.join(
-                            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                            "models"
-                        ),
-                        help="Path to models directory")
-    parser.add_argument("--correctness", action="store_true",
-                        help="Run correctness check comparing MLX vs ONNX Runtime CPU")
+    parser.add_argument(
+        "--correctness", action="store_true", help="Run correctness check comparing MLX vs ONNX Runtime CPU"
+    )
     args = parser.parse_args()
 
     onnx_path = os.path.join(args.models_dir, "inswapper_128_fp16.onnx")
@@ -195,10 +195,7 @@ def main() -> int:
 
     if "onnx_coreml" in results and "mlx" in results:
         speedup = results["onnx_coreml"]["mean_ms"] / results["mlx"]["mean_ms"]
-        print(
-            f"\nSpeedup: MLX is {speedup:.2f}× "
-            f"{'faster' if speedup > 1 else 'slower'} than ONNX Runtime CoreML EP"
-        )
+        print(f"\nSpeedup: MLX is {speedup:.2f}× {'faster' if speedup > 1 else 'slower'} than ONNX Runtime CoreML EP")
 
     if args.correctness:
         correctness_check(onnx_path)

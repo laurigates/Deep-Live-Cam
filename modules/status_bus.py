@@ -7,19 +7,22 @@ Usage::
 
     # Producer (core, processors, etc.)
     from modules.status_bus import BUS
+
     BUS.publish("Processing frame 42/100", "core")
 
     # Consumer (GUI mode)
     from modules.status_bus import BUS
+
     BUS.subscribe(ui.update_status)
 
     # Consumer (headless / test)
     BUS.subscribe(lambda msg, caller: print(f"[{caller}] {msg}"))
 """
+
 from __future__ import annotations
 
 import threading
-from typing import Callable
+from collections.abc import Callable
 
 StatusCallback = Callable[[str, str], None]
 

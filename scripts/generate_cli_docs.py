@@ -16,7 +16,8 @@ from pathlib import Path
 
 # Safe import — metadata.py contains only string literals
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from modules.metadata import name as app_name, version as app_version
+from modules.metadata import name as app_name
+from modules.metadata import version as app_version
 
 CORE_PY = Path(__file__).resolve().parent.parent / "modules" / "core.py"
 README_MD = Path(__file__).resolve().parent.parent / "README.md"

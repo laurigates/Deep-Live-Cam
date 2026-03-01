@@ -3,10 +3,12 @@
 Verifies that face_masking functions accept ProcessingConfig and read values
 from config rather than modules.globals when config is provided.
 """
+
 import inspect
+from unittest.mock import MagicMock
+
 import numpy as np
 import pytest
-from unittest.mock import MagicMock
 
 from modules.processing_config import ProcessingConfig
 
@@ -19,6 +21,7 @@ def _make_mock_face_with_landmarks():
     # Face outline (points 0-32): distribute around center
     cx, cy = 150.0, 150.0
     import math
+
     for i in range(33):
         angle = math.pi * i / 32  # semicircle bottom half
         landmarks[i] = [cx + 80 * math.cos(math.pi + angle), cy + 60 * math.sin(angle)]
@@ -43,33 +46,39 @@ class TestFaceMaskingConfigSignatures:
 
     def test_create_face_mask_accepts_config(self):
         from modules.processors.frame.face_masking import create_face_mask
+
         sig = inspect.signature(create_face_mask)
-        assert 'config' in sig.parameters
+        assert "config" in sig.parameters
 
     def test_create_lower_mouth_mask_accepts_config(self):
         from modules.processors.frame.face_masking import create_lower_mouth_mask
+
         sig = inspect.signature(create_lower_mouth_mask)
-        assert 'config' in sig.parameters
+        assert "config" in sig.parameters
 
     def test_create_eyes_mask_accepts_config(self):
         from modules.processors.frame.face_masking import create_eyes_mask
+
         sig = inspect.signature(create_eyes_mask)
-        assert 'config' in sig.parameters
+        assert "config" in sig.parameters
 
     def test_create_eyebrows_mask_accepts_config(self):
         from modules.processors.frame.face_masking import create_eyebrows_mask
+
         sig = inspect.signature(create_eyebrows_mask)
-        assert 'config' in sig.parameters
+        assert "config" in sig.parameters
 
     def test_apply_mouth_area_accepts_config(self):
         from modules.processors.frame.face_masking import apply_mouth_area
+
         sig = inspect.signature(apply_mouth_area)
-        assert 'config' in sig.parameters
+        assert "config" in sig.parameters
 
     def test_apply_mask_area_accepts_config(self):
         from modules.processors.frame.face_masking import apply_mask_area
+
         sig = inspect.signature(apply_mask_area)
-        assert 'config' in sig.parameters
+        assert "config" in sig.parameters
 
 
 class TestFaceMaskingConfigBehavior:
@@ -77,8 +86,8 @@ class TestFaceMaskingConfigBehavior:
 
     def test_create_lower_mouth_mask_uses_config_mouth_mask_size(self):
         """create_lower_mouth_mask reads mouth_mask_size and mask_down_size from config."""
-        from modules.processors.frame.face_masking import create_lower_mouth_mask
         import modules.globals
+        from modules.processors.frame.face_masking import create_lower_mouth_mask
 
         face = _make_mock_face_with_landmarks()
         frame = np.zeros((300, 300, 3), dtype=np.uint8)
@@ -109,8 +118,8 @@ class TestFaceMaskingConfigBehavior:
 
     def test_create_eyes_mask_uses_config_eyes_mask_size(self):
         """create_eyes_mask reads mask_down_size and eyes_mask_size from config."""
-        from modules.processors.frame.face_masking import create_eyes_mask
         import modules.globals
+        from modules.processors.frame.face_masking import create_eyes_mask
 
         face = _make_mock_face_with_landmarks()
         frame = np.zeros((300, 300, 3), dtype=np.uint8)

@@ -112,7 +112,11 @@ class TestCheckMode:
     def test_check_passes_when_fresh(self, tmp_path: Path) -> None:
         """--check should exit 0 when README matches generated content."""
         result = subprocess.run(
-            [sys.executable, str(Path(__file__).resolve().parent.parent / "scripts" / "generate_cli_docs.py"), "--stdout"],
+            [
+                sys.executable,
+                str(Path(__file__).resolve().parent.parent / "scripts" / "generate_cli_docs.py"),
+                "--stdout",
+            ],
             capture_output=True,
             text=True,
         )

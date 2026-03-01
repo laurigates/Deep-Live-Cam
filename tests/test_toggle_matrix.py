@@ -3,6 +3,7 @@
 Verifies that all toggle combinations interact correctly without crashing.
 Uses mocked inference — no real models needed.
 """
+
 import itertools
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -95,7 +96,7 @@ class TestIndividualToggles:
     """Each toggle individually should not crash the masking functions."""
 
     def test_mouth_mask_on(self):
-        from modules.processors.frame.face_masking import create_lower_mouth_mask, apply_mouth_area
+        from modules.processors.frame.face_masking import apply_mouth_area, create_lower_mouth_mask
 
         modules.globals.mouth_mask = True
         modules.globals.mask_blur_kernel = 15
@@ -172,10 +173,7 @@ class TestToggleCombinationMatrix:
     @pytest.mark.parametrize(
         "toggles",
         list(_generate_toggle_combos()),
-        ids=[
-            "_".join(f"{k}={v}" for k, v in combo.items())
-            for combo in _generate_toggle_combos()
-        ],
+        ids=["_".join(f"{k}={v}" for k, v in combo.items()) for combo in _generate_toggle_combos()],
     )
     def test_toggle_combo_no_crash(self, toggles):
         """Verify processing does not crash for this toggle combination."""
@@ -183,9 +181,9 @@ class TestToggleCombinationMatrix:
         modules.globals.mask_blur_kernel = 15
 
         from modules.processors.frame.face_masking import (
+            apply_mouth_area,
             create_face_mask,
             create_lower_mouth_mask,
-            apply_mouth_area,
         )
         from modules.processors.frame.face_swapper import apply_post_processing
 
