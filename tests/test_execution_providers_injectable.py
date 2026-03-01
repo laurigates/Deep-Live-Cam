@@ -33,8 +33,9 @@ class TestFaceSwapperInjectableProviders:
 
         fake_model = MagicMock()
         with patch('modules.processors.frame.face_swapper.build_providers_config',
-                   side_effect=fake_build_providers_config):
-            with patch('insightface.model_zoo.get_model', return_value=fake_model):
+                   side_effect=fake_build_providers_config), \
+             patch('insightface.model_zoo.get_model', return_value=fake_model), \
+             patch('modules.processors.frame.face_swapper.IS_APPLE_SILICON', False):
                 # Reset singleton so initialization runs
                 original = face_swapper.FACE_SWAPPER
                 face_swapper.FACE_SWAPPER = None
@@ -61,8 +62,9 @@ class TestFaceSwapperInjectableProviders:
 
         fake_model = MagicMock()
         with patch('modules.processors.frame.face_swapper.build_providers_config',
-                   side_effect=fake_build_providers_config):
-            with patch('insightface.model_zoo.get_model', return_value=fake_model):
+                   side_effect=fake_build_providers_config), \
+             patch('insightface.model_zoo.get_model', return_value=fake_model), \
+             patch('modules.processors.frame.face_swapper.IS_APPLE_SILICON', False):
                 original = face_swapper.FACE_SWAPPER
                 face_swapper.FACE_SWAPPER = None
                 try:

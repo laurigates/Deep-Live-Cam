@@ -107,13 +107,11 @@ class TestProcessPoolExecutor:
         class FakeProcessPoolExecutor:
             def __init__(self, **kwargs):
                 calls.append(("init", kwargs))
-                self._executor = original_ppe(max_workers=1)
 
             def __enter__(self):
                 return self
 
             def __exit__(self, *args):
-                self._executor.shutdown(wait=True)
                 return False
 
             def submit(self, fn, *args, **kwargs):

@@ -21,8 +21,13 @@ import numpy as np
 if sys.platform != "darwin":
     raise ImportError("mlx_inswapper is macOS-only")
 
-import mlx.core as mx
-import mlx.nn as nn
+try:
+    import mlx.core as mx
+    import mlx.nn as nn
+except ImportError as e:
+    raise ImportError(
+        "mlx_inswapper requires the mlx package: pip install mlx"
+    ) from e
 
 
 # ---------------------------------------------------------------------------
