@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches: [main, premain]
+  pull_request:
+    branches: [main, premain]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Lint & Format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Set up Python
+        run: uv python install 3.13
+
+      - name: Ruff format check
+        run: uvx ruff format --check .
+
+      - name: Ruff lint
+        # Non-blocking until existing violations are addressed.
+        # 23 pre-existing issues tracked for follow-up.
+        continue-on-error: true
+        run: uvx ruff check . --output-format=github
+
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Set up Python
+        run: uv python install 3.13
+
+      - name: Install dependencies
+        run: uv sync --group dev
+
+      - name: Run tests
+        run: uv run pytest --tb=short -q
