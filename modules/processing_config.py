@@ -113,6 +113,25 @@ class ProcessingConfig:
     poisson_blend: bool = False
     """Enable Poisson blending for smoother face swaps"""
 
+    swap_color_transfer: bool = False
+    """Apply LAB color transfer to swapped crop before paste-back"""
+
+    # ======================== Paste-back Tuning ========================
+    paste_diff_threshold: float = 10.0
+    """Threshold for diff mask binarisation in swap paste-back"""
+
+    paste_mask_threshold: float = 20.0
+    """Threshold for white mask binarisation in swap paste-back"""
+
+    paste_mask_erode_ratio: int = 10
+    """Divisor for erosion kernel size (mask_size // ratio, min 10)"""
+
+    paste_mask_blur_ratio: int = 20
+    """Divisor for blur kernel size (mask_size // ratio, min 5)"""
+
+    enhance_feather_fraction: float = 0.05
+    """Border fraction for enhancer feathered paste-back mask"""
+
     # ======================== Face Enhancement Options ========================
     # CodeFormer fidelity (0.0 = max quality, 1.0 = max fidelity to source)
     codeformer_fidelity: float = 0.7

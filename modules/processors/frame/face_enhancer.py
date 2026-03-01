@@ -206,32 +206,24 @@ def _align_face(
     return aligned_face, affine_matrix
 
 
-def _get_feathered_mask(output_size: int) -> np.ndarray:
-    """Return a cached 3-channel feathered blending mask for the given size."""
-    mask = _MASK_CACHE.get(output_size)
+def _get_feathered_mask(output_size: int, border_fraction: float = 0.05) -> np.ndarray:
+    """Return a cached 3-channel feathered blending mask for the given size and border fraction."""
+    cache_key = (output_size, border_fraction)
+    mask = _MASK_CACHE.get(cache_key)
     if mask is not None:
         return mask
 
     with _MASK_CACHE_LOCK:
         # Double-check after acquiring lock
-        mask = _MASK_CACHE.get(output_size)
+        mask = _MASK_CACHE.get(cache_key)
         if mask is not None:
             return mask
 
-        face_mask = np.ones((output_size, output_size), dtype=np.float32)
-        border = max(1, int(output_size * 0.05))
-        ramp_up = np.linspace(0.0, 1.0, border, dtype=np.float32)
-        ramp_down = np.linspace(1.0, 0.0, border, dtype=np.float32)
-
-        face_mask[:border, :] *= ramp_up[:, None]
-        face_mask[-border:, :] *= ramp_down[:, None]
-        face_mask[:, :border] *= ramp_up[None, :]
-        face_mask[:, -border:] *= ramp_down[None, :]
-
-        mask = np.stack([face_mask] * 3, axis=-1)
+        from modules.paste_back import create_feathered_mask
+        mask = create_feathered_mask(output_size, border_fraction)
         # Make immutable to prevent accidental modification
         mask.flags.writeable = False
-        _MASK_CACHE[output_size] = mask
+        _MASK_CACHE[cache_key] = mask
         return mask
 
 
@@ -240,11 +232,13 @@ def _paste_back(
     enhanced_face: np.ndarray,
     affine_matrix: np.ndarray,
     output_size: int,
+    config=None,
 ) -> Frame:
     """
     Paste an enhanced (aligned) face back onto the original frame using the
     inverse affine transform with feathered-edge blending.
     """
+    config = config or build_config_from_globals()
     h, w = frame.shape[:2]
     target_size = (w, h)
 
@@ -253,7 +247,7 @@ def _paste_back(
         border_value=(0, 0, 0),
     )
 
-    face_mask_3c = _get_feathered_mask(output_size)
+    face_mask_3c = _get_feathered_mask(output_size, config.enhance_feather_fraction)
 
     inv_mask = inverse_affine_warp(
         face_mask_3c, affine_matrix, target_size,
@@ -395,7 +389,8 @@ def enhance_face(temp_frame: Frame, faces=None, live_mode: bool = False, config=
 
             # Paste enhanced face back onto the frame
             result_frame = _paste_back(
-                result_frame, enhanced_bgr, affine_matrix, output_size=paste_size
+                result_frame, enhanced_bgr, affine_matrix,
+                output_size=paste_size, config=config,
             )
         except Exception as e:
             print(f"{NAME}: Error enhancing a face: {e}")

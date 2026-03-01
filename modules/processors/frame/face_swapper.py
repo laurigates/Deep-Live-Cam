@@ -250,12 +250,21 @@ def _clamp_opacity(config=None) -> float:
     return max(0.0, min(1.0, config.opacity))
 
 
-def _paste_back(bgr_fake: np.ndarray, aimg: np.ndarray, M: np.ndarray, target_img: np.ndarray) -> np.ndarray:
+def _paste_back(
+    bgr_fake: np.ndarray,
+    aimg: np.ndarray,
+    M: np.ndarray,
+    target_img: np.ndarray,
+    config=None,
+) -> np.ndarray:
     """Paste an aligned face crop back onto the target image using inverse affine warp and blending.
 
     Replicates the INSwapper paste_back logic so it can be reused by both
-    single-face and batch paths.
+    single-face and batch paths.  Tuning parameters are read from config
+    (with backwards-compatible defaults).
     """
+    config = config or build_config_from_globals()
+
     fake_diff = np.abs(bgr_fake.astype(np.float32) - aimg.astype(np.float32)).mean(axis=2)
     fake_diff[:2, :] = 0
     fake_diff[-2:, :] = 0
@@ -276,10 +285,11 @@ def _paste_back(bgr_fake: np.ndarray, aimg: np.ndarray, M: np.ndarray, target_im
     img_white = cv2.warpAffine(img_white, IM, (target_img.shape[1], target_img.shape[0]), borderValue=0.0)
     fake_diff = cv2.warpAffine(fake_diff, IM, (target_img.shape[1], target_img.shape[0]), borderValue=0.0)
 
-    img_white[img_white > 20] = 255
-    fthresh = 10
-    fake_diff[fake_diff < fthresh] = 0
-    fake_diff[fake_diff >= fthresh] = 255
+    mask_threshold = config.paste_mask_threshold
+    diff_threshold = config.paste_diff_threshold
+    img_white[img_white > mask_threshold] = 255
+    fake_diff[fake_diff < diff_threshold] = 0
+    fake_diff[fake_diff >= diff_threshold] = 255
 
     img_mask = img_white
     mask_h_inds, mask_w_inds = np.where(img_mask == 255)
@@ -288,12 +298,16 @@ def _paste_back(bgr_fake: np.ndarray, aimg: np.ndarray, M: np.ndarray, target_im
     mask_h = np.max(mask_h_inds) - np.min(mask_h_inds)
     mask_w = np.max(mask_w_inds) - np.min(mask_w_inds)
     mask_size = int(np.sqrt(mask_h * mask_w))
-    k = max(mask_size // 10, 10)
+
+    erode_ratio = config.paste_mask_erode_ratio
+    k = max(mask_size // erode_ratio, 10)
     kernel = np.ones((k, k), np.uint8)
     img_mask = cv2.erode(img_mask, kernel, iterations=1)
     kernel = np.ones((2, 2), np.uint8)
     fake_diff = cv2.dilate(fake_diff, kernel, iterations=1)
-    k = max(mask_size // 20, 5)
+
+    blur_ratio = config.paste_mask_blur_ratio
+    k = max(mask_size // blur_ratio, 5)
     kernel_size = (k, k)
     blur_size = tuple(2 * i + 1 for i in kernel_size)
     img_mask = cv2.GaussianBlur(img_mask, blur_size, 0)
@@ -445,8 +459,14 @@ def batch_swap_faces(
             k = _paste_scale_from_M(M)
             bgr_fake, aimg, M = _upscale_crop_for_paste(bgr_fake, aimg, M, k)
 
+        # Optional color transfer: match swapped crop colors to the target crop
+        if config.swap_color_transfer:
+            bgr_fake_u8 = np.clip(bgr_fake, 0, 255).astype(np.uint8)
+            aimg_u8 = np.clip(aimg, 0, 255).astype(np.uint8) if aimg.dtype != np.uint8 else aimg
+            bgr_fake = apply_color_transfer(bgr_fake_u8, aimg_u8).astype(bgr_fake.dtype)
+
         # Paste back onto result frame
-        result = _paste_back(bgr_fake, aimg, M, result)
+        result = _paste_back(bgr_fake, aimg, M, result, config)
 
         # Apply mouth mask and Poisson blend per-face
         result = _apply_mouth_mask(result, target_face, temp_frame, config)
@@ -513,7 +533,13 @@ def swap_face(source_face: Face, target_face: Face, temp_frame: Frame, config=No
             k = _paste_scale_from_M(M)
             bgr_fake, aimg, M = _upscale_crop_for_paste(bgr_fake, aimg, M, k)
 
-        swapped_frame_raw = _paste_back(bgr_fake, aimg, M, temp_frame)
+        # Optional color transfer: match swapped crop colors to the target crop
+        if config.swap_color_transfer:
+            bgr_fake_u8 = np.clip(bgr_fake, 0, 255).astype(np.uint8)
+            aimg_u8 = np.clip(aimg, 0, 255).astype(np.uint8) if aimg.dtype != np.uint8 else aimg
+            bgr_fake = apply_color_transfer(bgr_fake_u8, aimg_u8).astype(bgr_fake.dtype)
+
+        swapped_frame_raw = _paste_back(bgr_fake, aimg, M, temp_frame, config)
 
         if swapped_frame_raw is None:
             return original_frame
