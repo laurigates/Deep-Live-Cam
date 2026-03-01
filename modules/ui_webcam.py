@@ -26,6 +26,13 @@ from modules.video_capture import VideoCapturer
 # own dedicated thread.
 DETECT_EVERY_N = 2
 
+# Module-level session tracking — prevents concurrent camera sessions.
+# _active_stop_event: stop event of the currently running session (None if none).
+# _session_ready: set when no session is running (or cleanup has finished).
+_active_stop_event: Optional[threading.Event] = None
+_session_ready: threading.Event = threading.Event()
+_session_ready.set()  # No session running initially
+
 # Enhancer processor names for skip-frame logic
 _ENHANCER_NAMES = frozenset({
     "DLC.FACE-ENHANCER",
@@ -92,7 +99,7 @@ def _detection_thread_func(latest_frame_holder, detection_result, detection_lock
             time.sleep(0.005)
             continue
 
-        result = detect_faces_for_webcam(frame, many_faces=config.many_faces)
+        result = detect_faces_for_webcam(frame, many_faces=modules.globals.many_faces)
         with detection_lock:
             detection_result['target_face'] = result['target_face']
             detection_result['many_faces'] = result['many_faces']
@@ -203,7 +210,7 @@ def _processing_thread_func(capture_queue, processed_queue, stop_event,
 
         temp_frame = frame
 
-        if config.live_mirror:
+        if modules.globals.live_mirror:
             temp_frame = gpu_flip(temp_frame, 1)
 
         # Publish the mirrored frame for the detection thread to pick up
@@ -211,17 +218,18 @@ def _processing_thread_func(capture_queue, processed_queue, stop_event,
             latest_frame_holder[0] = temp_frame
 
         # Half-rate processing: run face processing only on keyframes
-        half_rate_enabled = config.half_rate_processing
-        keyframe_interval = max(2, config.keyframe_interval)
+        half_rate_enabled = modules.globals.half_rate_processing
+        keyframe_interval = max(2, modules.globals.keyframe_interval)
         frame_counter += 1
         is_keyframe = (frame_counter % keyframe_interval) == 1
         skip_face_processing = half_rate_enabled and not is_keyframe
 
         if not skip_face_processing:
-            if not config.map_faces:
-                if config.source_path and config.source_path != last_source_path:
-                    last_source_path = config.source_path
-                    source_image = get_one_face(cv2.imread(config.source_path))
+            if not modules.globals.map_faces:
+                current_source_path = modules.globals.source_path
+                if current_source_path and current_source_path != last_source_path:
+                    last_source_path = current_source_path
+                    source_image = get_one_face(cv2.imread(current_source_path))
 
                 # Read latest detection results — brief lock copy so we don't
                 # block the detection thread longer than necessary
@@ -237,21 +245,21 @@ def _processing_thread_func(capture_queue, processed_queue, stop_event,
                     cached_faces_list = [cached_target_face]
 
                 # Enhancer skip-frame: motion-adaptive or fixed-interval
-                motion_adaptive = config.motion_adaptive_enhancement
-                iou_thresh = config.motion_adaptive_iou_threshold
-                cos_thresh = config.motion_adaptive_cosine_threshold
+                motion_adaptive = modules.globals.motion_adaptive_enhancement
+                iou_thresh = modules.globals.motion_adaptive_iou_threshold
+                cos_thresh = modules.globals.motion_adaptive_cosine_threshold
                 if motion_adaptive and cached_faces_list is not None:
                     skip_enhancer = faces_are_similar(
                         cached_faces_list, prev_enhanced_faces, iou_thresh, cos_thresh
                     )
                 else:
                     enhancer_frame_counter += 1
-                    enh_interval = max(1, config.enhancer_skip_interval)
+                    enh_interval = max(1, modules.globals.enhancer_skip_interval)
                     skip_enhancer = enh_interval > 1 and (enhancer_frame_counter % enh_interval) != 1
 
                 for frame_processor in frame_processors:
                     if frame_processor.NAME in _ENHANCER_NAMES:
-                        if _is_enhancer_enabled(frame_processor, config.fp_ui):
+                        if _is_enhancer_enabled(frame_processor):
                             if not skip_enhancer:
                                 enhancement_seq += 1
                                 prev_enhanced_faces = cached_faces_list
@@ -283,7 +291,7 @@ def _processing_thread_func(capture_queue, processed_queue, stop_event,
                                 'frame': temp_frame.copy(),
                                 'source_face': source_image,
                                 'target_face': cached_target_face,
-                                'many_faces': cached_many_faces if config.many_faces else None,
+                                'many_faces': cached_many_faces if modules.globals.many_faces else None,
                                 'processor': frame_processor,
                                 'map_faces': False,
                                 'seq': swap_seq,
@@ -304,12 +312,12 @@ def _processing_thread_func(capture_queue, processed_queue, stop_event,
 
                 # Enhancer skip-frame for map_faces path
                 enhancer_frame_counter += 1
-                enh_interval = max(1, config.enhancer_skip_interval)
+                enh_interval = max(1, modules.globals.enhancer_skip_interval)
                 skip_enhancer = enh_interval > 1 and (enhancer_frame_counter % enh_interval) != 1
 
                 for frame_processor in frame_processors:
                     if frame_processor.NAME in _ENHANCER_NAMES:
-                        if _is_enhancer_enabled(frame_processor, config.fp_ui):
+                        if _is_enhancer_enabled(frame_processor):
                             if not skip_enhancer:
                                 enhancement_seq += 1
                                 with enhancement_lock:
@@ -365,7 +373,7 @@ def _processing_thread_func(capture_queue, processed_queue, stop_event,
         # In half-rate mode this fires on keyframes, bridging the gap since the previous keyframe
         # (which may be keyframe_interval camera frames back). Skip frames are held above and
         # never reach this block.
-        rife_enabled = config.rife_enabled
+        rife_enabled = modules.globals.rife_enabled
         if rife_enabled and prev_processed_frame is not None and not skip_face_processing:
             if not has_native_binding():
                 if not rife_warned:
@@ -378,14 +386,14 @@ def _processing_thread_func(capture_queue, processed_queue, stop_event,
                 if half_rate_enabled:
                     multiplier = keyframe_interval
                 else:
-                    multiplier = config.rife_multiplier
+                    multiplier = modules.globals.rife_multiplier
                 intermediates = interpolate_frame_pair(
                     prev_processed_frame, temp_frame, multiplier=multiplier,
                     should_stop=stop_event.is_set,
                 )
                 for interp_frame in intermediates:
                     tick_count += 1
-                    if config.virtual_cam:
+                    if modules.globals.virtual_cam:
                         virtual_cam.send(interp_frame)
                     try:
                         processed_queue.put_nowait(interp_frame)
@@ -423,7 +431,7 @@ def _processing_thread_func(capture_queue, processed_queue, stop_event,
             continue
 
         # Send full-resolution processed frame to virtual camera if enabled
-        if config.virtual_cam:
+        if modules.globals.virtual_cam:
             virtual_cam.send(temp_frame)
 
         # Put processed frame into output queue, dropping old frames if full
@@ -441,6 +449,8 @@ def _processing_thread_func(capture_queue, processed_queue, stop_event,
 
 
 def create_webcam_preview(camera_index: int, config: Optional[ProcessingConfig] = None):
+    global _active_stop_event, _session_ready
+
     from modules import ui as _ui
     from modules.ui import (
         PREVIEW, ROOT,
@@ -452,17 +462,32 @@ def create_webcam_preview(camera_index: int, config: Optional[ProcessingConfig] 
     if config is None:
         config = build_config_from_globals()
 
+    # If a session is already running, stop it and defer start until cleanup finishes.
+    if _active_stop_event is not None and not _active_stop_event.is_set():
+        _active_stop_event.set()
+
+    if not _session_ready.is_set():
+        def _retry():
+            if _session_ready.is_set():
+                create_webcam_preview(camera_index, config)
+            else:
+                ROOT.after(50, _retry)
+        ROOT.after(50, _retry)
+        return
+
+    _session_ready.clear()
+
     set_det_size(FaceAnalyser.LIVE_DET_SIZE)
 
     cap = VideoCapturer(camera_index)
     if not cap.start(PREVIEW_DEFAULT_WIDTH, PREVIEW_DEFAULT_HEIGHT, 60):
         set_det_size(FaceAnalyser.DEFAULT_DET_SIZE)
+        _session_ready.set()
         update_status("Failed to start camera")
         return
 
     if _ui._preview_embedded:
-        # Show embedded panel; let it resize with the window
-        ROOT.after(0, lambda: _ui._embedded_preview_frame.grid())
+        pass  # embedded panel is always visible in the right column
     else:
         _ui.preview_label.configure(width=PREVIEW_DEFAULT_WIDTH, height=PREVIEW_DEFAULT_HEIGHT)
         # During live mode the preview window IS the app — X should quit entirely.
@@ -479,6 +504,7 @@ def create_webcam_preview(camera_index: int, config: Optional[ProcessingConfig] 
     capture_queue = queue.Queue(maxsize=2)
     processed_queue = queue.Queue(maxsize=4)
     stop_event = threading.Event()
+    _active_stop_event = stop_event
 
     # Shared state for display overlay: processing tick rate written by the
     # processing thread, display FPS tracked in the display loop.
@@ -570,6 +596,7 @@ def create_webcam_preview(camera_index: int, config: Optional[ProcessingConfig] 
             cap.release()
             virtual_cam.stop()
             set_det_size(FaceAnalyser.DEFAULT_DET_SIZE)
+            _session_ready.set()
 
         threading.Thread(target=_background_cleanup, daemon=True).start()
 
@@ -602,13 +629,13 @@ def create_webcam_preview(camera_index: int, config: Optional[ProcessingConfig] 
             frame = latest_display_frame[0]
 
         if frame is None:
-            ROOT.after(max(1, 1000 // config.live_max_fps), _display_next_frame)
+            ROOT.after(max(1, 1000 // modules.globals.live_max_fps), _display_next_frame)
             return
 
-        if config.live_resizable:
-            if _ui._preview_embedded and _ui._embedded_preview_frame:
-                w = _ui._embedded_preview_frame.winfo_width()
-                h = _ui._embedded_preview_frame.winfo_height()
+        if modules.globals.live_resizable:
+            if _ui._preview_embedded and _ui._embedded_label:
+                w = _ui._embedded_label.winfo_width()
+                h = _ui._embedded_label.winfo_height()
             else:
                 w = PREVIEW.winfo_width()
                 h = PREVIEW.winfo_height()
@@ -617,7 +644,7 @@ def create_webcam_preview(camera_index: int, config: Optional[ProcessingConfig] 
 
         image = Image.fromarray(gpu_cvt_color(frame, cv2.COLOR_BGR2RGB))
 
-        if config.show_fps:
+        if modules.globals.show_fps:
             draw = ImageDraw.Draw(image)
             overlay = f"FPS: {display_fps_state[2]:.1f}  Tick: {tick_rate_holder[0]:.1f}"
             # Shadow for readability on any background
@@ -629,10 +656,10 @@ def create_webcam_preview(camera_index: int, config: Optional[ProcessingConfig] 
         lbl._ctk_img = ctk.CTkImage(image, size=image.size)
         lbl.configure(image=lbl._ctk_img)
 
-        ROOT.after(max(1, 1000 // config.live_max_fps), _display_next_frame)
+        ROOT.after(max(1, 1000 // modules.globals.live_max_fps), _display_next_frame)
 
     # Kick off the non-blocking display loop
-    ROOT.after(max(1, 1000 // config.live_max_fps), _display_next_frame)
+    ROOT.after(max(1, 1000 // modules.globals.live_max_fps), _display_next_frame)
 
 
 def webcam_preview(root: ctk.CTk, camera_index: int, config: Optional[ProcessingConfig] = None):

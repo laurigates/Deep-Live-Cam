@@ -107,8 +107,10 @@ from modules.ui_mapper import (  # noqa: F401
 
 
 ROOT = None
-ROOT_HEIGHT = 800
-ROOT_WIDTH = 600
+ROOT_HEIGHT = 700
+ROOT_WIDTH = 1000
+
+SIDEBAR_THUMB_SIZE = (120, 120)
 
 PREVIEW = None
 PREVIEW_MAX_HEIGHT = 700
@@ -244,16 +246,16 @@ def _restore_recent_paths() -> None:
     global RECENT_DIRECTORY_SOURCE, RECENT_DIRECTORY_TARGET
     if modules.globals.source_path and is_image(modules.globals.source_path):
         RECENT_DIRECTORY_SOURCE = os.path.dirname(modules.globals.source_path)
-        image = render_image_preview(modules.globals.source_path, (200, 200))
+        image = render_image_preview(modules.globals.source_path, SIDEBAR_THUMB_SIZE)
         source_label.configure(image=image)
     if modules.globals.target_path:
         if is_image(modules.globals.target_path):
             RECENT_DIRECTORY_TARGET = os.path.dirname(modules.globals.target_path)
-            image = render_image_preview(modules.globals.target_path, (200, 200))
+            image = render_image_preview(modules.globals.target_path, SIDEBAR_THUMB_SIZE)
             target_label.configure(image=image)
         elif is_video(modules.globals.target_path):
             RECENT_DIRECTORY_TARGET = os.path.dirname(modules.globals.target_path)
-            frame = render_video_preview(modules.globals.target_path, (200, 200))
+            frame = render_video_preview(modules.globals.target_path, SIDEBAR_THUMB_SIZE)
             target_label.configure(image=frame)
 
 
@@ -263,20 +265,20 @@ def _setup_window(destroy: Callable) -> ctk.CTk:
     ctk.set_default_color_theme(resolve_relative_path("ui.json"))
 
     root = ctk.CTk()
-    root.minsize(700, 700)
+    root.minsize(900, 600)
     root.title(
         f"{modules.metadata.name} {modules.metadata.version} {modules.metadata.edition}"
     )
     root.configure()
     root.protocol("WM_DELETE_WINDOW", lambda: destroy())
 
-    # Configure root grid: rows 1 (tabview) and 2 (embedded preview) get extra space
-    root.columnconfigure(0, weight=1)
+    # Two-column layout: fixed sidebar on left (col 0), preview on right (col 1)
+    root.columnconfigure(0, weight=0)  # sidebar fixed to content width
+    root.columnconfigure(1, weight=1)  # preview gets all extra space
     root.rowconfigure(0, weight=0)  # top_frame (images)
-    root.rowconfigure(1, weight=1)  # settings_tabview
-    root.rowconfigure(2, weight=2)  # embedded preview (NEW)
-    root.rowconfigure(3, weight=0)  # action_frame (was 2)
-    root.rowconfigure(4, weight=0)  # status_frame (was 3)
+    root.rowconfigure(1, weight=1)  # settings_tabview (grows)
+    root.rowconfigure(2, weight=0)  # action_frame
+    root.rowconfigure(3, weight=0)  # status_frame
 
     return root
 
@@ -285,29 +287,29 @@ def _add_top_frame(root: ctk.CTk) -> None:
     global source_label, target_label
 
     top_frame = ctk.CTkFrame(root)
-    top_frame.grid(row=0, column=0, sticky="ew", padx=10, pady=(10, 5))
+    top_frame.grid(row=0, column=0, sticky="ew", padx=5, pady=(10, 5))
     top_frame.columnconfigure(0, weight=1)
     top_frame.columnconfigure(1, weight=0)
     top_frame.columnconfigure(2, weight=1)
 
     # Source column
     source_frame = ctk.CTkFrame(top_frame, fg_color="transparent")
-    source_frame.grid(row=0, column=0, sticky="nsew", padx=5, pady=5)
+    source_frame.grid(row=0, column=0, sticky="nsew", padx=3, pady=5)
     source_frame.columnconfigure(0, weight=1)
 
-    source_label = ctk.CTkLabel(source_frame, text=None, width=200, height=200)
+    source_label = ctk.CTkLabel(source_frame, text=None, width=120, height=120)
     source_label.grid(row=0, column=0, pady=(5, 5))
 
     select_face_button = ctk.CTkButton(
         source_frame, text=_("Select a face"), cursor="hand2",
         command=lambda: select_source_path(),
     )
-    select_face_button.grid(row=1, column=0, pady=(0, 5), sticky="ew", padx=10)
+    select_face_button.grid(row=1, column=0, pady=(0, 5), sticky="ew", padx=5)
     ToolTip(select_face_button, _("Choose the source face image to swap onto the target"))
 
     # Swap button
     swap_faces_button = ctk.CTkButton(
-        top_frame, text="\u2194", cursor="hand2", width=40,
+        top_frame, text="\u2194", cursor="hand2", width=30,
         command=lambda: swap_faces_paths(),
     )
     swap_faces_button.grid(row=0, column=1, padx=5)
@@ -315,34 +317,33 @@ def _add_top_frame(root: ctk.CTk) -> None:
 
     # Target column
     target_frame = ctk.CTkFrame(top_frame, fg_color="transparent")
-    target_frame.grid(row=0, column=2, sticky="nsew", padx=5, pady=5)
+    target_frame.grid(row=0, column=2, sticky="nsew", padx=3, pady=5)
     target_frame.columnconfigure(0, weight=1)
 
-    target_label = ctk.CTkLabel(target_frame, text=None, width=200, height=200)
+    target_label = ctk.CTkLabel(target_frame, text=None, width=120, height=120)
     target_label.grid(row=0, column=0, pady=(5, 5))
 
     select_target_button = ctk.CTkButton(
         target_frame, text=_("Select a target"), cursor="hand2",
         command=lambda: select_target_path(),
     )
-    select_target_button.grid(row=1, column=0, pady=(0, 2), sticky="ew", padx=10)
+    select_target_button.grid(row=1, column=0, pady=(0, 2), sticky="ew", padx=5)
     ToolTip(select_target_button, _("Choose the target image or video to apply face swap to"))
 
     capture_target_button = ctk.CTkButton(
         target_frame, text=_("Capture from camera"), cursor="hand2",
         command=lambda: capture_target_from_camera(),
     )
-    capture_target_button.grid(row=2, column=0, pady=(0, 5), sticky="ew", padx=10)
+    capture_target_button.grid(row=2, column=0, pady=(0, 5), sticky="ew", padx=5)
     ToolTip(capture_target_button, _("Take a photo from your webcam to use as target"))
 
 
 def _add_embedded_preview(root: ctk.CTk) -> None:
-    """Create the collapsible embedded preview panel (row 2). Hidden by default."""
+    """Create the embedded preview panel on the right side (column 1, all rows)."""
     global _embedded_preview_frame, _embedded_label, preview_label
 
     _embedded_preview_frame = ctk.CTkFrame(root)
-    _embedded_preview_frame.grid(row=2, column=0, sticky="nsew", padx=10, pady=5)
-    _embedded_preview_frame.grid_remove()  # collapsed by default
+    _embedded_preview_frame.grid(row=0, column=1, rowspan=4, sticky="nsew", padx=(5, 10), pady=10)
 
     _embedded_preview_frame.columnconfigure(0, weight=1)
     _embedded_preview_frame.rowconfigure(0, weight=0)
@@ -461,7 +462,7 @@ def _create_switch(
 
 def _add_settings_tabview(root: ctk.CTk, live_button: ctk.CTkButton) -> None:
     tabview = ctk.CTkTabview(root)
-    tabview.grid(row=1, column=0, sticky="nsew", padx=10, pady=5)
+    tabview.grid(row=1, column=0, sticky="nsew", padx=5, pady=5)
 
     switch_defs = _get_switch_defs()
 
@@ -471,10 +472,8 @@ def _add_settings_tabview(root: ctk.CTk, live_button: ctk.CTkButton) -> None:
         tab.columnconfigure(1, weight=1)
 
         for i, (label, attr, _default, tooltip) in enumerate(switches):
-            row = i // 2
-            col = i % 2
             sw = _create_switch(tab, label, attr, tooltip)
-            sw.grid(row=row, column=col, sticky="w", padx=15, pady=8)
+            sw.grid(row=i, column=0, columnspan=2, sticky="w", padx=8, pady=3)
 
     # Enhancement tab: add sliders
     enhancement_tab = tabview.tab("Enhancement")
@@ -491,7 +490,7 @@ def _add_settings_tabview(root: ctk.CTk, live_button: ctk.CTkButton) -> None:
 
 
 def _add_sliders_to_tab(tab: ctk.CTkFrame, num_switches: int) -> None:
-    start_row = (num_switches + 1) // 2 + 1
+    start_row = num_switches + 1
 
     transparency_var = ctk.DoubleVar(value=1.0)
 
@@ -511,7 +510,7 @@ def _add_sliders_to_tab(tab: ctk.CTkFrame, num_switches: int) -> None:
             update_status(f"Transparency set to {percentage}%")
 
     transparency_label = ctk.CTkLabel(tab, text="Transparency:")
-    transparency_label.grid(row=start_row, column=0, sticky="w", padx=15, pady=(15, 2))
+    transparency_label.grid(row=start_row, column=0, sticky="w", padx=8, pady=(15, 2))
 
     transparency_slider = ctk.CTkSlider(
         tab, from_=0.0, to=1.0, variable=transparency_var,
@@ -521,7 +520,7 @@ def _add_sliders_to_tab(tab: ctk.CTkFrame, num_switches: int) -> None:
         height=5, border_width=1, corner_radius=3,
     )
     transparency_slider.grid(
-        row=start_row, column=1, sticky="ew", padx=(0, 15), pady=(15, 2),
+        row=start_row, column=1, sticky="ew", padx=(0, 8), pady=(15, 2),
     )
     ToolTip(transparency_slider, _("Blend between original and swapped face (0% = original, 100% = fully swapped)"))
 
@@ -532,7 +531,7 @@ def _add_sliders_to_tab(tab: ctk.CTkFrame, num_switches: int) -> None:
         update_status(f"Sharpness set to {value:.1f}")
 
     sharpness_label = ctk.CTkLabel(tab, text="Sharpness:")
-    sharpness_label.grid(row=start_row + 1, column=0, sticky="w", padx=15, pady=2)
+    sharpness_label.grid(row=start_row + 1, column=0, sticky="w", padx=8, pady=2)
 
     sharpness_slider = ctk.CTkSlider(
         tab, from_=0.0, to=5.0, variable=sharpness_var,
@@ -542,18 +541,18 @@ def _add_sliders_to_tab(tab: ctk.CTkFrame, num_switches: int) -> None:
         height=5, border_width=1, corner_radius=3,
     )
     sharpness_slider.grid(
-        row=start_row + 1, column=1, sticky="ew", padx=(0, 15), pady=2,
+        row=start_row + 1, column=1, sticky="ew", padx=(0, 8), pady=2,
     )
     ToolTip(sharpness_slider, _("Sharpen the enhanced face output"))
 
 
 def _add_rife_controls_to_tab(tab: ctk.CTkFrame, num_switches: int) -> None:
     """Add RIFE model selector and multiplier dropdown to the Output tab."""
-    start_row = (num_switches + 1) // 2 + 1
+    start_row = num_switches + 1
 
     # Model selector
     model_label = ctk.CTkLabel(tab, text="RIFE Model:")
-    model_label.grid(row=start_row, column=0, sticky="w", padx=15, pady=(15, 2))
+    model_label.grid(row=start_row, column=0, sticky="w", padx=8, pady=(15, 2))
 
     model_values = ["rife-v4.25-lite", "rife-v4.25"]
     current_model = getattr(modules.globals, "rife_model", "rife-v4.25-lite")
@@ -569,13 +568,13 @@ def _add_rife_controls_to_tab(tab: ctk.CTkFrame, num_switches: int) -> None:
         command=on_model_change,
     )
     model_optionmenu.grid(
-        row=start_row, column=1, sticky="ew", padx=(0, 15), pady=(15, 2),
+        row=start_row, column=1, sticky="ew", padx=(0, 8), pady=(15, 2),
     )
     ToolTip(model_optionmenu, _("Choose RIFE interpolation model (lite = faster, full = better quality)"))
 
     # Multiplier selector
     multiplier_label = ctk.CTkLabel(tab, text="RIFE Multiplier:")
-    multiplier_label.grid(row=start_row + 1, column=0, sticky="w", padx=15, pady=2)
+    multiplier_label.grid(row=start_row + 1, column=0, sticky="w", padx=8, pady=2)
 
     multiplier_values = ["2x", "4x"]
     current_mult = getattr(modules.globals, "rife_multiplier", 2)
@@ -591,7 +590,7 @@ def _add_rife_controls_to_tab(tab: ctk.CTkFrame, num_switches: int) -> None:
         command=on_multiplier_change,
     )
     multiplier_optionmenu.grid(
-        row=start_row + 1, column=1, sticky="ew", padx=(0, 15), pady=2,
+        row=start_row + 1, column=1, sticky="ew", padx=(0, 8), pady=2,
     )
     ToolTip(multiplier_optionmenu, _("Frame rate multiplication factor"))
 
@@ -599,10 +598,10 @@ def _add_rife_controls_to_tab(tab: ctk.CTkFrame, num_switches: int) -> None:
 def _add_half_rate_controls_to_tab(tab: ctk.CTkFrame, num_switches: int) -> None:
     """Add keyframe interval dropdown to the Live Mode tab (below the camera selector)."""
     # Camera selector occupies row (num_switches + 1) // 2 + 1; we start one below it
-    start_row = (num_switches + 1) // 2 + 2
+    start_row = num_switches + 2
 
     interval_label = ctk.CTkLabel(tab, text="Keyframe Interval:")
-    interval_label.grid(row=start_row, column=0, sticky="w", padx=15, pady=(8, 2))
+    interval_label.grid(row=start_row, column=0, sticky="w", padx=8, pady=(8, 2))
 
     interval_values = ["2", "3", "4", "5", "8", "10"]
     current_interval = str(getattr(modules.globals, "keyframe_interval", 2))
@@ -620,13 +619,13 @@ def _add_half_rate_controls_to_tab(tab: ctk.CTkFrame, num_switches: int) -> None
         command=on_interval_change,
     )
     interval_optionmenu.grid(
-        row=start_row, column=1, sticky="ew", padx=(0, 15), pady=(8, 2),
+        row=start_row, column=1, sticky="ew", padx=(0, 8), pady=(8, 2),
     )
     ToolTip(interval_optionmenu, _("Process a full detection every N frames (higher = faster, lower = more accurate)"))
 
     # FPS cap
     fps_label = ctk.CTkLabel(tab, text=_("Max Preview FPS:"))
-    fps_label.grid(row=start_row + 1, column=0, sticky="w", padx=15, pady=(8, 2))
+    fps_label.grid(row=start_row + 1, column=0, sticky="w", padx=8, pady=(8, 2))
 
     fps_values = ["15", "24", "30", "60"]
     current_fps = str(getattr(modules.globals, "live_max_fps", 30))
@@ -644,7 +643,7 @@ def _add_half_rate_controls_to_tab(tab: ctk.CTkFrame, num_switches: int) -> None
         command=on_fps_change,
     )
     fps_optionmenu.grid(
-        row=start_row + 1, column=1, sticky="ew", padx=(0, 15), pady=(8, 2),
+        row=start_row + 1, column=1, sticky="ew", padx=(0, 8), pady=(8, 2),
     )
     ToolTip(fps_optionmenu, _("Cap the preview frame rate — lower values reduce CPU/GPU heat (30 FPS recommended)"))
 
@@ -652,10 +651,10 @@ def _add_half_rate_controls_to_tab(tab: ctk.CTkFrame, num_switches: int) -> None
 def _add_camera_to_tab(
     tab: ctk.CTkFrame, root: ctk.CTk, num_switches: int, live_button: ctk.CTkButton,
 ) -> None:
-    start_row = (num_switches + 1) // 2 + 1
+    start_row = num_switches + 1
 
     camera_label = ctk.CTkLabel(tab, text=_("Select Camera:"))
-    camera_label.grid(row=start_row, column=0, sticky="w", padx=15, pady=(15, 5))
+    camera_label.grid(row=start_row, column=0, sticky="w", padx=8, pady=(15, 5))
 
     camera_variable = ctk.StringVar(value=_("Detecting cameras..."))
     camera_optionmenu = ctk.CTkOptionMenu(
@@ -663,7 +662,7 @@ def _add_camera_to_tab(
         values=[_("Detecting cameras...")], state="disabled",
     )
     camera_optionmenu.grid(
-        row=start_row, column=1, sticky="ew", padx=(0, 15), pady=(15, 5),
+        row=start_row, column=1, sticky="ew", padx=(0, 8), pady=(15, 5),
     )
     ToolTip(camera_optionmenu, _("Select which camera to use for live mode"))
 
@@ -731,38 +730,36 @@ def _add_camera_to_tab(
 def _add_action_buttons(root: ctk.CTk, start: Callable, destroy: Callable) -> ctk.CTkButton:
     """Create action bar with Start, Stop, Preview, Live buttons. Returns the Live button."""
     action_frame = ctk.CTkFrame(root, fg_color="transparent")
-    action_frame.grid(row=3, column=0, sticky="ew", padx=10, pady=5)
+    action_frame.grid(row=2, column=0, sticky="ew", padx=5, pady=5)
     action_frame.columnconfigure(0, weight=1)
     action_frame.columnconfigure(1, weight=1)
-    action_frame.columnconfigure(2, weight=1)
-    action_frame.columnconfigure(3, weight=1)
 
     start_button = ctk.CTkButton(
         action_frame, text=_("Start"), cursor="hand2",
         command=lambda: analyze_target(start, root),
     )
-    start_button.grid(row=0, column=0, sticky="ew", padx=5)
+    start_button.grid(row=0, column=0, sticky="ew", padx=3)
     ToolTip(start_button, _("Begin processing the target image/video with selected face"))
 
     stop_button = ctk.CTkButton(
         action_frame, text=_("Destroy"), cursor="hand2",
         command=lambda: destroy(),
     )
-    stop_button.grid(row=0, column=1, sticky="ew", padx=5)
+    stop_button.grid(row=0, column=1, sticky="ew", padx=3)
     ToolTip(stop_button, _("Stop processing and close the application"))
 
     preview_button = ctk.CTkButton(
         action_frame, text=_("Preview"), cursor="hand2",
         command=lambda: toggle_preview(),
     )
-    preview_button.grid(row=0, column=2, sticky="ew", padx=5)
+    preview_button.grid(row=1, column=0, sticky="ew", padx=3, pady=(3, 0))
     ToolTip(preview_button, _("Show/hide a preview of the processed output"))
 
     # Live button — command and state wired up by _add_camera_to_tab after detection
     live_button = ctk.CTkButton(
         action_frame, text=_("Live"), cursor="hand2", state="disabled",
     )
-    live_button.grid(row=0, column=3, sticky="ew", padx=5)
+    live_button.grid(row=1, column=1, sticky="ew", padx=3, pady=(3, 0))
     ToolTip(live_button, _("Start real-time face swap using webcam"))
 
     return live_button
@@ -772,14 +769,14 @@ def _add_status_bar(root: ctk.CTk) -> None:
     global status_label, _download_progress_bar
 
     status_frame = ctk.CTkFrame(root, fg_color="transparent")
-    status_frame.grid(row=4, column=0, sticky="ew", padx=10, pady=(0, 5))
+    status_frame.grid(row=3, column=0, sticky="ew", padx=5, pady=(0, 5))
     status_frame.columnconfigure(0, weight=1)
     status_frame.columnconfigure(1, weight=1)
 
     status_label = ctk.CTkLabel(status_frame, text=None, justify="left")
     status_label.grid(row=0, column=0, sticky="w")
 
-    _download_progress_bar = ctk.CTkProgressBar(status_frame, width=300)
+    _download_progress_bar = ctk.CTkProgressBar(status_frame, width=200)
     _download_progress_bar.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(2, 0))
     _download_progress_bar.set(0)
     _download_progress_bar.grid_remove()
@@ -846,6 +843,8 @@ def pop_out_preview() -> None:
         _popout_label.configure(image=img)
         _embedded_label.configure(image=None)
     preview_label = _popout_label
+    _embedded_preview_frame.grid_remove()
+    ROOT.columnconfigure(1, weight=0)
     PREVIEW.deiconify()
     PREVIEW.focus()
 
@@ -859,6 +858,8 @@ def pop_in_preview() -> None:
         _embedded_label._ctk_img = img
         _embedded_label.configure(image=img)
     preview_label = _embedded_label
+    _embedded_preview_frame.grid()
+    ROOT.columnconfigure(1, weight=1)
     PREVIEW.withdraw()
 
 
@@ -952,7 +953,7 @@ def select_source_path() -> None:
     if is_image(source_path):
         modules.globals.source_path = source_path
         RECENT_DIRECTORY_SOURCE = os.path.dirname(modules.globals.source_path)
-        image = render_image_preview(modules.globals.source_path, (200, 200))
+        image = render_image_preview(modules.globals.source_path, SIDEBAR_THUMB_SIZE)
         source_label.configure(image=image)
         save_switch_states()
     else:
@@ -977,10 +978,10 @@ def swap_faces_paths() -> None:
 
     PREVIEW.withdraw()
 
-    source_image = render_image_preview(modules.globals.source_path, (200, 200))
+    source_image = render_image_preview(modules.globals.source_path, SIDEBAR_THUMB_SIZE)
     source_label.configure(image=source_image)
 
-    target_image = render_image_preview(modules.globals.target_path, (200, 200))
+    target_image = render_image_preview(modules.globals.target_path, SIDEBAR_THUMB_SIZE)
     target_label.configure(image=target_image)
     save_switch_states()
 
@@ -1054,7 +1055,7 @@ def capture_target_from_camera() -> None:
         global RECENT_DIRECTORY_TARGET
         modules.globals.target_path = capture_path
         RECENT_DIRECTORY_TARGET = tmp_dir
-        image = render_image_preview(capture_path, (200, 200))
+        image = render_image_preview(capture_path, SIDEBAR_THUMB_SIZE)
         target_label.configure(image=image)
         save_switch_states()
         update_status("Camera capture set as target.")
@@ -1080,13 +1081,13 @@ def select_target_path() -> None:
     if is_image(target_path):
         modules.globals.target_path = target_path
         RECENT_DIRECTORY_TARGET = os.path.dirname(modules.globals.target_path)
-        image = render_image_preview(modules.globals.target_path, (200, 200))
+        image = render_image_preview(modules.globals.target_path, SIDEBAR_THUMB_SIZE)
         target_label.configure(image=image)
         save_switch_states()
     elif is_video(target_path):
         modules.globals.target_path = target_path
         RECENT_DIRECTORY_TARGET = os.path.dirname(modules.globals.target_path)
-        video_frame = render_video_preview(target_path, (200, 200))
+        video_frame = render_video_preview(target_path, SIDEBAR_THUMB_SIZE)
         target_label.configure(image=video_frame)
         save_switch_states()
     else:
@@ -1165,10 +1166,7 @@ def render_video_preview(
 
 def toggle_preview() -> None:
     if _preview_embedded:
-        if _embedded_preview_frame.winfo_ismapped():
-            _embedded_preview_frame.grid_remove()
-        elif modules.globals.source_path and modules.globals.target_path:
-            _embedded_preview_frame.grid()
+        if modules.globals.source_path and modules.globals.target_path:
             init_preview()
             update_preview()
     else:
@@ -1212,9 +1210,7 @@ def update_preview(frame_number: int = 0) -> None:
         image = ctk.CTkImage(image, size=image.size)
         preview_label.configure(image=image)
         update_status("Processing succeed!")
-        if _preview_embedded:
-            _embedded_preview_frame.grid()
-        else:
+        if not _preview_embedded:
             PREVIEW.deiconify()
 
 
