@@ -435,9 +435,10 @@ def batch_swap_faces(
         aimg = aligned_imgs[j]
         M = affine_matrices[j]
 
-        # Denormalize prediction
+        # Denormalize prediction — keep float32 to avoid quantization loss
+        # from uint8 round-trip (paste_back works in float32 internally)
         img_fake = preds[j].transpose((1, 2, 0))
-        bgr_fake = np.clip(255 * img_fake, 0, 255).astype(np.uint8)[:, :, ::-1]
+        bgr_fake = np.clip(255 * img_fake, 0, 255)[:, :, ::-1]
 
         # Optionally upscale crop before paste-back to reduce stretch artifact
         if config.prepaste_upscale:
@@ -485,8 +486,6 @@ def swap_face(source_face: Face, target_face: Face, temp_frame: Frame, config=No
 
     # Apply the face swap with optimized memory handling
     try:
-        from insightface.utils import face_align as _face_align
-
         # Ensure contiguous memory layout for better performance on all platforms
         if not temp_frame.flags['C_CONTIGUOUS']:
             temp_frame = np.ascontiguousarray(temp_frame)
@@ -501,9 +500,12 @@ def swap_face(source_face: Face, target_face: Face, temp_frame: Frame, config=No
             return original_frame
 
         # Retrieve the aligned crop that was used as the swap base (needed by
-        # _paste_back to compute the diff mask).
-        aimg, _ = _face_align.norm_crop2(
-            temp_frame, target_face.kps, face_swapper.input_size[0]
+        # _paste_back to compute the diff mask).  Reuse the already-computed M
+        # instead of calling norm_crop2 again — saves ~0.5-1ms per face by
+        # skipping the redundant estimate_norm matrix computation.
+        input_size = face_swapper.input_size[0]
+        aimg = cv2.warpAffine(
+            temp_frame, M, (input_size, input_size), borderValue=0.0
         )
 
         # Optionally upscale crop before paste-back to reduce stretch artifact

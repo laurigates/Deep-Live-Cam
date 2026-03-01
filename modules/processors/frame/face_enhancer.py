@@ -390,7 +390,7 @@ def enhance_face(temp_frame: Frame, faces=None, live_mode: bool = False, config=
                     face_for_model = cv2.resize(
                         aligned_face,
                         (align_size, align_size),
-                        interpolation=cv2.INTER_LINEAR,
+                        interpolation=cv2.INTER_LANCZOS4,
                     )
                 else:
                     face_for_model = aligned_face
