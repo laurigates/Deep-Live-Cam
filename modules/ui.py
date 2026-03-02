@@ -124,7 +124,7 @@ RECENT_DIRECTORY_SOURCE = None
 RECENT_DIRECTORY_TARGET = None
 RECENT_DIRECTORY_OUTPUT = None
 
-_ = None
+_ = lambda x: x  # replaced by LanguageManager in init()
 preview_label = None
 preview_slider = None
 source_label = None
@@ -142,11 +142,19 @@ _resize_timer_id = None
 _selected_camera_index = 0
 
 # Embedded preview state
-_embedded_label = None          # CTkLabel inside embedded frame
-_popout_label = None            # CTkLabel inside PREVIEW CTkToplevel
-_preview_embedded = True        # True = embedded, False = pop-out window
-_embedded_preview_frame = None  # the collapsible frame widget
-_mapping_widget = None          # MappingListWidget instance
+_embedded_label: "ctk.CTkLabel | None" = None          # CTkLabel inside embedded frame
+_popout_label: "ctk.CTkLabel | None" = None            # CTkLabel inside PREVIEW CTkToplevel
+_preview_embedded = True                               # True = embedded, False = pop-out window
+_embedded_preview_frame: "ctk.CTkFrame | None" = None  # the collapsible frame widget
+_mapping_widget: "MappingListWidget | None" = None     # MappingListWidget instance
+
+# Mode toggle state
+_current_mode: str = "Live Cam"
+_swap_button_widget: "ctk.CTkButton | None" = None
+_target_frame_widget: "ctk.CTkFrame | None" = None
+_start_button_widget: "ctk.CTkButton | None" = None
+_live_button_widget: "ctk.CTkButton | None" = None
+_settings_tabview_ref: "ctk.CTkTabView | None" = None
 
 
 def init(start: Callable[[], None], destroy: Callable[[], None], lang: str) -> ctk.CTk:
@@ -198,6 +206,7 @@ def save_switch_states():
         "source_path": modules.globals.source_path,
         "target_path": modules.globals.target_path,
         "mappings": MAPPING_LIST.to_dict(),
+        "ui_mode": _current_mode,
     }
     with open(_state_file_path(), "w") as f:
         json.dump(switch_states, f)
@@ -251,6 +260,8 @@ def load_switch_states():
         # Rebuild frame_processors from restored fp_ui so toggled enhancers
         # are included even if they weren't in the CLI --frame-processor list.
         _sync_enhancer_frame_processors()
+        global _current_mode
+        _current_mode = switch_states.get("ui_mode", "Live Cam")
     except FileNotFoundError:
         pass
 
@@ -311,10 +322,11 @@ def _setup_window(destroy: Callable) -> ctk.CTk:
     # Two-column layout: fixed sidebar on left (col 0), preview on right (col 1)
     root.columnconfigure(0, weight=0)  # sidebar fixed to content width
     root.columnconfigure(1, weight=1)  # preview gets all extra space
-    root.rowconfigure(0, weight=0)  # top_frame (images)
-    root.rowconfigure(1, weight=1)  # settings_tabview (grows)
-    root.rowconfigure(2, weight=0)  # action_frame
-    root.rowconfigure(3, weight=0)  # status_frame
+    root.rowconfigure(0, weight=0)  # mode toggle
+    root.rowconfigure(1, weight=0)  # top_frame (images)
+    root.rowconfigure(2, weight=1)  # settings_tabview (grows)
+    root.rowconfigure(3, weight=0)  # action_frame
+    root.rowconfigure(4, weight=0)  # status_frame
 
     return root
 
@@ -329,10 +341,10 @@ def _on_mapping_change() -> None:
 
 
 def _add_top_frame(root: ctk.CTk) -> None:
-    global target_label, _mapping_widget
+    global target_label, _mapping_widget, _swap_button_widget, _target_frame_widget
 
     top_frame = ctk.CTkFrame(root)
-    top_frame.grid(row=0, column=0, sticky="ew", padx=5, pady=(10, 5))
+    top_frame.grid(row=1, column=0, sticky="ew", padx=5, pady=(10, 5))
     top_frame.columnconfigure(0, weight=1)
     top_frame.columnconfigure(1, weight=0)
     top_frame.columnconfigure(2, weight=1)
@@ -354,13 +366,15 @@ def _add_top_frame(root: ctk.CTk) -> None:
     )
     swap_faces_button.grid(row=0, column=1, padx=5)
     ToolTip(swap_faces_button, _("Swap source and target images"))
+    _swap_button_widget = swap_faces_button
 
     # Target column
     target_frame = ctk.CTkFrame(top_frame, fg_color="transparent")
     target_frame.grid(row=0, column=2, sticky="nsew", padx=3, pady=5)
     target_frame.columnconfigure(0, weight=1)
+    _target_frame_widget = target_frame
 
-    target_label = ctk.CTkLabel(target_frame, text=None, width=120, height=120)
+    target_label = ctk.CTkLabel(target_frame, text="", width=120, height=120)
     target_label.grid(row=0, column=0, pady=(5, 5))
 
     select_target_button = ctk.CTkButton(
@@ -383,7 +397,7 @@ def _add_embedded_preview(root: ctk.CTk) -> None:
     global _embedded_preview_frame, _embedded_label, preview_label
 
     _embedded_preview_frame = ctk.CTkFrame(root)
-    _embedded_preview_frame.grid(row=0, column=1, rowspan=4, sticky="nsew", padx=(5, 10), pady=10)
+    _embedded_preview_frame.grid(row=0, column=1, rowspan=5, sticky="nsew", padx=(5, 10), pady=10)
 
     _embedded_preview_frame.columnconfigure(0, weight=1)
     _embedded_preview_frame.rowconfigure(0, weight=0)
@@ -434,8 +448,10 @@ def _get_switch_defs():
              _("Use GPEN face enhancement model at 512px resolution (higher quality)")),
             (_("CodeFormer"), "fp_ui:face_enhancer_codeformer", False,
              _("Transformer-based face restoration with adjustable fidelity (best quality)")),
+            (_("RIFE Interpolation"), "rife_enabled", False,
+             _("Generate intermediate frames for smoother motion (2x or 4x frame rate)")),
         ],
-        "Output": [
+        "Export": [
             (_("Preserve Frame Rate"), "keep_fps", True,
              _("Output video keeps the original frame rate")),
             (_("Preserve Audio"), "keep_audio", True,
@@ -444,8 +460,6 @@ def _get_switch_defs():
              _("Keep extracted frames on disk after processing (uses disk space)")),
             (_("PNG Frames"), "use_png_frames", False,
              _("Use lossless PNG for intermediate frames — no compression artifacts, but ~10x more disk I/O")),
-            (_("RIFE Interpolation"), "rife_enabled", False,
-             _("Generate intermediate frames for smoother video (2x or 4x)")),
         ],
         "Live Mode": [
             (_("Color Correction"), "color_correction", False,
@@ -493,8 +507,10 @@ def _create_switch(
 
 
 def _add_settings_tabview(root: ctk.CTk, live_button: ctk.CTkButton) -> None:
+    global _settings_tabview_ref
     tabview = ctk.CTkTabview(root)
-    tabview.grid(row=1, column=0, sticky="nsew", padx=5, pady=5)
+    tabview.grid(row=2, column=0, sticky="nsew", padx=5, pady=5)
+    _settings_tabview_ref = tabview
 
     switch_defs = _get_switch_defs()
 
@@ -507,13 +523,11 @@ def _add_settings_tabview(root: ctk.CTk, live_button: ctk.CTkButton) -> None:
             sw = _create_switch(tab, label, attr, tooltip)
             sw.grid(row=i, column=0, columnspan=2, sticky="w", padx=8, pady=3)
 
-    # Enhancement tab: add sliders
+    # Enhancement tab: add sliders then RIFE model/multiplier dropdowns
     enhancement_tab = tabview.tab("Enhancement")
     _add_sliders_to_tab(enhancement_tab, len(switch_defs["Enhancement"]))
-
-    # Output tab: add RIFE model/multiplier dropdowns
-    output_tab = tabview.tab("Output")
-    _add_rife_controls_to_tab(output_tab, len(switch_defs["Output"]))
+    # Sliders occupy +1 and +2; RIFE controls start at +3
+    _add_rife_controls_to_tab(enhancement_tab, len(switch_defs["Enhancement"]), row_offset=3)
 
     # Live Mode tab: add camera dropdown and keyframe interval control
     live_tab = tabview.tab("Live Mode")
@@ -545,7 +559,7 @@ def _add_sliders_to_tab(tab: ctk.CTkFrame, num_switches: int) -> None:
     transparency_label.grid(row=start_row, column=0, sticky="w", padx=8, pady=(15, 2))
 
     transparency_slider = ctk.CTkSlider(
-        tab, from_=0.0, to=1.0, variable=transparency_var,
+        tab, from_=0, to=1, variable=transparency_var,
         command=on_transparency_change,
         fg_color="#E0E0E0", progress_color="#007BFF",
         button_color="#FFFFFF", button_hover_color="#CCCCCC",
@@ -566,7 +580,7 @@ def _add_sliders_to_tab(tab: ctk.CTkFrame, num_switches: int) -> None:
     sharpness_label.grid(row=start_row + 1, column=0, sticky="w", padx=8, pady=2)
 
     sharpness_slider = ctk.CTkSlider(
-        tab, from_=0.0, to=5.0, variable=sharpness_var,
+        tab, from_=0, to=5, variable=sharpness_var,
         command=on_sharpness_change,
         fg_color="#E0E0E0", progress_color="#007BFF",
         button_color="#FFFFFF", button_hover_color="#CCCCCC",
@@ -578,9 +592,9 @@ def _add_sliders_to_tab(tab: ctk.CTkFrame, num_switches: int) -> None:
     ToolTip(sharpness_slider, _("Sharpen the enhanced face output"))
 
 
-def _add_rife_controls_to_tab(tab: ctk.CTkFrame, num_switches: int) -> None:
-    """Add RIFE model selector and multiplier dropdown to the Output tab."""
-    start_row = num_switches + 1
+def _add_rife_controls_to_tab(tab: ctk.CTkFrame, num_switches: int, row_offset: int = 1) -> None:
+    """Add RIFE model selector and multiplier dropdown below existing tab content."""
+    start_row = num_switches + row_offset
 
     # Model selector
     model_label = ctk.CTkLabel(tab, text="RIFE Model:")
@@ -745,33 +759,48 @@ def _add_camera_to_tab(
             root.after(100, _poll_camera_queue)
 
     def _enumerate_cameras():
-        if platform.system() == "Windows":
+        on_windows = platform.system() == "Windows"
+        if on_windows:
             import ctypes
-            ctypes.windll.ole32.CoInitializeEx(0, 0)
+            ctypes.windll.ole32.CoInitializeEx(0, 0)  # type: ignore[attr-defined]
         try:
             indices, names = get_available_cameras()
             _camera_queue.put((indices, names))
         finally:
-            if platform.system() == "Windows":
-                ctypes.windll.ole32.CoUninitialize()
+            if on_windows:
+                import ctypes
+                ctypes.windll.ole32.CoUninitialize()  # type: ignore[attr-defined]
 
     threading.Thread(target=_enumerate_cameras, daemon=True).start()
     root.after(100, _poll_camera_queue)
 
 
 def _add_action_buttons(root: ctk.CTk, start: Callable, destroy: Callable) -> ctk.CTkButton:
-    """Create action bar with Start, Stop, Preview, Live buttons. Returns the Live button."""
+    """Create action bar with Start/Live, Destroy, Preview buttons. Returns the Live button."""
+    global _start_button_widget, _live_button_widget
+
     action_frame = ctk.CTkFrame(root, fg_color="transparent")
-    action_frame.grid(row=2, column=0, sticky="ew", padx=5, pady=5)
+    action_frame.grid(row=3, column=0, sticky="ew", padx=5, pady=5)
     action_frame.columnconfigure(0, weight=1)
     action_frame.columnconfigure(1, weight=1)
 
+    # Start and Live share the same grid cell (row=0, col=0); mode toggle shows one at a time
     start_button = ctk.CTkButton(
         action_frame, text=_("Start"), cursor="hand2",
         command=lambda: analyze_target(start, root),
     )
     start_button.grid(row=0, column=0, sticky="ew", padx=3)
     ToolTip(start_button, _("Begin processing the target image/video with selected face"))
+    start_button.grid_remove()  # hidden by default; shown in File Processing mode
+    _start_button_widget = start_button
+
+    # Live button — command and state wired up by _add_camera_to_tab after detection
+    live_button = ctk.CTkButton(
+        action_frame, text=_("Live"), cursor="hand2", state="disabled",
+    )
+    live_button.grid(row=0, column=0, sticky="ew", padx=3)  # same cell as start_button
+    ToolTip(live_button, _("Start real-time face swap using webcam"))
+    _live_button_widget = live_button
 
     stop_button = ctk.CTkButton(
         action_frame, text=_("Destroy"), cursor="hand2",
@@ -784,15 +813,8 @@ def _add_action_buttons(root: ctk.CTk, start: Callable, destroy: Callable) -> ct
         action_frame, text=_("Preview"), cursor="hand2",
         command=lambda: toggle_preview(),
     )
-    preview_button.grid(row=1, column=0, sticky="ew", padx=3, pady=(3, 0))
+    preview_button.grid(row=1, column=0, columnspan=2, sticky="ew", padx=3, pady=(3, 0))
     ToolTip(preview_button, _("Show/hide a preview of the processed output"))
-
-    # Live button — command and state wired up by _add_camera_to_tab after detection
-    live_button = ctk.CTkButton(
-        action_frame, text=_("Live"), cursor="hand2", state="disabled",
-    )
-    live_button.grid(row=1, column=1, sticky="ew", padx=3, pady=(3, 0))
-    ToolTip(live_button, _("Start real-time face swap using webcam"))
 
     return live_button
 
@@ -801,11 +823,11 @@ def _add_status_bar(root: ctk.CTk) -> None:
     global status_label, _download_progress_bar
 
     status_frame = ctk.CTkFrame(root, fg_color="transparent")
-    status_frame.grid(row=3, column=0, sticky="ew", padx=5, pady=(0, 5))
+    status_frame.grid(row=4, column=0, sticky="ew", padx=5, pady=(0, 5))
     status_frame.columnconfigure(0, weight=1)
     status_frame.columnconfigure(1, weight=1)
 
-    status_label = ctk.CTkLabel(status_frame, text=None, justify="left")
+    status_label = ctk.CTkLabel(status_frame, text="", justify="left")
     status_label.grid(row=0, column=0, sticky="w")
 
     _download_progress_bar = ctk.CTkProgressBar(status_frame, width=200)
@@ -818,22 +840,73 @@ def _add_status_bar(root: ctk.CTk) -> None:
     )
     donate_label.grid(row=0, column=1, sticky="e")
     donate_label.configure(
-        text_color=ctk.ThemeManager.theme.get("URL").get("text_color")
+        text_color=(ctk.ThemeManager.theme.get("URL") or {}).get("text_color")
     )
     donate_label.bind(
         "<Button>", lambda event: webbrowser.open("https://deeplivecam.net")
     )
 
 
+def _add_mode_toggle(root: ctk.CTk) -> None:
+    """Add the Live Cam / File Processing segmented button at row 0."""
+    frame = ctk.CTkFrame(root, fg_color="transparent")
+    frame.grid(row=0, column=0, sticky="ew", padx=5, pady=(5, 0))
+    frame.columnconfigure(0, weight=1)
+    btn = ctk.CTkSegmentedButton(
+        frame,
+        values=[_("Live Cam"), _("File Processing")],
+        command=_on_mode_change,
+    )
+    btn.set(_current_mode)
+    btn.grid(row=0, column=0, sticky="ew", padx=5, pady=5)
+
+
+def _on_mode_change(mode: str) -> None:
+    global _current_mode
+    _current_mode = mode
+    is_live = mode == _("Live Cam")
+
+    if _target_frame_widget:
+        if is_live:
+            _target_frame_widget.grid_remove()
+        else:
+            _target_frame_widget.grid()
+
+    if _swap_button_widget:
+        if is_live:
+            _swap_button_widget.grid_remove()
+        else:
+            _swap_button_widget.grid()
+
+    if _start_button_widget:
+        if is_live:
+            _start_button_widget.grid_remove()
+        else:
+            _start_button_widget.grid()
+
+    if _live_button_widget:
+        if is_live:
+            _live_button_widget.grid()
+        else:
+            _live_button_widget.grid_remove()
+
+    if _settings_tabview_ref:
+        _settings_tabview_ref.set("Live Mode" if is_live else "Export")
+
+    save_switch_states()
+
+
 def create_root(start: Callable[[], None], destroy: Callable[[], None]) -> ctk.CTk:
     load_switch_states()
     root = _setup_window(destroy)
+    _add_mode_toggle(root)
     _add_top_frame(root)
     _add_embedded_preview(root)
     live_button = _add_action_buttons(root, start, destroy)
     _add_settings_tabview(root, live_button)
     _add_status_bar(root)
     _restore_recent_paths()
+    _on_mode_change(_current_mode)
     return root
 
 
@@ -859,7 +932,7 @@ def create_preview(parent: ctk.CTkToplevel) -> ctk.CTkToplevel:
     _popout_label.pack(fill="both", expand=True)
 
     preview_slider = ctk.CTkSlider(
-        preview, from_=0, to=0, command=lambda frame_value: update_preview(frame_value)
+        preview, from_=0, to=0, command=lambda frame_value: update_preview(int(frame_value))  # type: ignore[arg-type]
     )
 
     return preview
@@ -868,10 +941,12 @@ def create_preview(parent: ctk.CTkToplevel) -> ctk.CTkToplevel:
 def pop_out_preview() -> None:
     """Move preview display from the embedded panel into the floating PREVIEW window."""
     global preview_label, _preview_embedded
+    assert _popout_label is not None and _embedded_label is not None
+    assert _embedded_preview_frame is not None and ROOT is not None and PREVIEW is not None
     _preview_embedded = False
     img = getattr(_embedded_label, '_ctk_img', None)
     if img:
-        _popout_label._ctk_img = img
+        setattr(_popout_label, '_ctk_img', img)
         _popout_label.configure(image=img)
         _embedded_label.configure(image=None)
     preview_label = _popout_label
@@ -884,10 +959,12 @@ def pop_out_preview() -> None:
 def pop_in_preview() -> None:
     """Move preview display from the floating PREVIEW window back into the embedded panel."""
     global preview_label, _preview_embedded
+    assert _popout_label is not None and _embedded_label is not None
+    assert _embedded_preview_frame is not None and ROOT is not None and PREVIEW is not None
     _preview_embedded = True
     img = getattr(_popout_label, '_ctk_img', None)
     if img:
-        _embedded_label._ctk_img = img
+        setattr(_embedded_label, '_ctk_img', img)
         _embedded_label.configure(image=img)
     preview_label = _embedded_label
     _embedded_preview_frame.grid()
@@ -901,7 +978,10 @@ def update_status(text: str) -> None:
     if ROOT is None:
         return
     # Tkinter is not thread-safe: schedule the label update on the main thread.
-    ROOT.after(0, lambda t=text: status_label.configure(text=_(t)))
+    if status_label is None:
+        return
+    lbl = status_label
+    ROOT.after(0, lambda t=text, l=lbl: l.configure(text=_(t)))
 
 
 def download_progress_callback(filename: str, downloaded: int, total: int) -> None:
@@ -923,12 +1003,13 @@ def download_progress_callback(filename: str, downloaded: int, total: int) -> No
 
 def _show_download_progress(filename: str, value: float) -> None:
     """Show and update the download progress bar (main thread only)."""
-    if _download_progress_bar is None:
+    if _download_progress_bar is None or status_label is None:
         return
     _download_progress_bar.set(value)
     _download_progress_bar.grid()
     pct = int(value * 100)
-    status_label.configure(text=f"Downloading {filename}... {pct}%")
+    lbl = status_label
+    lbl.configure(text=f"Downloading {filename}... {pct}%")
 
 
 def _hide_download_progress() -> None:
@@ -966,7 +1047,7 @@ def update_tumbler(var: str, value: bool) -> None:
     if var in _ENHANCER_KEYS:
         _sync_enhancer_frame_processors()
     save_switch_states()
-    if _preview_embedded or PREVIEW.state() == "normal":
+    if _preview_embedded or (PREVIEW is not None and PREVIEW.state() == "normal"):
         global frame_processors
         frame_processors = get_frame_processors_modules(
             modules.globals.frame_processors
@@ -981,6 +1062,7 @@ def select_source_path() -> None:
     """
     global RECENT_DIRECTORY_SOURCE, img_ft, vid_ft
 
+    assert PREVIEW is not None
     PREVIEW.withdraw()
     source_path = ctk.filedialog.askopenfilename(
         title=_("select an source image"),
@@ -1013,6 +1095,8 @@ def swap_faces_paths() -> None:
     source_path = modules.globals.source_path
     target_path = modules.globals.target_path
 
+    if not source_path or not target_path:
+        return
     if not is_image(source_path) or not is_image(target_path):
         return
 
@@ -1036,10 +1120,13 @@ def swap_faces_paths() -> None:
             MAPPING_LIST.set_source(entry_id, new_source_path, cropped, face)
             RECENT_DIRECTORY_SOURCE = os.path.dirname(new_source_path)
 
+    assert PREVIEW is not None and target_label is not None
     PREVIEW.withdraw()
 
-    target_image = render_image_preview(modules.globals.target_path, SIDEBAR_THUMB_SIZE)
-    target_label.configure(image=target_image)
+    saved_target = modules.globals.target_path
+    if saved_target:
+        target_image = render_image_preview(saved_target, SIDEBAR_THUMB_SIZE)
+        target_label.configure(image=target_image)
     save_switch_states()
 
 
@@ -1056,7 +1143,7 @@ def capture_target_from_camera() -> None:
     capture_window.resizable(width=True, height=True)
     capture_window.protocol("WM_DELETE_WINDOW", lambda: _close_capture())
 
-    feed_label = ctk.CTkLabel(capture_window, text=None)
+    feed_label = ctk.CTkLabel(capture_window, text="")
     feed_label.pack(fill="both", expand=True, padx=5, pady=5)
 
     button_frame = ctk.CTkFrame(capture_window, fg_color="transparent")
@@ -1091,7 +1178,7 @@ def capture_target_from_camera() -> None:
             # Scale to fit the label while preserving aspect ratio
             w = feed_label.winfo_width() or 480
             h = feed_label.winfo_height() or 360
-            pil_img = ImageOps.contain(pil_img, (max(w, 1), max(h, 1)), Image.LANCZOS)
+            pil_img = ImageOps.contain(pil_img, (max(w, 1), max(h, 1)), Image.Resampling.LANCZOS)
             ctk_img = ctk.CTkImage(pil_img, size=pil_img.size)
             feed_label.configure(image=ctk_img)
             feed_label._ctk_img = ctk_img  # prevent GC
@@ -1113,6 +1200,7 @@ def capture_target_from_camera() -> None:
         modules.globals.target_path = capture_path
         RECENT_DIRECTORY_TARGET = tmp_dir
         image = render_image_preview(capture_path, SIDEBAR_THUMB_SIZE)
+        assert target_label is not None
         target_label.configure(image=image)
         save_switch_states()
         update_status("Camera capture set as target.")
@@ -1129,12 +1217,14 @@ def capture_target_from_camera() -> None:
 def select_target_path() -> None:
     global RECENT_DIRECTORY_TARGET, img_ft, vid_ft
 
+    assert PREVIEW is not None
     PREVIEW.withdraw()
     target_path = ctk.filedialog.askopenfilename(
         title=_("select an target image or video"),
         initialdir=RECENT_DIRECTORY_TARGET,
         filetypes=[img_ft, vid_ft],
     )
+    assert target_label is not None
     if is_image(target_path):
         modules.globals.target_path = target_path
         RECENT_DIRECTORY_TARGET = os.path.dirname(modules.globals.target_path)
@@ -1155,7 +1245,10 @@ def select_target_path() -> None:
 def select_output_path(start: Callable[[], None]) -> None:
     global RECENT_DIRECTORY_OUTPUT, img_ft, vid_ft
 
-    if is_image(modules.globals.target_path):
+    target_path = modules.globals.target_path
+    if target_path is None:
+        return
+    if is_image(target_path):
         output_path = ctk.filedialog.asksaveasfilename(
             title=_("save image output file"),
             filetypes=[img_ft],
@@ -1163,7 +1256,7 @@ def select_output_path(start: Callable[[], None]) -> None:
             initialfile="output.png",
             initialdir=RECENT_DIRECTORY_OUTPUT,
         )
-    elif is_video(modules.globals.target_path):
+    elif is_video(target_path):
         output_path = ctk.filedialog.asksaveasfilename(
             title=_("save video output file"),
             filetypes=[vid_ft],
@@ -1199,7 +1292,7 @@ def fit_image_to_size(image, width: int, height: int):
 def render_image_preview(image_path: str, size: Tuple[int, int]) -> ctk.CTkImage:
     image = Image.open(image_path)
     if size:
-        image = ImageOps.fit(image, size, Image.LANCZOS)
+        image = ImageOps.fit(image, size, Image.Resampling.LANCZOS)
     return ctk.CTkImage(image, size=image.size)
 
 
@@ -1214,7 +1307,7 @@ def render_video_preview(
         if has_frame:
             image = Image.fromarray(gpu_cvt_color(frame, cv2.COLOR_BGR2RGB))
             if size:
-                image = ImageOps.fit(image, size, Image.LANCZOS)
+                image = ImageOps.fit(image, size, Image.Resampling.LANCZOS)
             return ctk.CTkImage(image, size=image.size)
     finally:
         capture.release()
@@ -1227,6 +1320,7 @@ def toggle_preview() -> None:
             init_preview()
             update_preview()
     else:
+        assert PREVIEW is not None
         if PREVIEW.state() == "normal":
             PREVIEW.withdraw()
         elif modules.globals.source_path and modules.globals.target_path:
@@ -1235,14 +1329,18 @@ def toggle_preview() -> None:
 
 
 def init_preview() -> None:
+    assert preview_slider is not None
     # Slider is pop-out only — hide it in embedded mode
     if _preview_embedded:
         preview_slider.pack_forget()
         return
-    if is_image(modules.globals.target_path):
+    target_path = modules.globals.target_path
+    if target_path is None:
+        return
+    if is_image(target_path):
         preview_slider.pack_forget()
-    if is_video(modules.globals.target_path):
-        video_frame_total = get_video_frame_total(modules.globals.target_path)
+    if is_video(target_path):
+        video_frame_total = get_video_frame_total(target_path)
         preview_slider.configure(to=video_frame_total)
         preview_slider.pack(fill="x")
         preview_slider.set(0)
@@ -1262,12 +1360,14 @@ def update_preview(frame_number: int = 0) -> None:
             )
         image = Image.fromarray(gpu_cvt_color(temp_frame, cv2.COLOR_BGR2RGB))
         image = ImageOps.contain(
-            image, (PREVIEW_MAX_WIDTH, PREVIEW_MAX_HEIGHT), Image.LANCZOS
+            image, (PREVIEW_MAX_WIDTH, PREVIEW_MAX_HEIGHT), Image.Resampling.LANCZOS
         )
         image = ctk.CTkImage(image, size=image.size)
+        assert preview_label is not None
         preview_label.configure(image=image)
         update_status("Processing succeed!")
         if not _preview_embedded:
+            assert PREVIEW is not None
             PREVIEW.deiconify()
 
 
