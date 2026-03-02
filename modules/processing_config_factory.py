@@ -54,6 +54,7 @@ def build_config_from_globals() -> ProcessingConfig:
         color_correction=modules.globals.color_correction,
         color_correction_mode=modules.globals.color_correction_mode,
         poisson_blend=modules.globals.poisson_blend,
+        occlusion_mask=modules.globals.occlusion_mask,
         # Face Enhancer
         codeformer_fidelity=modules.globals.codeformer_fidelity,
         # Mouth Mask
@@ -156,6 +157,7 @@ def build_config_from_cli_args(args) -> ProcessingConfig:
         keep_frames=args.keep_frames,
         many_faces=args.many_faces,
         mouth_mask=args.mouth_mask,
+        occlusion_mask=getattr(args, 'occlusion_mask', False),
         nsfw_filter=args.nsfw_filter,
         map_faces=args.map_faces,
         video_encoder=args.video_encoder,

@@ -126,6 +126,9 @@ class ProcessingConfig:
     swap_color_transfer: bool = False
     """Apply LAB color transfer to swapped crop before paste-back"""
 
+    occlusion_mask: bool = False
+    """Preserve occluding objects (hands, glasses, microphones) during face swap using XSeg model"""
+
     # ======================== Paste-back Tuning ========================
     paste_diff_threshold: float = 10.0
     """Threshold for diff mask binarisation in swap paste-back"""
