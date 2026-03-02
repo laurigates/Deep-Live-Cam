@@ -56,19 +56,128 @@ modules.globals.face_swap_model = args.face_swap_model
 
 ### Step 3: Implement GhostSwapper class
 
-**`modules/processors/frame/face_swapper.py`** — Add `GhostSwapper` class and `_GHOST_MODELS` registry.
+**`modules/processors/frame/face_swapper.py`** — Add `GhostSwapper` class:
+
+```python
+# Ghost model ONNX session wrapper — compatible with INSwapper interface
+_GHOST_MODELS = {
+    'ghost_256_v1': {
+        'url': 'https://github.com/facefusion/facefusion-assets/releases/download/models-3.0.0/ghost_256_v1.onnx',
+        'file': 'ghost_256_v1.onnx',
+        'size': 256,
+    },
+    'ghost_256_v2': {
+        'url': 'https://github.com/facefusion/facefusion-assets/releases/download/models-3.0.0/ghost_256_v2.onnx',
+        'file': 'ghost_256_v2.onnx',
+        'size': 256,
+    },
+    'ghost_256_v3': {
+        'url': 'https://github.com/facefusion/facefusion-assets/releases/download/models-3.0.0/ghost_256_v3.onnx',
+        'file': 'ghost_256_v3.onnx',
+        'size': 256,
+    },
+}
+
+class GhostSwapper:
+    """ONNX-backed face swapper for Ghost v1/v2/v3 models.
+
+    Exposes a .get() method compatible with InsightFace's INSwapper so the
+    existing swap_face() pipeline can use Ghost without modification.
+    """
+
+    def __init__(self, session, input_size: int = 256):
+        self.session = session
+        self.input_size = (input_size, input_size)
+        self._inp_names = [i.name for i in session.get_inputs()]
+        self._out_names = [i.name for i in session.get_outputs()]
+
+    def get(
+        self,
+        img: np.ndarray,
+        target_face,
+        source_face,
+        paste_back: bool = True,
+    ):
+        """Swap face in img. Returns (bgr_fake, M) when paste_back=False."""
+        from insightface.utils import face_align
+
+        size = self.input_size[0]
+        aimg, M = face_align.norm_crop2(img, target_face.kps, size)
+
+        # Preprocess: BGR → RGB → NCHW, normalize to [-1, 1]
+        rgb = aimg[:, :, ::-1].astype(np.float32)
+        blob = (rgb / 127.5) - 1.0
+        blob = blob.transpose(2, 0, 1)[np.newaxis]  # HWC → NCHW
+
+        # Source embedding: raw normed ArcFace vector (no emap needed)
+        latent = source_face.normed_embedding.reshape(1, -1).astype(np.float32)
+
+        # ONNX inference — use positional order when names are unknown
+        output = self.session.run(
+            self._out_names,
+            {self._inp_names[0]: blob, self._inp_names[1]: latent},
+        )[0]  # [1, 3, size, size]
+
+        # Postprocess: NCHW → HWC, [-1,1] → [0,255], RGB → BGR
+        fake_rgb = output[0].transpose(1, 2, 0)
+        bgr_fake = np.clip((fake_rgb * 0.5 + 0.5) * 255.0, 0, 255)[:, :, ::-1]
+
+        return bgr_fake, M
+```
 
 ### Step 4: Update pre_check() for Ghost model download
 
-In `pre_check()`, after the existing inswapper download block, add Ghost download logic.
+In `pre_check()`, after the existing inswapper download block, add Ghost download logic:
+
+```python
+config = config or build_config_from_globals()
+model_name = getattr(config, 'face_swap_model', 'inswapper')
+
+if model_name in _GHOST_MODELS:
+    ghost_info = _GHOST_MODELS[model_name]
+    ghost_file = ghost_info['file']
+    ghost_path = os.path.join(download_directory_path, ghost_file)
+    if not os.path.exists(ghost_path):
+        update_status(f"Downloading {ghost_file}...", NAME)
+    conditional_download(download_directory_path, [ghost_info['url']])
+    if not os.path.exists(ghost_path):
+        update_status(f"Ghost model not found at {ghost_path}.", NAME)
+        return False
+else:
+    # Existing inswapper download code
+    ...
+```
 
 ### Step 5: Update get_face_swapper() to support Ghost
 
-Add a branch before the existing insightface model loading to load the Ghost ONNX model.
+Add a branch before the existing insightface model loading:
+
+```python
+import onnxruntime
+
+model_name = getattr(modules.globals, 'face_swap_model', 'inswapper')
+if model_name in _GHOST_MODELS:
+    ghost_info = _GHOST_MODELS[model_name]
+    ghost_path = os.path.join(models_dir, ghost_info['file'])
+    providers_config = build_providers_config(_providers)
+    session = onnxruntime.InferenceSession(ghost_path, providers=providers_config)
+    FACE_SWAPPER = GhostSwapper(session, input_size=ghost_info['size'])
+else:
+    # Existing insightface.model_zoo.get_model(...) path
+    FACE_SWAPPER = insightface.model_zoo.get_model(model_path, providers=...)
+```
 
 ### Step 6: Update pre_start() for Ghost
 
-Check the Ghost model path exists when Ghost is selected.
+Check the Ghost model path exists when Ghost is selected:
+
+```python
+model_name = getattr(modules.globals, 'face_swap_model', 'inswapper')
+if model_name in _GHOST_MODELS:
+    model_path = os.path.join(models_dir, _GHOST_MODELS[model_name]['file'])
+else:
+    model_path = os.path.join(models_dir, 'inswapper_128_fp16.onnx')
+```
 
 ## Success Criteria
 
@@ -96,7 +205,7 @@ Check the Ghost model path exists when Ghost is selected.
 
 1. **FaceFusion model URL stability** — URLs are versioned to a release tag; if FaceFusion changes the tag, downloads will fail. Mitigation: pin to verified tag + checksums.
 
-2. **ONNX tensor names** — Actual tensor names require inspecting the downloaded model. The implementation uses `session.get_inputs()[0].name` introspection to avoid hardcoding.
+2. **ONNX tensor names** — Actual tensor names (`target`, `source`, `output` vs other names) require inspecting the downloaded model. The implementation uses `session.get_inputs()[0].name` introspection to avoid hardcoding.
 
 3. **CoreML compatibility** — Ghost ONNX models may fail on CoreML EP due to unsupported ops. Fallback to CPU if CoreML fails.
 

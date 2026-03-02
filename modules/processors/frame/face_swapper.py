@@ -104,18 +104,18 @@ class GhostSwapper:
         # Preprocess: BGR → RGB → NCHW, normalize to [-1, 1]
         rgb = aimg[:, :, ::-1].astype(np.float32)
         blob = (rgb / 127.5) - 1.0
-        blob = blob.transpose(2, 0, 1)[np.newaxis]  # HWC → NCHW
+        blob = blob.transpose(2, 0, 1)[np.newaxis]  # HWC → NCHW [1, 3, H, W]
 
-        # Source embedding: raw normed ArcFace vector (no emap needed)
+        # Source identity: raw L2-normalized ArcFace embedding (no emap needed)
         latent = source_face.normed_embedding.reshape(1, -1).astype(np.float32)
 
-        # ONNX inference — use positional order when names are unknown
+        # ONNX inference — feed by position using introspected tensor names
         output = self.session.run(
             self._out_names,
             {self._inp_names[0]: blob, self._inp_names[1]: latent},
         )[0]  # [1, 3, size, size]
 
-        # Postprocess: NCHW → HWC, [-1,1] → [0,255], RGB → BGR
+        # Postprocess: NCHW → HWC, [-1, 1] → [0, 255], RGB → BGR
         fake_rgb = output[0].transpose(1, 2, 0)
         bgr_fake = np.clip((fake_rgb * 0.5 + 0.5) * 255.0, 0, 255)[:, :, ::-1]
 
@@ -151,17 +151,17 @@ def pre_check() -> bool:
         print(f"{NAME}: Failed to create directory {download_directory_path}: {e}")
         return False
 
-    model_name = getattr(modules.globals, 'face_swap_model', 'inswapper')
+    selected_model = getattr(modules.globals, 'face_swap_model', 'inswapper')
 
-    if model_name in _GHOST_MODELS:
-        ghost_info = _GHOST_MODELS[model_name]
-        ghost_file = ghost_info['file']
-        ghost_path = os.path.join(download_directory_path, ghost_file)
-        if not os.path.exists(ghost_path):
-            update_status(f"Downloading {ghost_file}...", NAME)
+    if selected_model in _GHOST_MODELS:
+        ghost_info = _GHOST_MODELS[selected_model]
+        model_file = ghost_info['file']
+        model_path = os.path.join(download_directory_path, model_file)
+        if not os.path.exists(model_path):
+            update_status(f"Downloading {model_file}...", NAME)
         conditional_download(download_directory_path, [ghost_info['url']])
-        if not os.path.exists(ghost_path):
-            update_status(f"Ghost model not found at {ghost_path}. Download may have failed.", NAME)
+        if not os.path.exists(model_path):
+            update_status(f"Ghost model not found at {model_path}. Download may have failed.", NAME)
             return False
     else:
         model_file = "inswapper_128_fp16.onnx"
@@ -182,10 +182,9 @@ def pre_check() -> bool:
 
 
 def pre_start() -> bool:
-    # Simplified pre_start, assuming checks happen before calling process functions
-    model_name = getattr(modules.globals, 'face_swap_model', 'inswapper')
-    if model_name in _GHOST_MODELS:
-        model_path = os.path.join(models_dir, _GHOST_MODELS[model_name]['file'])
+    selected_model = getattr(modules.globals, 'face_swap_model', 'inswapper')
+    if selected_model in _GHOST_MODELS:
+        model_path = os.path.join(models_dir, _GHOST_MODELS[selected_model]['file'])
     else:
         model_path = os.path.join(models_dir, "inswapper_128_fp16.onnx")
 
@@ -207,6 +206,8 @@ def get_face_swapper(providers: list | None = None) -> Any:
 
     *providers* overrides ``modules.globals.execution_providers`` when given,
     enabling tests and callers to inject providers without touching globals.
+    Supports both inswapper_128 (via InsightFace model zoo) and Ghost v1/v2/v3
+    (via direct ONNX Runtime session wrapped in ``GhostSwapper``).
     """
     global FACE_SWAPPER
 
@@ -220,80 +221,83 @@ def get_face_swapper(providers: list | None = None) -> Any:
                 if selected_model in _GHOST_MODELS:
                     ghost_info = _GHOST_MODELS[selected_model]
                     model_path = os.path.join(models_dir, ghost_info['file'])
-                    update_status(f"Loading Ghost face swapper model from: {model_path}", NAME)
+                    update_status(f"Loading Ghost face swapper ({selected_model}) from: {model_path}", NAME)
                     try:
-                        session = onnxruntime.InferenceSession(model_path, providers=providers_config)
+                        session = onnxruntime.InferenceSession(
+                            model_path,
+                            providers=providers_config,
+                        )
                         FACE_SWAPPER = GhostSwapper(session, input_size=ghost_info['size'])
-                        update_status(f"Ghost face swapper model ({selected_model}) loaded successfully.", NAME)
+                        update_status(f"Ghost face swapper ({selected_model}) loaded successfully.", NAME)
                     except Exception as e:
-                        update_status(f"Error loading Ghost model: {e}", NAME)
-                    return FACE_SWAPPER
+                        update_status(f"Error loading Ghost model {selected_model}: {e}", NAME)
+                        FACE_SWAPPER = None
+                        return None
+                else:
+                    model_name = "inswapper_128_fp16.onnx"
+                    model_path = os.path.join(models_dir, model_name)
+                    update_status(f"Loading face swapper model from: {model_path}", NAME)
+                    try:
+                        FACE_SWAPPER = insightface.model_zoo.get_model(
+                            model_path,
+                            providers=providers_config,
+                        )
+                        update_status("Face swapper model loaded successfully.", NAME)
 
-                model_name = "inswapper_128_fp16.onnx"
-                model_path = os.path.join(models_dir, model_name)
-                update_status(f"Loading face swapper model from: {model_path}", NAME)
-                try:
+                        # Prefer MLX over ONNX Runtime on Apple Silicon — runs the full graph
+                        # natively on the Metal GPU (8–9× faster than CoreML EP in benchmarks).
+                        # Falls through to CoreML .mlpackage, then ONNX Runtime CoreML EP.
+                        mlx_session_loaded = False
+                        if IS_APPLE_SILICON:
+                            try:
+                                from modules.mlx_inswapper import MLXSessionWrapper
+                                mlx_session = MLXSessionWrapper.load(model_path)
+                                if mlx_session is not None:
+                                    FACE_SWAPPER.session = mlx_session
+                                    update_status("Using MLX inference (native Metal GPU).", NAME)
+                                    mlx_session_loaded = True
+                            except Exception as mlx_err:
+                                update_status(f"MLX session load failed, trying CoreML: {mlx_err}", NAME)
 
-                    FACE_SWAPPER = insightface.model_zoo.get_model(
-                        model_path,
-                        providers=providers_config,
-                    )
-                    update_status("Face swapper model loaded successfully.", NAME)
+                        # Fallback: direct CoreML model (.mlpackage) over ONNX Runtime CoreML EP.
+                        # Generate with: uv run scripts/convert_to_coreml.py
+                        mlpackage_path = os.path.join(models_dir, "inswapper_128.mlpackage")
+                        if IS_APPLE_SILICON and not mlx_session_loaded and os.path.exists(mlpackage_path):
+                            try:
+                                from modules.coreml_session import CoreMLSessionWrapper
+                                coreml_session = CoreMLSessionWrapper.load(mlpackage_path)
+                                if coreml_session is not None:
+                                    FACE_SWAPPER.session = coreml_session
+                                    update_status("Using direct CoreML model (bypassing ONNX Runtime).", NAME)
+                            except Exception as cml_err:
+                                update_status(f"CoreML session load failed, using ONNX Runtime: {cml_err}", NAME)
 
-                    # Prefer MLX over ONNX Runtime on Apple Silicon — runs the full graph
-                    # natively on the Metal GPU (8–9× faster than CoreML EP in benchmarks).
-                    # Falls through to CoreML .mlpackage, then ONNX Runtime CoreML EP.
-                    mlx_session_loaded = False
-                    if IS_APPLE_SILICON:
-                        try:
-                            from modules.mlx_inswapper import MLXSessionWrapper
-                            mlx_session = MLXSessionWrapper.load(model_path)
-                            if mlx_session is not None:
-                                FACE_SWAPPER.session = mlx_session
-                                update_status("Using MLX inference (native Metal GPU).", NAME)
-                                mlx_session_loaded = True
-                        except Exception as mlx_err:
-                            update_status(f"MLX session load failed, trying CoreML: {mlx_err}", NAME)
-
-                    # Fallback: direct CoreML model (.mlpackage) over ONNX Runtime CoreML EP.
-                    # Generate with: uv run scripts/convert_to_coreml.py
-                    mlpackage_path = os.path.join(models_dir, "inswapper_128.mlpackage")
-                    if IS_APPLE_SILICON and not mlx_session_loaded and os.path.exists(mlpackage_path):
-                        try:
-                            from modules.coreml_session import CoreMLSessionWrapper
-                            coreml_session = CoreMLSessionWrapper.load(mlpackage_path)
-                            if coreml_session is not None:
-                                FACE_SWAPPER.session = coreml_session
-                                update_status("Using direct CoreML model (bypassing ONNX Runtime).", NAME)
-                        except Exception as cml_err:
-                            update_status(f"CoreML session load failed, using ONNX Runtime: {cml_err}", NAME)
-
-                    # Warmup inference: trigger JIT compilation / compute plan caching
-                    # so the first real inference call has no latency spike.
-                    if mlx_session_loaded or any(
-                        (p[0] if isinstance(p, tuple) else p) == "CoreMLExecutionProvider"
-                        for p in providers_config
-                    ) or (IS_APPLE_SILICON and os.path.exists(mlpackage_path)):
-                        try:
-                            session = FACE_SWAPPER.session
-                            input_feed = {
-                                inp.name: np.zeros(
-                                    [d if isinstance(d, int) and d > 0 else 1
-                                     for d in inp.shape],
-                                    dtype=np.float32,
+                        # Warmup inference: trigger JIT compilation / compute plan caching
+                        # so the first real inference call has no latency spike.
+                        if mlx_session_loaded or any(
+                            (p[0] if isinstance(p, tuple) else p) == "CoreMLExecutionProvider"
+                            for p in providers_config
+                        ) or (IS_APPLE_SILICON and os.path.exists(mlpackage_path)):
+                            try:
+                                session = FACE_SWAPPER.session
+                                input_feed = {
+                                    inp.name: np.zeros(
+                                        [d if isinstance(d, int) and d > 0 else 1
+                                         for d in inp.shape],
+                                        dtype=np.float32,
+                                    )
+                                    for inp in session.get_inputs()
+                                }
+                                session.run(None, input_feed)
+                                update_status("Warmup inference complete.", NAME)
+                            except Exception as warmup_err:
+                                update_status(
+                                    f"Warmup skipped (non-fatal): {warmup_err}", NAME
                                 )
-                                for inp in session.get_inputs()
-                            }
-                            session.run(None, input_feed)
-                            update_status("Warmup inference complete.", NAME)
-                        except Exception as warmup_err:
-                            update_status(
-                                f"Warmup skipped (non-fatal): {warmup_err}", NAME
-                            )
-                except Exception as e:
-                    update_status(f"Error loading face swapper model: {e}", NAME)
-                    FACE_SWAPPER = None
-                    return None
+                    except Exception as e:
+                        update_status(f"Error loading face swapper model: {e}", NAME)
+                        FACE_SWAPPER = None
+                        return None
     return FACE_SWAPPER
 
 
@@ -499,12 +503,13 @@ def batch_swap_faces(
     if face_swapper is None:
         return temp_frame
 
-    # Ghost models don't support batch inference — fall back to sequential
+    # Ghost models don't support batched inference — fall back to sequential swap
     if isinstance(face_swapper, GhostSwapper):
+        config = config or build_config_from_globals()
+        result = temp_frame.copy()
         for source_face, target_face in zip(source_faces, target_faces):
-            if source_face is not None and target_face is not None:
-                temp_frame = swap_face(source_face, target_face, temp_frame)
-        return temp_frame
+            result = swap_face(source_face, target_face, result, config)
+        return result
 
     session = face_swapper.session
     emap = face_swapper.emap
