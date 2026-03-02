@@ -166,18 +166,22 @@ def suggest_execution_providers() -> List[str]:
 def suggest_execution_threads() -> int:
     """Suggest optimal thread count based on hardware and execution provider."""
     import os
-    
+
     # Get CPU count
     cpu_count = os.cpu_count() or 4
-    
+
     if 'DmlExecutionProvider' in modules.globals.execution_providers:
         return 1
     if 'ROCMExecutionProvider' in modules.globals.execution_providers:
         return 1
+    if 'TensorrtExecutionProvider' in modules.globals.execution_providers:
+        # TensorRT handles GPU parallelism internally; a single CPU thread
+        # avoids contention on the TRT execution context.
+        return 1
     if 'CUDAExecutionProvider' in modules.globals.execution_providers:
         # For CUDA, use more threads for parallel frame processing
         return min(cpu_count, 16)
-    
+
     # For CPU execution, use most cores but leave some for system
     return max(4, min(cpu_count - 2, 16))
 
@@ -208,7 +212,10 @@ def limit_resources(config: Optional[ProcessingConfig] = None) -> None:
 def release_resources(config: Optional[ProcessingConfig] = None) -> None:
     if config is None:
         config = build_config_from_globals()
-    if 'CUDAExecutionProvider' in config.execution_providers and _ensure_torch():
+    if (
+        'CUDAExecutionProvider' in config.execution_providers
+        or 'TensorrtExecutionProvider' in config.execution_providers
+    ) and _ensure_torch():
         torch.cuda.empty_cache()
 
 
@@ -221,6 +228,14 @@ def pre_check() -> bool:
         return False
     # Check NumPy BLAS configuration on Apple Silicon (informational, not fatal)
     check_apple_silicon_blas()
+    # Warn about TensorRT first-run engine compilation delay
+    if 'TensorrtExecutionProvider' in modules.globals.execution_providers:
+        from modules.tensorrt_cache import has_cached_engines
+        if not has_cached_engines():
+            update_status(
+                'TensorRT selected: first-run engine compilation may take 30-120s per model. '
+                'Engines will be cached in models/trt_cache/ for instant startup on future runs.'
+            )
     return True
 
 

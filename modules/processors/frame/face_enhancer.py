@@ -21,6 +21,7 @@ from modules.utilities import (
     is_image,
     is_video,
 )
+from modules.onnx_providers import build_providers_config
 from modules.processing_config import ProcessingConfig
 from modules.processing_config_factory import build_config_from_globals
 from modules.face_preprocessing import (
@@ -129,7 +130,8 @@ def get_face_enhancer(providers: list | None = None) -> onnxruntime.InferenceSes
                 )
 
             try:
-                providers = providers if providers is not None else modules.globals.execution_providers
+                _providers = providers if providers is not None else modules.globals.execution_providers
+                providers_config = build_providers_config(_providers)
 
                 session_options = onnxruntime.SessionOptions()
                 session_options.graph_optimization_level = (
@@ -139,7 +141,7 @@ def get_face_enhancer(providers: list | None = None) -> onnxruntime.InferenceSes
                 FACE_ENHANCER = onnxruntime.InferenceSession(
                     model_path,
                     sess_options=session_options,
-                    providers=providers,
+                    providers=providers_config,
                 )
 
                 input_info = FACE_ENHANCER.get_inputs()[0]
