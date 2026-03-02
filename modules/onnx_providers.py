@@ -21,12 +21,17 @@ def build_providers_config(
 ) -> List[ProviderConfig]:
     """Convert a flat list of provider names into a config list with options.
 
-    On Apple Silicon, ``CoreMLExecutionProvider`` is configured with:
-    - ``MLComputeUnits``: Controls which hardware units are used for inference.
-      Defaults to ``"ALL"`` (ANE + GPU + CPU) for maximum efficiency; can be
-      overridden via the ``--coreml-compute-units`` CLI flag or by passing
-      *coreml_compute_units* directly (useful for testing).
-    - ``ModelCacheDirectory``: Avoids recompilation of CoreML models across runs.
+    Handles platform-specific provider options:
+
+    - ``CoreMLExecutionProvider`` on Apple Silicon: MLProgram format with
+      configurable compute units and a persistent model cache.
+      ``MLComputeUnits`` defaults to ``"ALL"`` (ANE + GPU + CPU) for maximum
+      efficiency; can be overridden via the ``--coreml-compute-units`` CLI flag
+      or by passing *coreml_compute_units* directly (useful for testing).
+    - ``TensorrtExecutionProvider`` on NVIDIA (Linux/Windows): FP16 precision
+      with persistent engine caching to ``models/trt_cache/``.  On first run
+      TensorRT compiles the model (30–120 s); subsequent runs load from cache.
+    - All other providers pass through unchanged.
 
     Handles platform-specific provider options:
 

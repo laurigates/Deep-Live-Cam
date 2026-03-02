@@ -107,6 +107,7 @@ def parse_args() -> None:
     modules.globals.live_resizable = args.live_resizable
     modules.globals.virtual_cam = args.virtual_cam
     modules.globals.max_memory = args.max_memory
+    modules.globals.face_swap_model = args.face_swap_model
     modules.globals.coreml_compute_units = args.coreml_compute_units
     modules.globals.execution_providers = decode_execution_providers(args.execution_provider)
     modules.globals.execution_threads = args.execution_threads

@@ -1,4 +1,4 @@
-# ADR-0012: Apple Neural Engine Routing via CoreML Compute Units
+# ADR-0013: Apple Neural Engine Routing via CoreML Compute Units
 
 ## Status
 
