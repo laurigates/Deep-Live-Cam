@@ -27,6 +27,7 @@ def build_config_from_globals() -> ProcessingConfig:
         max_memory=modules.globals.max_memory,
         headless=modules.globals.headless,
         log_level=modules.globals.log_level,
+        coreml_compute_units=modules.globals.coreml_compute_units,
         # Paths
         source_path=modules.globals.source_path,
         target_path=modules.globals.target_path,
@@ -162,6 +163,7 @@ def build_config_from_cli_args(args) -> ProcessingConfig:
         live_resizable=args.live_resizable,
         virtual_cam=args.virtual_cam,
         max_memory=args.max_memory,
+        coreml_compute_units=getattr(args, 'coreml_compute_units', 'ALL'),
         execution_providers=execution_providers,
         execution_threads=execution_threads,
         rife_enabled=args.rife_enabled,

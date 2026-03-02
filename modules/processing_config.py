@@ -48,6 +48,9 @@ class ProcessingConfig:
     log_level: str = "error"
     """Logging level: 'debug', 'info', 'warning', 'error'"""
 
+    coreml_compute_units: str = "ALL"
+    """CoreML compute units for Apple Silicon: 'ALL' (ANE+GPU+CPU), 'CPUAndGPU', 'CPUOnly'"""
+
     # ======================== Input/Output Paths ========================
     source_path: Optional[str] = None
     """Path to source image or video for face swapping"""

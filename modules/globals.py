@@ -54,6 +54,9 @@ execution_threads: int | None = None # Number of threads for CPU execution
 headless: bool | None = None         # Run without UI?
 log_level: str = "error"             # Logging level (e.g., 'debug', 'info', 'warning', 'error')
 
+# CoreML Configuration (Apple Silicon only)
+coreml_compute_units: str = "ALL"   # MLComputeUnits: 'ALL' (ANE+GPU+CPU), 'CPUAndGPU', 'CPUOnly'
+
 # Face Processor UI Toggles (Example)
 fp_ui: Dict[str, bool] = {
     "face_enhancer": False,
