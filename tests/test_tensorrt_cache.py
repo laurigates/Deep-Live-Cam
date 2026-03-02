@@ -226,7 +226,7 @@ class TestFaceEnhancerUsesProvidersConfig:
         injected = ["TensorrtExecutionProvider", "CUDAExecutionProvider"]
         captured_config = []
 
-        def fake_build_providers_config(providers):
+        def fake_build_providers_config(providers, **kwargs):
             captured_config.extend(providers)
             return providers  # return as-is for this test
 

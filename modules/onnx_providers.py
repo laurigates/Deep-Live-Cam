@@ -33,15 +33,6 @@ def build_providers_config(
       TensorRT compiles the model (30–120 s); subsequent runs load from cache.
     - All other providers pass through unchanged.
 
-    Handles platform-specific provider options:
-
-    - ``CoreMLExecutionProvider`` on Apple Silicon: MLProgram format with
-      configured compute units and a persistent model cache.
-    - ``TensorrtExecutionProvider`` on NVIDIA (Linux/Windows): FP16 precision
-      with persistent engine caching to ``models/trt_cache/``.  On first run
-      TensorRT compiles the model (30–120 s); subsequent runs load from cache.
-    - All other providers pass through unchanged.
-
     Args:
         providers: List of ONNX Runtime provider name strings.
         coreml_compute_units: CoreML compute unit override. If ``None``, reads
