@@ -39,7 +39,6 @@ def apply_color_transfer(source, target):
     result_bgr = cv2.cvtColor(result_lab, cv2.COLOR_LAB2BGR)
     return np.clip(result_bgr * 255.0, 0, 255).astype(np.uint8)
 
-
 def apply_histogram_matching(source: np.ndarray, target: np.ndarray) -> np.ndarray:
     """Apply histogram matching from target to source image in LAB color space.
 

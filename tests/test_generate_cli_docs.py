@@ -28,9 +28,9 @@ def extracted_args(core_source: str) -> list[dict]:
 
 class TestExtractArgs:
     def test_finds_expected_arg_count(self, extracted_args: list[dict]) -> None:
-        """Should find all non-deprecated args (currently 32 including -v/--version)."""
-        # 36 total add_argument calls minus 4 deprecated = 32
-        assert len(extracted_args) == 32
+        """Should find all non-deprecated args (currently 34 including -v/--version)."""
+        # 38 total add_argument calls minus 4 deprecated = 34
+        assert len(extracted_args) == 34
 
     def test_version_excluded_from_table(self, extracted_args: list[dict]) -> None:
         """The -v/--version action=version arg is extracted but filtered in format_table."""

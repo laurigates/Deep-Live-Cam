@@ -78,6 +78,7 @@ prepaste_upscale: bool = True     # upscale swap crop before paste-back (reduces
 
 # Mouth Mask Options
 mouth_mask: bool = False           # Enable mouth area masking/pasting
+occlusion_mask: bool = False       # Preserve occluding objects (hands, glasses) during face swap
 show_mouth_mask_box: bool = False  # Visualize the mouth mask area (for debugging)
 mask_feather_ratio: int = 12       # Denominator for feathering calculation (higher = smaller feather)
 mask_down_size: float = 0.1        # Expansion factor for lower lip mask (relative)

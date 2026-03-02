@@ -271,6 +271,13 @@ def pre_check() -> bool:
         if not os.path.exists(model_path):
             update_status(f"Model not found at {model_path}. Download may have failed.", NAME)
             return False
+
+    # Download occlusion model if enabled
+    if getattr(modules.globals, 'occlusion_mask', False):
+        from modules.face_occluder import pre_check as occluder_pre_check
+        if not occluder_pre_check():
+            update_status("Warning: Occlusion model download failed. Occlusion masking will be disabled.", NAME)
+
     return True
 
 
@@ -710,6 +717,13 @@ def batch_swap_faces(
             else:
                 bgr_fake = apply_histogram_matching(bgr_fake_u8, aimg_u8).astype(bgr_fake.dtype)
 
+        # Apply occlusion mask to preserve target pixels where occluders are detected
+        if config.occlusion_mask:
+            from modules.face_occluder import create_occlusion_mask
+            occ_mask = create_occlusion_mask(aimg if aimg.dtype == np.uint8 else np.clip(aimg, 0, 255).astype(np.uint8))
+            occ_3ch = occ_mask[:, :, np.newaxis]
+            bgr_fake = (bgr_fake.astype(np.float32) * occ_3ch + aimg.astype(np.float32) * (1.0 - occ_3ch))
+
         # Paste back onto result frame
         result = _paste_back(bgr_fake, aimg, M, result, config)
 
@@ -789,6 +803,13 @@ def swap_face(source_face: Face, target_face: Face, temp_frame: Frame, config=No
                 bgr_fake = apply_color_transfer(bgr_fake_u8, aimg_u8).astype(bgr_fake.dtype)
             else:
                 bgr_fake = apply_histogram_matching(bgr_fake_u8, aimg_u8).astype(bgr_fake.dtype)
+
+        # Apply occlusion mask to preserve target pixels where occluders are detected
+        if config.occlusion_mask:
+            from modules.face_occluder import create_occlusion_mask
+            occ_mask = create_occlusion_mask(aimg if aimg.dtype == np.uint8 else np.clip(aimg, 0, 255).astype(np.uint8))
+            occ_3ch = occ_mask[:, :, np.newaxis]
+            bgr_fake = (bgr_fake.astype(np.float32) * occ_3ch + aimg.astype(np.float32) * (1.0 - occ_3ch))
 
         swapped_frame_raw = _paste_back(bgr_fake, aimg, M, temp_frame, config)
 

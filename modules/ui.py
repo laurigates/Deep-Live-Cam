@@ -547,6 +547,35 @@ def _add_settings_tabview(root: ctk.CTk, live_button: ctk.CTkButton) -> None:
     _add_half_rate_controls_to_tab(live_tab, len(switch_defs["Live Mode"]))
 
 
+def _add_color_correction_to_processing_tab(tab: ctk.CTkFrame, num_switches: int) -> None:
+    """Add color correction mode dropdown below existing Processing tab switches."""
+    start_row = num_switches
+
+    label = ctk.CTkLabel(tab, text=_("Color Correction:"))
+    label.grid(row=start_row, column=0, sticky="w", padx=8, pady=(10, 2))
+
+    mode_values = ["none", "lab", "histogram"]
+    current_mode = getattr(modules.globals, "color_correction_mode", "none")
+    if current_mode not in mode_values:
+        current_mode = "none"
+    mode_variable = ctk.StringVar(value=current_mode)
+
+    def on_mode_change(choice: str) -> None:
+        modules.globals.color_correction_mode = choice
+        save_switch_states()
+        update_status(f"Color correction mode: {choice}")
+
+    mode_optionmenu = ctk.CTkOptionMenu(
+        tab, variable=mode_variable, values=mode_values,
+        command=on_mode_change,
+    )
+    mode_optionmenu.grid(row=start_row, column=1, sticky="ew", padx=(0, 8), pady=(10, 2))
+    ToolTip(
+        mode_optionmenu,
+        _("none = off  |  lab = LAB mean/std transfer  |  histogram = per-channel CDF matching (stronger correction for cross-skin-tone swaps)"),
+    )
+
+
 def _add_sliders_to_tab(tab: ctk.CTkFrame, num_switches: int) -> None:
     start_row = num_switches + 1
 
