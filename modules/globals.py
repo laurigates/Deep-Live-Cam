@@ -67,6 +67,7 @@ codeformer_fidelity: float = 0.7
 
 # Face Swapper Specific Options
 face_swapper_enabled: bool = True # General toggle for the swapper processor
+face_swap_model: str = 'inswapper'  # Model variant: 'inswapper' | 'ghost_256_v1' | 'ghost_256_v2' | 'ghost_256_v3'
 opacity: float = 1.0              # Blend factor for the swapped face (0.0-1.0)
 sharpness: float = 0.0            # Sharpness enhancement for swapped face (0.0-1.0+)
 prepaste_upscale: bool = True     # upscale swap crop before paste-back (reduces stretch artifact)
