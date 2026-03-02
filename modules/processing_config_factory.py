@@ -51,6 +51,7 @@ def build_config_from_globals() -> ProcessingConfig:
         prepaste_upscale=modules.globals.prepaste_upscale,
         color_correction=modules.globals.color_correction,
         poisson_blend=modules.globals.poisson_blend,
+        color_transfer_mode=modules.globals.color_transfer_mode,
         # Face Enhancer
         codeformer_fidelity=modules.globals.codeformer_fidelity,
         # Mouth Mask
@@ -161,6 +162,7 @@ def build_config_from_cli_args(args) -> ProcessingConfig:
         max_memory=args.max_memory,
         execution_providers=execution_providers,
         execution_threads=execution_threads,
+        color_transfer_mode=getattr(args, 'color_transfer_mode', 'none'),
         rife_enabled=args.rife_enabled,
         rife_model=args.rife_model,
         rife_multiplier=args.rife_multiplier,

@@ -113,8 +113,8 @@ class ProcessingConfig:
     poisson_blend: bool = False
     """Enable Poisson blending for smoother face swaps"""
 
-    swap_color_transfer: bool = False
-    """Apply LAB color transfer to swapped crop before paste-back"""
+    color_transfer_mode: str = "none"
+    """Color transfer mode for swapped face: 'none', 'lab', or 'histogram'"""
 
     # ======================== Paste-back Tuning ========================
     paste_diff_threshold: float = 10.0
@@ -255,3 +255,5 @@ class ProcessingConfig:
             raise ValueError("opacity must be between 0 and 1")
         if self.codeformer_fidelity < 0 or self.codeformer_fidelity > 1:
             raise ValueError("codeformer_fidelity must be between 0 and 1")
+        if self.color_transfer_mode not in ("none", "lab", "histogram"):
+            raise ValueError("color_transfer_mode must be 'none', 'lab', or 'histogram'")

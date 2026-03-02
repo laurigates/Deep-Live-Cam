@@ -57,6 +57,7 @@ class TestBuildConfigFromCliArgs:
         args.half_rate_processing = False
         args.keyframe_interval = 2
         args.live_enhance_size = 256
+        args.color_transfer_mode = 'none'
         args.source_path_deprecated = None
         args.cpu_cores_deprecated = None
         args.gpu_vendor_deprecated = None
@@ -70,6 +71,7 @@ class TestBuildConfigFromCliArgs:
         assert config.frame_processors == ['face_swapper']
         assert config.keep_fps is True
         assert config.many_faces is False
+        assert config.color_transfer_mode == 'none'
 
     def test_builds_config_with_many_faces(self):
         from modules.processing_config_factory import build_config_from_cli_args
@@ -101,6 +103,7 @@ class TestBuildConfigFromCliArgs:
         args.half_rate_processing = True
         args.keyframe_interval = 4
         args.live_enhance_size = 512
+        args.color_transfer_mode = 'histogram'
         args.source_path_deprecated = None
         args.cpu_cores_deprecated = None
         args.gpu_vendor_deprecated = None
@@ -110,6 +113,7 @@ class TestBuildConfigFromCliArgs:
             config = build_config_from_cli_args(args)
 
         assert config.many_faces is True
+        assert config.color_transfer_mode == 'histogram'
         assert config.mouth_mask is True
         assert config.rife_enabled is True
         assert config.rife_multiplier == 4

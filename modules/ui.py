@@ -187,6 +187,7 @@ def save_switch_states():
         "mouth_mask": modules.globals.mouth_mask,
         "show_mouth_mask_box": modules.globals.show_mouth_mask_box,
         "rife_enabled": modules.globals.rife_enabled,
+        "color_transfer_mode": modules.globals.color_transfer_mode,
         "rife_model": modules.globals.rife_model,
         "rife_multiplier": modules.globals.rife_multiplier,
         "half_rate_processing": modules.globals.half_rate_processing,
@@ -221,6 +222,7 @@ def load_switch_states():
         modules.globals.show_mouth_mask_box = switch_states.get(
             "show_mouth_mask_box", False
         )
+        modules.globals.color_transfer_mode = switch_states.get("color_transfer_mode", "none")
         modules.globals.rife_enabled = switch_states.get("rife_enabled", False)
         modules.globals.rife_model = switch_states.get("rife_model", "rife-v4.25-lite")
         modules.globals.rife_multiplier = switch_states.get("rife_multiplier", 2)
@@ -475,6 +477,10 @@ def _add_settings_tabview(root: ctk.CTk, live_button: ctk.CTkButton) -> None:
             sw = _create_switch(tab, label, attr, tooltip)
             sw.grid(row=i, column=0, columnspan=2, sticky="w", padx=8, pady=3)
 
+    # Processing tab: add color transfer dropdown
+    processing_tab = tabview.tab("Processing")
+    _add_color_transfer_to_tab(processing_tab, len(switch_defs["Processing"]))
+
     # Enhancement tab: add sliders
     enhancement_tab = tabview.tab("Enhancement")
     _add_sliders_to_tab(enhancement_tab, len(switch_defs["Enhancement"]))
@@ -487,6 +493,36 @@ def _add_settings_tabview(root: ctk.CTk, live_button: ctk.CTkButton) -> None:
     live_tab = tabview.tab("Live Mode")
     _add_camera_to_tab(live_tab, root, len(switch_defs["Live Mode"]), live_button)
     _add_half_rate_controls_to_tab(live_tab, len(switch_defs["Live Mode"]))
+
+
+def _add_color_transfer_to_tab(tab: ctk.CTkFrame, num_switches: int) -> None:
+    """Add color transfer mode dropdown to the Processing tab."""
+    start_row = num_switches + 1
+
+    label = ctk.CTkLabel(tab, text=_("Color Transfer:"))
+    label.grid(row=start_row, column=0, sticky="w", padx=8, pady=(15, 2))
+
+    mode_values = ["None", "LAB", "Histogram"]
+    current_mode = getattr(modules.globals, "color_transfer_mode", "none")
+    # Map stored lowercase to display title-case
+    display_map = {"none": "None", "lab": "LAB", "histogram": "Histogram"}
+    current_display = display_map.get(current_mode, "None")
+    mode_variable = ctk.StringVar(value=current_display)
+
+    def on_color_transfer_change(choice):
+        reverse_map = {"None": "none", "LAB": "lab", "Histogram": "histogram"}
+        modules.globals.color_transfer_mode = reverse_map.get(choice, "none")
+        save_switch_states()
+        update_status(f"Color transfer set to {choice}")
+
+    mode_optionmenu = ctk.CTkOptionMenu(
+        tab, variable=mode_variable, values=mode_values,
+        command=on_color_transfer_change,
+    )
+    mode_optionmenu.grid(
+        row=start_row, column=1, sticky="ew", padx=(0, 8), pady=(15, 2),
+    )
+    ToolTip(mode_optionmenu, _("Match swapped face colors to target skin tone (LAB = subtle, Histogram = aggressive)"))
 
 
 def _add_sliders_to_tab(tab: ctk.CTkFrame, num_switches: int) -> None:

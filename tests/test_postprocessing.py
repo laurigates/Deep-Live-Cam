@@ -55,10 +55,10 @@ class TestApplyColorTransferMasking:
 # ---------------------------------------------------------------------------
 
 class TestApplyColorTransferSwapper:
-    """Tests for face_swapper.apply_color_transfer."""
+    """Tests for face_masking.apply_color_transfer."""
 
     def _get_fn(self):
-        from modules.processors.frame.face_swapper import apply_color_transfer
+        from modules.processors.frame.face_masking import apply_color_transfer
         return apply_color_transfer
 
     def test_output_dtype_is_uint8(self):

@@ -1,6 +1,6 @@
 """Tests for Phase 3: Quality & Configurability.
 
-3A: Optional post-swap color transfer (swap_color_transfer config flag).
+3A: Color transfer mode selector (color_transfer_mode config field).
 3B: Expose paste-back tuning parameters in ProcessingConfig.
 """
 import cv2
@@ -11,18 +11,26 @@ from modules.processing_config import ProcessingConfig
 
 
 # ---------------------------------------------------------------------------
-# 3A: Color transfer toggle
+# 3A: Color transfer mode
 # ---------------------------------------------------------------------------
-class TestSwapColorTransferConfig:
-    """Verify swap_color_transfer config field exists and defaults correctly."""
+class TestColorTransferModeConfig:
+    """Verify color_transfer_mode config field exists and defaults correctly."""
 
-    def test_default_is_false(self):
+    def test_default_is_none(self):
         config = ProcessingConfig()
-        assert config.swap_color_transfer is False
+        assert config.color_transfer_mode == "none"
 
-    def test_can_enable(self):
-        config = ProcessingConfig(swap_color_transfer=True)
-        assert config.swap_color_transfer is True
+    def test_can_set_lab(self):
+        config = ProcessingConfig(color_transfer_mode="lab")
+        assert config.color_transfer_mode == "lab"
+
+    def test_can_set_histogram(self):
+        config = ProcessingConfig(color_transfer_mode="histogram")
+        assert config.color_transfer_mode == "histogram"
+
+    def test_invalid_mode_raises(self):
+        with pytest.raises(ValueError, match="color_transfer_mode"):
+            ProcessingConfig(color_transfer_mode="invalid")
 
 
 class TestColorTransferIntegration:
@@ -45,12 +53,10 @@ class TestColorTransferIntegration:
         # Colors should shift towards target palette
         assert not np.array_equal(result, source)
 
-    def test_disabled_produces_no_change(self):
-        """With swap_color_transfer=False, no color transfer should be applied."""
-        config = ProcessingConfig(swap_color_transfer=False)
-        # Just verify the flag is respected — actual integration tested via
-        # manual visual inspection with `just start`
-        assert config.swap_color_transfer is False
+    def test_none_mode_produces_no_change(self):
+        """With color_transfer_mode='none', no color transfer should be applied."""
+        config = ProcessingConfig(color_transfer_mode="none")
+        assert config.color_transfer_mode == "none"
 
 
 # ---------------------------------------------------------------------------

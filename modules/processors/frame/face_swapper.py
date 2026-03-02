@@ -21,7 +21,7 @@ from modules.paths import MODELS_DIR
 from modules.platform_info import IS_APPLE_SILICON
 from modules.onnx_providers import build_providers_config
 from modules.processors.frame.face_masking import (
-    apply_color_transfer,
+    apply_color_transfer_mode,
     create_face_mask,
     create_lower_mouth_mask,
     draw_mouth_mask_visualization,
@@ -460,10 +460,10 @@ def batch_swap_faces(
             bgr_fake, aimg, M = _upscale_crop_for_paste(bgr_fake, aimg, M, k)
 
         # Optional color transfer: match swapped crop colors to the target crop
-        if config.swap_color_transfer:
+        if config.color_transfer_mode != "none":
             bgr_fake_u8 = np.clip(bgr_fake, 0, 255).astype(np.uint8)
             aimg_u8 = np.clip(aimg, 0, 255).astype(np.uint8) if aimg.dtype != np.uint8 else aimg
-            bgr_fake = apply_color_transfer(bgr_fake_u8, aimg_u8).astype(bgr_fake.dtype)
+            bgr_fake = apply_color_transfer_mode(bgr_fake_u8, aimg_u8, config.color_transfer_mode).astype(bgr_fake.dtype)
 
         # Paste back onto result frame
         result = _paste_back(bgr_fake, aimg, M, result, config)
@@ -534,10 +534,10 @@ def swap_face(source_face: Face, target_face: Face, temp_frame: Frame, config=No
             bgr_fake, aimg, M = _upscale_crop_for_paste(bgr_fake, aimg, M, k)
 
         # Optional color transfer: match swapped crop colors to the target crop
-        if config.swap_color_transfer:
+        if config.color_transfer_mode != "none":
             bgr_fake_u8 = np.clip(bgr_fake, 0, 255).astype(np.uint8)
             aimg_u8 = np.clip(aimg, 0, 255).astype(np.uint8) if aimg.dtype != np.uint8 else aimg
-            bgr_fake = apply_color_transfer(bgr_fake_u8, aimg_u8).astype(bgr_fake.dtype)
+            bgr_fake = apply_color_transfer_mode(bgr_fake_u8, aimg_u8, config.color_transfer_mode).astype(bgr_fake.dtype)
 
         swapped_frame_raw = _paste_back(bgr_fake, aimg, M, temp_frame, config)
 

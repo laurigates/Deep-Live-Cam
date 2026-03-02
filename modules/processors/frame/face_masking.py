@@ -39,6 +39,50 @@ def apply_color_transfer(source, target):
     result_bgr = cv2.cvtColor(result_lab, cv2.COLOR_LAB2BGR)
     return np.clip(result_bgr * 255.0, 0, 255).astype(np.uint8)
 
+def _match_channel_cdf(src_ch: np.ndarray, tgt_ch: np.ndarray) -> np.ndarray:
+    """Map source channel pixels through inverse CDF lookup to match target histogram."""
+    src_cdf = np.cumsum(np.bincount(src_ch.ravel(), minlength=256)).astype(np.float64)
+    tgt_cdf = np.cumsum(np.bincount(tgt_ch.ravel(), minlength=256)).astype(np.float64)
+
+    src_cdf /= src_cdf[-1] or 1.0
+    tgt_cdf /= tgt_cdf[-1] or 1.0
+
+    lut = np.searchsorted(tgt_cdf, src_cdf).clip(0, 255).astype(np.uint8)
+    return lut[src_ch]
+
+
+def apply_histogram_transfer(source, target):
+    """Per-channel CDF matching in LAB space for aggressive color correction."""
+    if source is None or target is None:
+        return source
+    if source.size == 0 or target.size == 0:
+        return source
+
+    source_lab = cv2.cvtColor(source, cv2.COLOR_BGR2LAB)
+    target_lab = cv2.cvtColor(target, cv2.COLOR_BGR2LAB)
+
+    matched = np.empty_like(source_lab)
+    for ch in range(3):
+        matched[:, :, ch] = _match_channel_cdf(source_lab[:, :, ch], target_lab[:, :, ch])
+
+    return cv2.cvtColor(matched, cv2.COLOR_LAB2BGR)
+
+
+def apply_color_transfer_mode(source, target, mode="none"):
+    """Dispatch to the appropriate color transfer algorithm.
+
+    Args:
+        source: BGR source image (swapped crop).
+        target: BGR target image (original crop).
+        mode: 'none', 'lab', or 'histogram'.
+    """
+    if mode == "lab":
+        return apply_color_transfer(source, target)
+    elif mode == "histogram":
+        return apply_histogram_transfer(source, target)
+    return source
+
+
 def create_face_mask(face: Face, frame: Frame, config=None) -> np.ndarray:
     """Creates a feathered mask covering the whole face area based on landmarks."""
     mask = np.zeros(frame.shape[:2], dtype=np.uint8)
