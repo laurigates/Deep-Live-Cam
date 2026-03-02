@@ -80,6 +80,8 @@ def build_config_from_globals() -> ProcessingConfig:
         motion_adaptive_enhancement=modules.globals.motion_adaptive_enhancement,
         motion_adaptive_iou_threshold=modules.globals.motion_adaptive_iou_threshold,
         motion_adaptive_cosine_threshold=modules.globals.motion_adaptive_cosine_threshold,
+        landmark_smoothing=modules.globals.landmark_smoothing,
+        landmark_smoothing_alpha=modules.globals.landmark_smoothing_alpha,
         webcam_preview_running=modules.globals.webcam_preview_running,
         live_mirror=modules.globals.live_mirror,
         live_resizable=modules.globals.live_resizable,

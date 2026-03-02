@@ -378,6 +378,121 @@ def default_target_face() -> None:
         }
 
 
+class LandmarkSmoother:
+    """Exponential moving average (EMA) smoothing for face bounding boxes and keypoints.
+
+    Applies per-face EMA across frames to produce stable, jitter-free face detection
+    output in live webcam mode.  Uses embedding cosine similarity to match faces across
+    frames, enabling correct per-identity state tracking even when face count changes or
+    faces temporarily swap positions.
+
+    Example usage::
+
+        smoother = LandmarkSmoother(alpha=0.7)
+
+        # In detection loop:
+        faces = detect(frame)
+        smoother.smooth(faces)   # modifies bbox/kps in-place, returns faces
+
+    Notes:
+        * ``alpha`` is the weight given to the *current* frame's detection.
+          Higher ``alpha`` → more responsive, less smoothing.
+          Lower ``alpha`` → smoother output, more lag on fast movement.
+        * State is automatically reset for any face whose identity cosine similarity
+          falls below ``IDENTITY_THRESHOLD`` (i.e., a new face entered the scene).
+        * InsightFace ``Face`` objects are dict-like and support attribute assignment,
+          so bbox/kps can be updated in-place without wrapping.
+    """
+
+    #: Minimum cosine similarity between consecutive frames to treat two detections
+    #: as the same person and apply EMA (rather than resetting state).
+    IDENTITY_THRESHOLD: float = 0.7
+
+    def __init__(self, alpha: float = 0.7) -> None:
+        self._alpha = max(0.0, min(1.0, alpha))
+        # Per-face history: list of dicts with keys 'embedding', 'bbox', 'kps'
+        self._state: list[dict] = []
+
+    @property
+    def alpha(self) -> float:
+        return self._alpha
+
+    @alpha.setter
+    def alpha(self, value: float) -> None:
+        self._alpha = max(0.0, min(1.0, value))
+
+    def _find_match(self, face: Any) -> Optional[dict]:
+        """Return the best-matching state entry for *face*, or ``None``.
+
+        Matching is done via embedding cosine similarity.  InsightFace
+        ``normed_embedding`` is already L2-normalised, so the dot product
+        equals the cosine similarity directly.  Returns ``None`` when:
+
+        * The state history is empty.
+        * The face has no ``normed_embedding``.
+        * No stored identity exceeds ``IDENTITY_THRESHOLD``.
+        """
+        if not self._state:
+            return None
+        embedding = getattr(face, 'normed_embedding', None)
+        if embedding is None:
+            return None
+
+        best_entry: Optional[dict] = None
+        best_sim = -1.0
+        for entry in self._state:
+            sim = float(np.dot(embedding, entry['embedding']))
+            if sim > best_sim:
+                best_sim = sim
+                best_entry = entry
+
+        return best_entry if best_sim >= self.IDENTITY_THRESHOLD else None
+
+    def smooth(self, faces: list) -> list:
+        """Apply EMA smoothing to *faces* in-place and return the same list.
+
+        For each face, if a matching previous-frame identity is found, the
+        ``bbox`` and ``kps`` attributes are blended with the stored values::
+
+            face.bbox = alpha * face.bbox + (1 - alpha) * prev_bbox
+            face.kps  = alpha * face.kps  + (1 - alpha) * prev_kps
+
+        When no match is found (new face or scene change), the raw detection
+        values are kept and a fresh state entry is created.
+
+        State is cleared when *faces* is empty (no faces detected).
+        """
+        if not faces:
+            self._state = []
+            return faces
+
+        alpha = self._alpha
+        new_state: list[dict] = []
+
+        for face in faces:
+            prev = self._find_match(face)
+
+            if prev is not None:
+                if face.bbox is not None and prev['bbox'] is not None:
+                    face.bbox = alpha * face.bbox + (1 - alpha) * prev['bbox']
+                if face.kps is not None and prev.get('kps') is not None:
+                    face.kps = alpha * face.kps + (1 - alpha) * prev['kps']
+
+            embedding = getattr(face, 'normed_embedding', None)
+            new_state.append({
+                'embedding': embedding.copy() if embedding is not None else np.zeros(512, dtype=np.float32),
+                'bbox': face.bbox.copy() if face.bbox is not None else None,
+                'kps': face.kps.copy() if face.kps is not None else None,
+            })
+
+        self._state = new_state
+        return faces
+
+    def reset(self) -> None:
+        """Clear all per-face smoothing state."""
+        self._state = []
+
+
 def compute_bbox_iou(bbox1: np.ndarray, bbox2: np.ndarray) -> float:
     """Compute IoU between two bounding boxes in [x1, y1, x2, y2] format."""
     x1 = max(float(bbox1[0]), float(bbox2[0]))
