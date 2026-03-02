@@ -28,6 +28,13 @@ def _is_macos() -> bool:
 
 
 def _enumerate_windows():
+    """Enumerate cameras using pygrabber FilterGraph (DirectShow).
+
+    FilterGraph is safe here because the caller (_enumerate_cameras in ui.py)
+    runs this in a background thread with COM already initialized via
+    CoInitializeEx.  DirectShow is only unsafe when used for *capture* on
+    the main thread — enumeration is fine.
+    """
     try:
         from pygrabber.dshow_graph import FilterGraph
         graph = FilterGraph()
@@ -39,7 +46,7 @@ def _enumerate_windows():
             camera_indices = []
             camera_names = []
             for idx in range(2):
-                cap = cv2.VideoCapture(idx)
+                cap = cv2.VideoCapture(idx, cv2.CAP_MSMF)
                 if cap.isOpened():
                     camera_indices.append(idx)
                     camera_names.append(f"Camera {idx}")

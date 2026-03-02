@@ -27,8 +27,8 @@ from modules.ui_mapping_list import MappingListWidget
 import platform
 from modules.camera import get_available_cameras
 
-if platform.system() == "Windows":
-    from pygrabber.dshow_graph import FilterGraph
+# FilterGraph (pygrabber/DirectShow) removed — crashes on modern Windows.
+# Camera enumeration now uses MSMF via cv2.VideoCapture.
 
 # Monkey-patch CustomTkinter DropdownMenu for Tk 9.0 compatibility.
 # Tk 9.0 returns "" from Menu.index("end") on an empty menu, causing TclError
@@ -832,7 +832,7 @@ def _add_camera_to_tab(
         on_windows = platform.system() == "Windows"
         if on_windows:
             import ctypes
-            ctypes.windll.ole32.CoInitializeEx(0, 0)  # type: ignore[attr-defined]
+            ctypes.windll.ole32.CoInitializeEx(0, 2)  # type: ignore[attr-defined]  # COINIT_APARTMENTTHREADED for DirectShow
         try:
             indices, names = get_available_cameras()
             _camera_queue.put((indices, names))
@@ -1202,7 +1202,10 @@ def swap_faces_paths() -> None:
 
 def capture_target_from_camera() -> None:
     """Open a live camera preview window with a Capture button."""
-    cap = cv2.VideoCapture(_selected_camera_index)
+    if platform.system() == "Windows":
+        cap = cv2.VideoCapture(_selected_camera_index, cv2.CAP_MSMF)
+    else:
+        cap = cv2.VideoCapture(_selected_camera_index)
     if not cap.isOpened():
         update_status("Failed to open camera.")
         return
@@ -1425,8 +1428,13 @@ def update_preview(frame_number: int = 0) -> None:
         for frame_processor in get_frame_processors_modules(
                 modules.globals.frame_processors
         ):
+            from modules import imread_unicode
+            source_img = imread_unicode(modules.globals.source_path)
+            if source_img is None:
+                update_status("Could not read source image.")
+                return
             temp_frame = frame_processor.process_frame(
-                get_one_face(cv2.imread(modules.globals.source_path)), temp_frame
+                get_one_face(source_img), temp_frame
             )
         image = Image.fromarray(gpu_cvt_color(temp_frame, cv2.COLOR_BGR2RGB))
         image = ImageOps.contain(
