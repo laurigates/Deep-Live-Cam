@@ -203,6 +203,8 @@ def save_switch_states():
         "half_rate_processing": modules.globals.half_rate_processing,
         "keyframe_interval": modules.globals.keyframe_interval,
         "live_max_fps": modules.globals.live_max_fps,
+        "landmark_smoothing": modules.globals.landmark_smoothing,
+        "landmark_smoothing_alpha": modules.globals.landmark_smoothing_alpha,
         "source_path": modules.globals.source_path,
         "target_path": modules.globals.target_path,
         "mappings": MAPPING_LIST.to_dict(),
@@ -240,6 +242,8 @@ def load_switch_states():
         modules.globals.half_rate_processing = switch_states.get("half_rate_processing", False)
         modules.globals.keyframe_interval = switch_states.get("keyframe_interval", 2)
         modules.globals.live_max_fps = switch_states.get("live_max_fps", 30)
+        modules.globals.landmark_smoothing = switch_states.get("landmark_smoothing", False)
+        modules.globals.landmark_smoothing_alpha = switch_states.get("landmark_smoothing_alpha", 0.7)
         # Restore last-used paths; validate existence before accepting.
         saved_target = switch_states.get("target_path")
         if saved_target and os.path.isfile(saved_target):
@@ -470,6 +474,8 @@ def _get_switch_defs():
              _("Output to a virtual camera device for use in Zoom, Meet, etc.")),
             (_("Skip Frames"), "half_rate_processing", False,
              _("Process every other frame for better performance at the cost of smoothness")),
+            (_("Landmark Smoothing"), "landmark_smoothing", False,
+             _("Apply EMA smoothing to face bbox/keypoints to reduce jitter in live mode")),
         ],
     }
 

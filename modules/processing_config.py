@@ -204,6 +204,12 @@ class ProcessingConfig:
     motion_adaptive_cosine_threshold: float = 0.95
     """Min embedding cosine to reuse previous enhanced result"""
 
+    landmark_smoothing: bool = False
+    """Apply EMA smoothing to face bounding boxes and keypoints in live mode"""
+
+    landmark_smoothing_alpha: float = 0.7
+    """EMA weight for the current frame (0.0=full history, 1.0=no smoothing)"""
+
     webcam_preview_running: bool = False
     """Indicates if live webcam preview is active"""
 

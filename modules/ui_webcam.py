@@ -13,7 +13,7 @@ from modules.processing_config_factory import build_config_from_globals
 from modules.gpu_processing import gpu_cvt_color, gpu_flip
 from modules.face_analyser import (
     get_one_face, get_many_faces, set_det_size,
-    detect_faces_for_webcam, faces_are_similar, FaceAnalyser,
+    detect_faces_for_webcam, faces_are_similar, FaceAnalyser, LandmarkSmoother,
 )
 from modules.processors.frame.core import get_frame_processors_modules
 from modules.rife_interpolation import has_native_binding, interpolate_frame_pair, cleanup_rife
@@ -79,7 +79,8 @@ def _capture_thread_func(cap, capture_queue, stop_event):
 
 
 def _detection_thread_func(latest_frame_holder, detection_result, detection_lock, stop_event,
-                            config: Optional[ProcessingConfig] = None):
+                            config: Optional[ProcessingConfig] = None,
+                            smoother: Optional[LandmarkSmoother] = None):
     """Detection thread (producer): continuously reads the most recently
     captured raw frame and runs face detection on it, storing results in
     *detection_result* under *detection_lock*.
@@ -88,6 +89,12 @@ def _detection_thread_func(latest_frame_holder, detection_result, detection_lock
     processing thread so the detection thread always works on the newest frame
     without queuing overhead.  The detection thread never touches Tkinter
     widgets — all UI updates go through ROOT.after() in the display loop.
+
+    When *smoother* is provided and ``modules.globals.landmark_smoothing`` is
+    enabled, EMA smoothing is applied to the detected face bounding boxes and
+    keypoints before the result is stored.  The smoother's ``alpha`` is kept
+    in sync with ``modules.globals.landmark_smoothing_alpha`` on each frame
+    so the user can tune it live without restarting the session.
     """
     if config is None:
         config = build_config_from_globals()
@@ -100,6 +107,22 @@ def _detection_thread_func(latest_frame_holder, detection_result, detection_lock
             continue
 
         result = detect_faces_for_webcam(frame, many_faces=modules.globals.many_faces)
+
+        # EMA landmark smoothing (live mode only; zero cost when disabled)
+        if smoother is not None and modules.globals.landmark_smoothing:
+            smoother.alpha = modules.globals.landmark_smoothing_alpha
+            if result['many_faces']:
+                smoother.smooth(result['many_faces'])
+            elif result['target_face'] is not None:
+                smoothed = smoother.smooth([result['target_face']])
+                result['target_face'] = smoothed[0] if smoothed else result['target_face']
+            else:
+                smoother.reset()
+        elif smoother is not None:
+            # Smoothing was just disabled — clear stale state so the next enable
+            # starts fresh rather than blending against old positions.
+            smoother.reset()
+
         with detection_lock:
             detection_result['target_face'] = result['target_face']
             detection_result['many_faces'] = result['many_faces']
@@ -520,6 +543,11 @@ def create_webcam_preview(camera_index: int, config: Optional[ProcessingConfig] 
     latest_frame_holder = [None]  # one-element list so inner functions can rebind
     detection_result = {'target_face': None, 'many_faces': None}
 
+    # EMA smoother for landmark/bbox jitter reduction (live mode only).
+    # Always created so the detection thread can accept the parameter;
+    # smoothing is only applied when modules.globals.landmark_smoothing is True.
+    landmark_smoother = LandmarkSmoother(alpha=modules.globals.landmark_smoothing_alpha)
+
     # Shared state for the async swap pipeline.
     swap_lock = threading.Lock()
     swap_input = [None]          # single-slot holder for swap requests
@@ -542,7 +570,8 @@ def create_webcam_preview(camera_index: int, config: Optional[ProcessingConfig] 
     # latest raw frame so the processing/swap thread never blocks on it.
     det_thread = threading.Thread(
         target=_detection_thread_func,
-        args=(latest_frame_holder, detection_result, detection_lock, stop_event, config),
+        args=(latest_frame_holder, detection_result, detection_lock, stop_event, config,
+              landmark_smoother),
         daemon=True,
     )
     det_thread.start()

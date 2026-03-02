@@ -71,6 +71,8 @@ def parse_args() -> None:
     program.add_argument('--half-rate', help='enable half-rate face processing with RIFE interpolation for live mode', dest='half_rate_processing', action='store_true', default=False)
     program.add_argument('--keyframe-interval', help='process every Nth frame in half-rate mode (2-10)', dest='keyframe_interval', type=int, default=2, choices=range(2, 11))
     program.add_argument('--live-enhance-size', help='face alignment resolution for enhancement in live mode; smaller values reduce warp/paste cost (default: 256)', dest='live_enhance_size', type=int, default=256, choices=[128, 192, 256, 384, 512])
+    program.add_argument('--landmark-smoothing', help='apply EMA smoothing to face bounding boxes and keypoints in live mode to reduce jitter', dest='landmark_smoothing', action='store_true', default=False)
+    program.add_argument('--landmark-smoothing-alpha', help='EMA alpha for landmark smoothing: weight given to current frame (0.0=full history, 1.0=no smoothing, default: 0.7)', dest='landmark_smoothing_alpha', type=float, default=0.7)
     program.add_argument('--max-memory', help='maximum amount of RAM in GB', dest='max_memory', type=int, default=suggest_max_memory())
     program.add_argument('--execution-provider', help='execution provider', dest='execution_provider', default=['cpu'], choices=suggest_execution_providers(), nargs='+')
     program.add_argument('--execution-threads', help='number of execution threads', dest='execution_threads', type=int, default=suggest_execution_threads())
@@ -112,6 +114,8 @@ def parse_args() -> None:
     modules.globals.half_rate_processing = args.half_rate_processing
     modules.globals.keyframe_interval = args.keyframe_interval
     modules.globals.live_enhance_size = args.live_enhance_size
+    modules.globals.landmark_smoothing = args.landmark_smoothing
+    modules.globals.landmark_smoothing_alpha = max(0.0, min(1.0, args.landmark_smoothing_alpha))
 
     #for ENHANCER tumblers:
     for enhancer_key in ('face_enhancer', 'face_enhancer_gpen256', 'face_enhancer_gpen512', 'face_enhancer_codeformer'):
