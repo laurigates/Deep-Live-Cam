@@ -57,6 +57,25 @@ _GHOST_MODELS: dict = {
     },
 }
 
+# HyperSwap face swap model registry — ONNX models from FaceFusion 3.3.0
+_HYPERSWAP_MODELS: dict = {
+    'hyperswap_256_1a': {
+        'url': 'https://huggingface.co/facefusion/models-3.3.0/resolve/main/hyperswap_1a_256.onnx',
+        'file': 'hyperswap_1a_256.onnx',
+        'size': 256,
+    },
+    'hyperswap_256_1b': {
+        'url': 'https://huggingface.co/facefusion/models-3.3.0/resolve/main/hyperswap_1b_256.onnx',
+        'file': 'hyperswap_1b_256.onnx',
+        'size': 256,
+    },
+    'hyperswap_256_1c': {
+        'url': 'https://huggingface.co/facefusion/models-3.3.0/resolve/main/hyperswap_1c_256.onnx',
+        'file': 'hyperswap_1c_256.onnx',
+        'size': 256,
+    },
+}
+
 
 class GhostSwapper:
     """ONNX-backed face swapper for Ghost v1/v2/v3 models (AI Forever).
@@ -120,6 +139,71 @@ class GhostSwapper:
         bgr_fake = np.clip((fake_rgb * 0.5 + 0.5) * 255.0, 0, 255)[:, :, ::-1]
 
         return bgr_fake, M
+
+
+class HyperSwapper:
+    """ONNX-backed face swapper for HyperSwap models (FaceFusion 3.3.0).
+
+    HyperSwap operates at 256x256 resolution with identical preprocessing
+    to Ghost: mean=0.5, std=0.5, arcface_128 template, same ONNX tensor
+    names (source/target). Uses the L2-normalized ArcFace embedding directly.
+
+    Input tensors (introspected from the ONNX graph at load time):
+      [0] target face crop — [1, 3, 256, 256] float32, range [-1, 1]
+      [1] source ArcFace embedding — [1, 512] float32, L2-normalized
+
+    Output tensor:
+      [0] swapped face — [1, 3, 256, 256] float32, range [-1, 1]
+
+    Exposes a ``.get()`` interface compatible with INSwapper so the existing
+    ``swap_face()`` and ``batch_swap_faces()`` pipeline can use HyperSwap
+    without further modification.
+    """
+
+    def __init__(self, session: onnxruntime.InferenceSession, input_size: int = 256) -> None:
+        self.session = session
+        self.input_size = (input_size, input_size)
+        self._inp_names = [i.name for i in session.get_inputs()]
+        self._out_names = [o.name for o in session.get_outputs()]
+
+    def get(
+        self,
+        img: np.ndarray,
+        target_face: Any,
+        source_face: Any,
+        paste_back: bool = True,
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        """Swap the face in *img* using HyperSwap inference.
+
+        Returns ``(bgr_fake, M)`` regardless of *paste_back* — pasting is
+        handled by the caller via ``_paste_back()``.
+        """
+        from insightface.utils import face_align
+
+        size = self.input_size[0]
+        aimg, M = face_align.norm_crop2(img, target_face.kps, size)
+
+        # Preprocess: BGR -> RGB -> NCHW, normalize to [-1, 1]
+        rgb = aimg[:, :, ::-1].astype(np.float32)
+        blob = (rgb / 127.5) - 1.0
+        blob = blob.transpose(2, 0, 1)[np.newaxis]  # HWC -> NCHW [1, 3, H, W]
+
+        # Source identity: raw L2-normalized ArcFace embedding
+        latent = source_face.normed_embedding.reshape(1, -1).astype(np.float32)
+
+        # ONNX inference — feed by position using introspected tensor names
+        output = self.session.run(
+            self._out_names,
+            {self._inp_names[0]: blob, self._inp_names[1]: latent},
+        )[0]  # [1, 3, size, size]
+
+        # Postprocess: NCHW -> HWC, [-1, 1] -> [0, 255], RGB -> BGR
+        fake_rgb = output[0].transpose(1, 2, 0)
+        bgr_fake = np.clip((fake_rgb * 0.5 + 0.5) * 255.0, 0, 255)[:, :, ::-1]
+
+        return bgr_fake, M
+
+
 # --- START: Added for Interpolation ---
 # Per-thread previous frame for interpolation (avoids cross-thread contamination)
 _THREAD_LOCAL = threading.local()
@@ -161,6 +245,16 @@ def pre_check() -> bool:
         if not os.path.exists(model_path):
             update_status(f"Ghost model not found at {model_path}. Download may have failed.", NAME)
             return False
+    elif selected_model in _HYPERSWAP_MODELS:
+        hs_info = _HYPERSWAP_MODELS[selected_model]
+        model_file = hs_info['file']
+        model_path = os.path.join(download_directory_path, model_file)
+        if not os.path.exists(model_path):
+            update_status(f"Downloading {model_file}...", NAME)
+        conditional_download(download_directory_path, [hs_info['url']])
+        if not os.path.exists(model_path):
+            update_status(f"HyperSwap model not found at {model_path}. Download may have failed.", NAME)
+            return False
     else:
         model_file = "inswapper_128_fp16.onnx"
         model_path = os.path.join(download_directory_path, model_file)
@@ -183,6 +277,8 @@ def pre_start() -> bool:
     selected_model = getattr(modules.globals, 'face_swap_model', 'inswapper')
     if selected_model in _GHOST_MODELS:
         model_path = os.path.join(models_dir, _GHOST_MODELS[selected_model]['file'])
+    elif selected_model in _HYPERSWAP_MODELS:
+        model_path = os.path.join(models_dir, _HYPERSWAP_MODELS[selected_model]['file'])
     else:
         model_path = os.path.join(models_dir, "inswapper_128_fp16.onnx")
 
@@ -204,8 +300,8 @@ def get_face_swapper(providers: list | None = None) -> Any:
 
     *providers* overrides ``modules.globals.execution_providers`` when given,
     enabling tests and callers to inject providers without touching globals.
-    Supports both inswapper_128 (via InsightFace model zoo) and Ghost v1/v2/v3
-    (via direct ONNX Runtime session wrapped in ``GhostSwapper``).
+    Supports inswapper_128 (via InsightFace model zoo), Ghost v1/v2/v3
+    (via ``GhostSwapper``), and HyperSwap 1a/1b/1c (via ``HyperSwapper``).
     """
     global FACE_SWAPPER
 
@@ -229,6 +325,21 @@ def get_face_swapper(providers: list | None = None) -> Any:
                         update_status(f"Ghost face swapper ({selected_model}) loaded successfully.", NAME)
                     except Exception as e:
                         update_status(f"Error loading Ghost model {selected_model}: {e}", NAME)
+                        FACE_SWAPPER = None
+                        return None
+                elif selected_model in _HYPERSWAP_MODELS:
+                    hs_info = _HYPERSWAP_MODELS[selected_model]
+                    model_path = os.path.join(models_dir, hs_info['file'])
+                    update_status(f"Loading HyperSwap face swapper ({selected_model}) from: {model_path}", NAME)
+                    try:
+                        session = onnxruntime.InferenceSession(
+                            model_path,
+                            providers=providers_config,
+                        )
+                        FACE_SWAPPER = HyperSwapper(session, input_size=hs_info['size'])
+                        update_status(f"HyperSwap face swapper ({selected_model}) loaded successfully.", NAME)
+                    except Exception as e:
+                        update_status(f"Error loading HyperSwap model {selected_model}: {e}", NAME)
                         FACE_SWAPPER = None
                         return None
                 else:
@@ -501,8 +612,8 @@ def batch_swap_faces(
     if face_swapper is None:
         return temp_frame
 
-    # Ghost models don't support batched inference — fall back to sequential swap
-    if isinstance(face_swapper, GhostSwapper):
+    # Ghost/HyperSwap models don't support batched inference — fall back to sequential swap
+    if isinstance(face_swapper, (GhostSwapper, HyperSwapper)):
         config = config or build_config_from_globals()
         result = temp_frame.copy()
         for source_face, target_face in zip(source_faces, target_faces):

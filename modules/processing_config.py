@@ -102,7 +102,7 @@ class ProcessingConfig:
     """General toggle for the face swapper processor"""
 
     face_swap_model: str = 'inswapper'
-    """Face swap model variant: 'inswapper' | 'ghost_256_v1' | 'ghost_256_v2' | 'ghost_256_v3'"""
+    """Face swap model variant: 'inswapper' | 'ghost_256_v1' | 'ghost_256_v2' | 'ghost_256_v3' | 'hyperswap_256_1a' | 'hyperswap_256_1b' | 'hyperswap_256_1c'"""
 
     opacity: float = 1.0
     """Blend factor for swapped face (0.0 = original, 1.0 = fully swapped)"""
