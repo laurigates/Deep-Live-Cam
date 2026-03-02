@@ -1,15 +1,22 @@
 # Deep-Live-Cam justfile — run `just` or `just help` to see recipes
 
-set positional-arguments
-set windows-shell := ["sh", "-cu"]
+set windows-shell := ["cmd.exe", "/C"]
 
 models_dir := "models"
 default_provider := if os() == "macos" { "coreml" } else if os() == "windows" { "cuda" } else { "cuda" }
 
 # Tcl/Tk library path for standalone Python builds (needed for tkinter)
 # Use python3 on Unix, python on Windows; also search 'tcl' subdir (Windows installer layout)
-export TCL_LIBRARY := `(python3 -c "import os, sys, glob; hits=glob.glob(os.path.join(sys.base_prefix,'lib','tcl*','init.tcl'))+glob.glob(os.path.join(sys.base_prefix,'tcl','tcl*','init.tcl')); print(os.path.dirname(hits[0]) if hits else '')" 2>/dev/null || python -c "import os, sys, glob; hits=glob.glob(os.path.join(sys.base_prefix,'lib','tcl*','init.tcl'))+glob.glob(os.path.join(sys.base_prefix,'tcl','tcl*','init.tcl')); print(os.path.dirname(hits[0]) if hits else '')" 2>/dev/null || echo "")`
-export TK_LIBRARY := `(python3 -c "import os, sys, glob; hits=glob.glob(os.path.join(sys.base_prefix,'lib','tk*'))+glob.glob(os.path.join(sys.base_prefix,'tcl','tk*')); print(hits[0] if hits else '')" 2>/dev/null || python -c "import os, sys, glob; hits=glob.glob(os.path.join(sys.base_prefix,'lib','tk*'))+glob.glob(os.path.join(sys.base_prefix,'tcl','tk*')); print(hits[0] if hits else '')" 2>/dev/null || echo "")`
+export TCL_LIBRARY := if os() == "windows" {
+    `python scripts/find_tcl_tk.py tcl`
+} else {
+    `(python3 scripts/find_tcl_tk.py tcl 2>/dev/null || python scripts/find_tcl_tk.py tcl 2>/dev/null || echo "")`
+}
+export TK_LIBRARY := if os() == "windows" {
+    `python scripts/find_tcl_tk.py tk`
+} else {
+    `(python3 scripts/find_tcl_tk.py tk 2>/dev/null || python scripts/find_tcl_tk.py tk 2>/dev/null || echo "")`
+}
 
 # Show available recipes
 default:
@@ -27,6 +34,8 @@ setup: install models
 [group: "setup"]
 install:
     uv sync
+    # On macOS ARM, rebuild numpy from source to link against Apple Accelerate BLAS
+    {{ if os() == "macos" { "uv pip install --no-binary numpy numpy" } else { "" } }}
 
 # Download required models
 [group: "setup"]

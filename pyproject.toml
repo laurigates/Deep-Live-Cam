@@ -51,7 +51,6 @@ explicit = true
 
 [tool.uv]
 python-preference = "system"
-no-binary-package = ["numpy"]
 required-environments = [
     "sys_platform == 'win32' and platform_machine == 'AMD64'",
     "sys_platform == 'darwin' and platform_machine == 'arm64'",

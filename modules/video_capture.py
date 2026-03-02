@@ -4,10 +4,6 @@ from typing import Optional, Tuple, Callable
 import platform
 import threading
 
-# Only import Windows-specific library if on Windows
-if platform.system() == "Windows":
-    from pygrabber.dshow_graph import FilterGraph
-
 
 class VideoCapturer:
     def __init__(self, device_index: int):
@@ -18,36 +14,19 @@ class VideoCapturer:
         self.is_running = False
         self.cap = None
 
-        # Initialize Windows-specific components if on Windows
-        if platform.system() == "Windows":
-            self.graph = FilterGraph()
-            # Verify device exists
-            devices = self.graph.get_input_devices()
-            if self.device_index >= len(devices):
-                raise ValueError(
-                    f"Invalid device index {device_index}. Available devices: {len(devices)}"
-                )
-
     def start(self, width: int = 960, height: int = 540, fps: int = 60) -> bool:
         """Initialize and start video capture"""
         try:
             if platform.system() == "Windows":
-                # Windows-specific capture methods
-                capture_methods = [
-                    (self.device_index, cv2.CAP_DSHOW),  # Try DirectShow first
-                    (self.device_index, cv2.CAP_ANY),  # Then try default backend
-                    (-1, cv2.CAP_ANY),  # Try -1 as fallback
-                    (0, cv2.CAP_ANY),  # Finally try 0 without specific backend
-                ]
+                # Use MSMF (Media Foundation) with shared camera access so the
+                # camera can be used by other apps simultaneously.
+                self.cap = cv2.VideoCapture(self.device_index, cv2.CAP_MSMF)
+                self.cap.set(cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, 5000)
 
-                for dev_id, backend in capture_methods:
-                    try:
-                        self.cap = cv2.VideoCapture(dev_id, backend)
-                        if self.cap.isOpened():
-                            break
-                        self.cap.release()
-                    except Exception:
-                        continue
+                if not self.cap.isOpened():
+                    self.cap.release()
+                    # Fallback: try default backend
+                    self.cap = cv2.VideoCapture(self.device_index, cv2.CAP_ANY)
             else:
                 # Unix-like systems (Linux/Mac) capture method
                 self.cap = cv2.VideoCapture(self.device_index)
