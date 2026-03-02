@@ -46,6 +46,7 @@ def build_config_from_globals() -> ProcessingConfig:
         use_png_frames=modules.globals.use_png_frames,
         # Face Swapper Options
         face_swapper_enabled=modules.globals.face_swapper_enabled,
+        face_swap_model=getattr(modules.globals, 'face_swap_model', 'inswapper'),
         opacity=max(0.0, min(1.0, getattr(modules.globals, 'opacity', 1.0))),
         sharpness=modules.globals.sharpness,
         prepaste_upscale=modules.globals.prepaste_upscale,
@@ -169,6 +170,7 @@ def build_config_from_cli_args(args) -> ProcessingConfig:
         half_rate_processing=args.half_rate_processing,
         keyframe_interval=args.keyframe_interval,
         live_enhance_size=args.live_enhance_size,
+        face_swap_model=getattr(args, 'face_swap_model', 'inswapper'),
         fp_ui=fp_ui,
         headless=bool(source_path or target_path or args.output_path),
     )

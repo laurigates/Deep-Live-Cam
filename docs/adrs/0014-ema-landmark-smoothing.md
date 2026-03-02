@@ -1,4 +1,4 @@
-# ADR 0012: EMA Smoothing for Face Landmarks and Bounding Boxes
+# ADR 0014: EMA Smoothing for Face Landmarks and Bounding Boxes
 
 ## Status
 

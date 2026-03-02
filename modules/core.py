@@ -73,6 +73,7 @@ def parse_args() -> None:
     program.add_argument('--live-enhance-size', help='face alignment resolution for enhancement in live mode; smaller values reduce warp/paste cost (default: 256)', dest='live_enhance_size', type=int, default=256, choices=[128, 192, 256, 384, 512])
     program.add_argument('--landmark-smoothing', help='apply EMA smoothing to face bounding boxes and keypoints in live mode to reduce jitter', dest='landmark_smoothing', action='store_true', default=False)
     program.add_argument('--landmark-smoothing-alpha', help='EMA alpha for landmark smoothing: weight given to current frame (0.0=full history, 1.0=no smoothing, default: 0.7)', dest='landmark_smoothing_alpha', type=float, default=0.7)
+    program.add_argument('--face-swap-model', help='face swap model variant to use (default: inswapper)', dest='face_swap_model', default='inswapper', choices=['inswapper', 'ghost_256_v1', 'ghost_256_v2', 'ghost_256_v3'])
     program.add_argument('--max-memory', help='maximum amount of RAM in GB', dest='max_memory', type=int, default=suggest_max_memory())
     program.add_argument('--execution-provider', help='execution provider', dest='execution_provider', default=['cpu'], choices=suggest_execution_providers(), nargs='+')
     program.add_argument('--execution-threads', help='number of execution threads', dest='execution_threads', type=int, default=suggest_execution_threads())
@@ -116,6 +117,7 @@ def parse_args() -> None:
     modules.globals.live_enhance_size = args.live_enhance_size
     modules.globals.landmark_smoothing = args.landmark_smoothing
     modules.globals.landmark_smoothing_alpha = max(0.0, min(1.0, args.landmark_smoothing_alpha))
+    modules.globals.face_swap_model = args.face_swap_model
 
     #for ENHANCER tumblers:
     for enhancer_key in ('face_enhancer', 'face_enhancer_gpen256', 'face_enhancer_gpen512', 'face_enhancer_codeformer'):
@@ -170,18 +172,22 @@ def suggest_execution_providers() -> List[str]:
 def suggest_execution_threads() -> int:
     """Suggest optimal thread count based on hardware and execution provider."""
     import os
-    
+
     # Get CPU count
     cpu_count = os.cpu_count() or 4
-    
+
     if 'DmlExecutionProvider' in modules.globals.execution_providers:
         return 1
     if 'ROCMExecutionProvider' in modules.globals.execution_providers:
         return 1
+    if 'TensorrtExecutionProvider' in modules.globals.execution_providers:
+        # TensorRT handles GPU parallelism internally; a single CPU thread
+        # avoids contention on the TRT execution context.
+        return 1
     if 'CUDAExecutionProvider' in modules.globals.execution_providers:
         # For CUDA, use more threads for parallel frame processing
         return min(cpu_count, 16)
-    
+
     # For CPU execution, use most cores but leave some for system
     return max(4, min(cpu_count - 2, 16))
 
@@ -212,7 +218,10 @@ def limit_resources(config: Optional[ProcessingConfig] = None) -> None:
 def release_resources(config: Optional[ProcessingConfig] = None) -> None:
     if config is None:
         config = build_config_from_globals()
-    if 'CUDAExecutionProvider' in config.execution_providers and _ensure_torch():
+    if (
+        'CUDAExecutionProvider' in config.execution_providers
+        or 'TensorrtExecutionProvider' in config.execution_providers
+    ) and _ensure_torch():
         torch.cuda.empty_cache()
 
 
@@ -225,6 +234,14 @@ def pre_check() -> bool:
         return False
     # Check NumPy BLAS configuration on Apple Silicon (informational, not fatal)
     check_apple_silicon_blas()
+    # Warn about TensorRT first-run engine compilation delay
+    if 'TensorrtExecutionProvider' in modules.globals.execution_providers:
+        from modules.tensorrt_cache import has_cached_engines
+        if not has_cached_engines():
+            update_status(
+                'TensorRT selected: first-run engine compilation may take 30-120s per model. '
+                'Engines will be cached in models/trt_cache/ for instant startup on future runs.'
+            )
     return True
 
 
