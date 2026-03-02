@@ -22,6 +22,8 @@ from modules.utilities import (
 )
 from modules.gettext import LanguageManager
 from modules.ui_tooltip import ToolTip
+from modules.mapping_list import MAPPING_LIST
+from modules.ui_mapping_list import MappingListWidget
 import platform
 from modules.camera import get_available_cameras
 
@@ -144,6 +146,7 @@ _embedded_label = None          # CTkLabel inside embedded frame
 _popout_label = None            # CTkLabel inside PREVIEW CTkToplevel
 _preview_embedded = True        # True = embedded, False = pop-out window
 _embedded_preview_frame = None  # the collapsible frame widget
+_mapping_widget = None          # MappingListWidget instance
 
 
 def init(start: Callable[[], None], destroy: Callable[[], None], lang: str) -> ctk.CTk:
@@ -194,6 +197,7 @@ def save_switch_states():
         "live_max_fps": modules.globals.live_max_fps,
         "source_path": modules.globals.source_path,
         "target_path": modules.globals.target_path,
+        "mappings": MAPPING_LIST.to_dict(),
     }
     with open(_state_file_path(), "w") as f:
         json.dump(switch_states, f)
@@ -228,12 +232,22 @@ def load_switch_states():
         modules.globals.keyframe_interval = switch_states.get("keyframe_interval", 2)
         modules.globals.live_max_fps = switch_states.get("live_max_fps", 30)
         # Restore last-used paths; validate existence before accepting.
-        saved_source = switch_states.get("source_path")
-        if saved_source and os.path.isfile(saved_source):
-            modules.globals.source_path = saved_source
         saved_target = switch_states.get("target_path")
         if saved_target and os.path.isfile(saved_target):
             modules.globals.target_path = saved_target
+        # Restore mapping list from saved state, or migrate from legacy source_path
+        saved_mappings = switch_states.get("mappings")
+        if saved_mappings is not None:
+            MAPPING_LIST.restore_from_dict(saved_mappings)
+            modules.globals.source_path = MAPPING_LIST.effective_source_path()
+            modules.globals.map_faces = MAPPING_LIST.effective_map_faces()
+        else:
+            # Migration: old state file without "mappings" key
+            saved_source = switch_states.get("source_path")
+            if saved_source and os.path.isfile(saved_source):
+                MAPPING_LIST.restore_from_source_path(saved_source)
+                modules.globals.source_path = saved_source
+            modules.globals.map_faces = switch_states.get("map_faces", False)
         # Rebuild frame_processors from restored fp_ui so toggled enhancers
         # are included even if they weren't in the CLI --frame-processor list.
         _sync_enhancer_frame_processors()
@@ -242,12 +256,34 @@ def load_switch_states():
 
 
 def _restore_recent_paths() -> None:
-    """Populate image labels from saved paths after labels have been created."""
+    """Populate image labels from saved paths after labels have been created.
+
+    Source face thumbnails are now handled by MappingListWidget (it reads
+    source_cv2 from MappingEntry).  For restored paths without cv2 data,
+    we reload the images and detect faces so thumbnails render correctly.
+    """
     global RECENT_DIRECTORY_SOURCE, RECENT_DIRECTORY_TARGET
-    if modules.globals.source_path and is_image(modules.globals.source_path):
-        RECENT_DIRECTORY_SOURCE = os.path.dirname(modules.globals.source_path)
-        image = render_image_preview(modules.globals.source_path, SIDEBAR_THUMB_SIZE)
-        source_label.configure(image=image)
+
+    # Reload source face data for restored mappings (paths only, no cv2/face)
+    for entry in MAPPING_LIST.get_entries():
+        if entry.source_path and is_image(entry.source_path) and entry.source_face is None:
+            img = cv2.imread(entry.source_path)
+            if img is not None:
+                face = get_one_face(img)
+                if face is not None:
+                    x_min, y_min, x_max, y_max = face["bbox"]
+                    cropped = img[int(y_min):int(y_max), int(x_min):int(x_max)]
+                    MAPPING_LIST.set_source(entry.id, entry.source_path, cropped, face)
+            RECENT_DIRECTORY_SOURCE = os.path.dirname(entry.source_path)
+        if entry.pin_path and is_image(entry.pin_path) and entry.pin_face is None:
+            img = cv2.imread(entry.pin_path)
+            if img is not None:
+                face = get_one_face(img)
+                if face is not None:
+                    x_min, y_min, x_max, y_max = face["bbox"]
+                    cropped = img[int(y_min):int(y_max), int(x_min):int(x_max)]
+                    MAPPING_LIST.set_pin(entry.id, entry.pin_path, cropped, face)
+
     if modules.globals.target_path:
         if is_image(modules.globals.target_path):
             RECENT_DIRECTORY_TARGET = os.path.dirname(modules.globals.target_path)
@@ -283,8 +319,17 @@ def _setup_window(destroy: Callable) -> ctk.CTk:
     return root
 
 
+def _on_mapping_change() -> None:
+    """Observer callback: sync MappingList state to globals and FaceMapStore."""
+    from modules.face_map_store import STORE as _MAP_STORE
+    MAPPING_LIST.sync_to_store(_MAP_STORE)
+    modules.globals.source_path = MAPPING_LIST.effective_source_path()
+    modules.globals.map_faces = MAPPING_LIST.effective_map_faces()
+    save_switch_states()
+
+
 def _add_top_frame(root: ctk.CTk) -> None:
-    global source_label, target_label
+    global target_label, _mapping_widget
 
     top_frame = ctk.CTkFrame(root)
     top_frame.grid(row=0, column=0, sticky="ew", padx=5, pady=(10, 5))
@@ -292,20 +337,15 @@ def _add_top_frame(root: ctk.CTk) -> None:
     top_frame.columnconfigure(1, weight=0)
     top_frame.columnconfigure(2, weight=1)
 
-    # Source column
+    # Source column — inline mapping list replaces the old single source selector
     source_frame = ctk.CTkFrame(top_frame, fg_color="transparent")
     source_frame.grid(row=0, column=0, sticky="nsew", padx=3, pady=5)
     source_frame.columnconfigure(0, weight=1)
 
-    source_label = ctk.CTkLabel(source_frame, text=None, width=120, height=120)
-    source_label.grid(row=0, column=0, pady=(5, 5))
-
-    select_face_button = ctk.CTkButton(
-        source_frame, text=_("Select a face"), cursor="hand2",
-        command=lambda: select_source_path(),
+    _mapping_widget = MappingListWidget(
+        source_frame, MAPPING_LIST, on_change_callback=_on_mapping_change,
     )
-    select_face_button.grid(row=1, column=0, pady=(0, 5), sticky="ew", padx=5)
-    ToolTip(select_face_button, _("Choose the source face image to swap onto the target"))
+    MAPPING_LIST.on_change(_on_mapping_change)
 
     # Swap button
     swap_faces_button = ctk.CTkButton(
@@ -382,8 +422,6 @@ def _get_switch_defs():
              _("Display the mouth mask boundary for debugging")),
             (_("Swap All Faces"), "many_faces", False,
              _("Swap every detected face, not just the primary one")),
-            (_("Map Faces"), "map_faces", False,
-             _("Manually assign which source face maps to which target face")),
             (_("Seamless Blend"), "poisson_blend", False,
              _("Blend face edges smoothly into the target using Poisson blending")),
         ],
@@ -439,12 +477,6 @@ def _create_switch(
         command = lambda: (
             update_tumbler(key, value_var.get()),
             save_switch_states(),
-        )
-    elif attr == "map_faces":
-        command = lambda: (
-            setattr(modules.globals, attr, value_var.get()),
-            save_switch_states(),
-            close_mapper_window() if not value_var.get() else None,
         )
     else:
         command = lambda: (
@@ -942,6 +974,11 @@ def update_tumbler(var: str, value: bool) -> None:
 
 
 def select_source_path() -> None:
+    """Open file dialog and set source face for the first mapping entry.
+
+    Delegates to MappingListWidget's select handler for the first entry,
+    keeping backward compatibility with modules.globals.source_path.
+    """
     global RECENT_DIRECTORY_SOURCE, img_ft, vid_ft
 
     PREVIEW.withdraw()
@@ -951,14 +988,23 @@ def select_source_path() -> None:
         filetypes=[img_ft],
     )
     if is_image(source_path):
-        modules.globals.source_path = source_path
-        RECENT_DIRECTORY_SOURCE = os.path.dirname(modules.globals.source_path)
-        image = render_image_preview(modules.globals.source_path, SIDEBAR_THUMB_SIZE)
-        source_label.configure(image=image)
-        save_switch_states()
+        cv2_img = cv2.imread(source_path)
+        face = get_one_face(cv2_img)
+        if face is not None:
+            x_min, y_min, x_max, y_max = face["bbox"]
+            cropped = cv2_img[int(y_min):int(y_max), int(x_min):int(x_max)]
+            entries = MAPPING_LIST.get_entries()
+            entry_id = entries[0].id if entries else 0
+            MAPPING_LIST.set_source(entry_id, source_path, cropped, face)
+            RECENT_DIRECTORY_SOURCE = os.path.dirname(source_path)
     else:
+        entries = MAPPING_LIST.get_entries()
+        if entries:
+            entry = entries[0]
+            entry.source_path = None
+            entry.source_face = None
+            entry.source_cv2 = None
         modules.globals.source_path = None
-        source_label.configure(image=None)
 
 
 def swap_faces_paths() -> None:
@@ -970,16 +1016,27 @@ def swap_faces_paths() -> None:
     if not is_image(source_path) or not is_image(target_path):
         return
 
-    modules.globals.source_path = target_path
-    modules.globals.target_path = source_path
+    # Swap: old target becomes new source (first mapping), old source becomes new target
+    new_source_path = target_path
+    new_target_path = source_path
 
-    RECENT_DIRECTORY_SOURCE = os.path.dirname(modules.globals.source_path)
-    RECENT_DIRECTORY_TARGET = os.path.dirname(modules.globals.target_path)
+    # Update target global
+    modules.globals.target_path = new_target_path
+    RECENT_DIRECTORY_TARGET = os.path.dirname(new_target_path)
+
+    # Update source via MAPPING_LIST (triggers observer → syncs globals)
+    cv2_img = cv2.imread(new_source_path)
+    if cv2_img is not None:
+        face = get_one_face(cv2_img)
+        if face is not None:
+            x_min, y_min, x_max, y_max = face["bbox"]
+            cropped = cv2_img[int(y_min):int(y_max), int(x_min):int(x_max)]
+            entries = MAPPING_LIST.get_entries()
+            entry_id = entries[0].id if entries else 0
+            MAPPING_LIST.set_source(entry_id, new_source_path, cropped, face)
+            RECENT_DIRECTORY_SOURCE = os.path.dirname(new_source_path)
 
     PREVIEW.withdraw()
-
-    source_image = render_image_preview(modules.globals.source_path, SIDEBAR_THUMB_SIZE)
-    source_label.configure(image=source_image)
 
     target_image = render_image_preview(modules.globals.target_path, SIDEBAR_THUMB_SIZE)
     target_label.configure(image=target_image)

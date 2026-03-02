@@ -111,7 +111,7 @@ def _swap_process_fn(inp):
     processor = inp['processor']
 
     if inp['map_faces']:
-        frame = processor.process_frame(None, frame)
+        frame = processor.process_frame_v2(frame)
     else:
         source_face = inp['source_face']
         many_faces_list = inp['many_faces']
@@ -664,7 +664,8 @@ def create_webcam_preview(camera_index: int, config: Optional[ProcessingConfig] 
 
 def webcam_preview(root: ctk.CTk, camera_index: int, config: Optional[ProcessingConfig] = None):
     from modules.ui import POPUP_LIVE, update_status
-    from modules.ui_mapper import create_source_target_popup_for_webcam
+    from modules.mapping_list import MAPPING_LIST
+    from modules.face_map_store import STORE as _MAP_STORE
 
     if config is None:
         config = build_config_from_globals()
@@ -674,14 +675,19 @@ def webcam_preview(root: ctk.CTk, camera_index: int, config: Optional[Processing
         POPUP_LIVE.focus()
         return
 
-    if not config.map_faces:
-        if config.source_path is None:
+    effective_map = MAPPING_LIST.effective_map_faces()
+
+    if not effective_map:
+        # Single source, no pins — simple face swap mode
+        if MAPPING_LIST.source_count() == 0:
             update_status("Please select a source image first")
             return
+        # Sync mapping list to store for consistency
+        MAPPING_LIST.sync_to_store(_MAP_STORE)
         create_webcam_preview(camera_index, config=config)
     else:
-        from modules.face_map_store import STORE as _MAP_STORE
-        _MAP_STORE.clear()
-        create_source_target_popup_for_webcam(
-            root, _MAP_STORE.get_entries(), camera_index
-        )
+        # Multiple sources or pins — map faces mode
+        MAPPING_LIST.sync_to_store(_MAP_STORE)
+        if _MAP_STORE.has_valid_map():
+            _MAP_STORE.simplify()
+        create_webcam_preview(camera_index, config=config)
