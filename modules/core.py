@@ -74,7 +74,7 @@ def parse_args() -> None:
     program.add_argument('--live-enhance-size', help='face alignment resolution for enhancement in live mode; smaller values reduce warp/paste cost (default: 256)', dest='live_enhance_size', type=int, default=256, choices=[128, 192, 256, 384, 512])
     program.add_argument('--landmark-smoothing', help='apply EMA smoothing to face bounding boxes and keypoints in live mode to reduce jitter', dest='landmark_smoothing', action='store_true', default=False)
     program.add_argument('--landmark-smoothing-alpha', help='EMA alpha for landmark smoothing: weight given to current frame (0.0=full history, 1.0=no smoothing, default: 0.7)', dest='landmark_smoothing_alpha', type=float, default=0.7)
-    program.add_argument('--face-swap-model', help='face swap model variant to use (default: inswapper)', dest='face_swap_model', default='inswapper', choices=['inswapper', 'ghost_256_v1', 'ghost_256_v2', 'ghost_256_v3'])
+    program.add_argument('--face-swap-model', help='face swap model variant to use (default: inswapper)', dest='face_swap_model', default='inswapper', choices=['inswapper', 'ghost_256_v1', 'ghost_256_v2', 'ghost_256_v3', 'hyperswap_256_1a', 'hyperswap_256_1b', 'hyperswap_256_1c'])
     program.add_argument('--max-memory', help='maximum amount of RAM in GB', dest='max_memory', type=int, default=suggest_max_memory())
     program.add_argument('--coreml-compute-units', help='CoreML compute units for Apple Silicon ANE routing (ALL=ANE+GPU+CPU, CPUAndGPU=GPU+CPU, CPUOnly=CPU)', dest='coreml_compute_units', default='ALL', choices=['ALL', 'CPUAndGPU', 'CPUOnly'])
     program.add_argument('--execution-provider', help='execution provider', dest='execution_provider', default=['cpu'], choices=suggest_execution_providers(), nargs='+')

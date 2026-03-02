@@ -35,13 +35,23 @@ def create_onnx_session(model_path: str) -> onnxruntime.InferenceSession:
     return session
 
 
+_ONNX_TYPE_TO_NP = {
+    "tensor(float)": np.float32,
+    "tensor(float16)": np.float16,
+    "tensor(double)": np.float64,
+    "tensor(int32)": np.int32,
+    "tensor(int64)": np.int64,
+    "tensor(uint8)": np.uint8,
+}
+
+
 def warmup_session(session: onnxruntime.InferenceSession) -> None:
     """Run a dummy inference pass to trigger JIT / CoreML compile caching."""
     try:
         input_feed = {
             inp.name: np.zeros(
                 [d if isinstance(d, int) and d > 0 else 1 for d in inp.shape],
-                dtype=np.float32,
+                dtype=_ONNX_TYPE_TO_NP.get(inp.type, np.float32),
             )
             for inp in session.get_inputs()
         }
