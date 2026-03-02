@@ -158,6 +158,7 @@ def build_config_from_cli_args(args) -> ProcessingConfig:
         many_faces=args.many_faces,
         mouth_mask=args.mouth_mask,
         occlusion_mask=getattr(args, 'occlusion_mask', False),
+        color_correction_mode=getattr(args, 'color_correction_mode', 'none'),
         nsfw_filter=args.nsfw_filter,
         map_faces=args.map_faces,
         video_encoder=args.video_encoder,
