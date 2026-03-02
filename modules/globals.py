@@ -107,4 +107,8 @@ motion_adaptive_enhancement: bool = False    # Skip enhancement when face hasn't
 motion_adaptive_iou_threshold: float = 0.9   # Min bbox IoU to reuse previous enhanced result
 motion_adaptive_cosine_threshold: float = 0.95  # Min embedding cosine to reuse previous enhanced result
 
+# --- Landmark Smoothing (EMA) ---
+landmark_smoothing: bool = False             # Enable EMA smoothing of face landmarks/bbox in live mode
+landmark_smoothing_alpha: float = 0.7        # EMA weight for current frame (higher = more responsive)
+
 # --- END OF FILE globals.py ---

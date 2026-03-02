@@ -13,7 +13,7 @@ from modules.processing_config_factory import build_config_from_globals
 from modules.gpu_processing import gpu_cvt_color, gpu_flip
 from modules.face_analyser import (
     get_one_face, get_many_faces, set_det_size,
-    detect_faces_for_webcam, faces_are_similar, FaceAnalyser,
+    detect_faces_for_webcam, faces_are_similar, FaceAnalyser, LandmarkSmoother,
 )
 from modules.processors.frame.core import get_frame_processors_modules
 from modules.rife_interpolation import has_native_binding, interpolate_frame_pair, cleanup_rife
@@ -79,7 +79,8 @@ def _capture_thread_func(cap, capture_queue, stop_event):
 
 
 def _detection_thread_func(latest_frame_holder, detection_result, detection_lock, stop_event,
-                            config: Optional[ProcessingConfig] = None):
+                            config: Optional[ProcessingConfig] = None,
+                            smoother: Optional[LandmarkSmoother] = None):
     """Detection thread (producer): continuously reads the most recently
     captured raw frame and runs face detection on it, storing results in
     *detection_result* under *detection_lock*.
@@ -88,6 +89,9 @@ def _detection_thread_func(latest_frame_holder, detection_result, detection_lock
     processing thread so the detection thread always works on the newest frame
     without queuing overhead.  The detection thread never touches Tkinter
     widgets — all UI updates go through ROOT.after() in the display loop.
+
+    When *smoother* is provided, EMA smoothing is applied to detected face
+    landmarks and bounding boxes before results are stored.
     """
     if config is None:
         config = build_config_from_globals()
@@ -100,6 +104,12 @@ def _detection_thread_func(latest_frame_holder, detection_result, detection_lock
             continue
 
         result = detect_faces_for_webcam(frame, many_faces=modules.globals.many_faces)
+
+        if smoother is not None and modules.globals.landmark_smoothing:
+            smoother.smooth(result)
+        elif smoother is not None:
+            smoother.reset()
+
         with detection_lock:
             detection_result['target_face'] = result['target_face']
             detection_result['many_faces'] = result['many_faces']
@@ -479,6 +489,10 @@ def create_webcam_preview(camera_index: int, config: Optional[ProcessingConfig] 
 
     set_det_size(FaceAnalyser.LIVE_DET_SIZE)
 
+    # Create landmark smoother for this session (reset on session end)
+    alpha = max(0.01, min(1.0, modules.globals.landmark_smoothing_alpha))
+    landmark_smoother = LandmarkSmoother(alpha=alpha)
+
     cap = VideoCapturer(camera_index)
     if not cap.start(PREVIEW_DEFAULT_WIDTH, PREVIEW_DEFAULT_HEIGHT, 60):
         set_det_size(FaceAnalyser.DEFAULT_DET_SIZE)
@@ -542,7 +556,8 @@ def create_webcam_preview(camera_index: int, config: Optional[ProcessingConfig] 
     # latest raw frame so the processing/swap thread never blocks on it.
     det_thread = threading.Thread(
         target=_detection_thread_func,
-        args=(latest_frame_holder, detection_result, detection_lock, stop_event, config),
+        args=(latest_frame_holder, detection_result, detection_lock, stop_event, config,
+              landmark_smoother),
         daemon=True,
     )
     det_thread.start()
@@ -595,6 +610,7 @@ def create_webcam_preview(camera_index: int, config: Optional[ProcessingConfig] 
             proc_thread.join(timeout=2.0)
             cap.release()
             virtual_cam.stop()
+            landmark_smoother.reset()
             set_det_size(FaceAnalyser.DEFAULT_DET_SIZE)
             _session_ready.set()
 

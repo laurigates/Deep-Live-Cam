@@ -378,6 +378,130 @@ def default_target_face() -> None:
         }
 
 
+class LandmarkSmoother:
+    """Per-face EMA smoother for bounding boxes and landmark keypoints.
+
+    Uses embedding cosine similarity to match faces across frames so that the
+    correct smoothing state is applied even when multiple people are present or
+    face count changes between frames.
+
+    Typical usage in the detection thread::
+
+        smoother = LandmarkSmoother(alpha=0.7)
+        # After each detect_faces_for_webcam call:
+        smoother.smooth(result)
+
+    The ``result`` dict (from :func:`detect_faces_for_webcam`) is modified
+    in-place — ``target_face`` and each entry in ``many_faces`` have their
+    ``.bbox`` and ``.kps`` attributes updated with the smoothed values.
+
+    Call :meth:`reset` when the session ends or smoothing is disabled.
+    """
+
+    IDENTITY_COSINE_THRESHOLD: float = 0.7
+    """Minimum cosine similarity to consider a face the same identity."""
+
+    def __init__(self, alpha: float = 0.7) -> None:
+        if not 0.0 < alpha <= 1.0:
+            raise ValueError(f"alpha must be in (0, 1], got {alpha}")
+        self._alpha = alpha
+        # Per-identity state: list of dicts with 'embedding', 'bbox', 'kps'
+        self._states: list = []
+
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
+
+    @property
+    def alpha(self) -> float:
+        return self._alpha
+
+    def reset(self) -> None:
+        """Clear all accumulated smoothing state."""
+        self._states = []
+
+    def smooth(self, detection_result: dict) -> None:
+        """Apply EMA smoothing to all faces in *detection_result* in-place.
+
+        *detection_result* must be the dict returned by
+        :func:`detect_faces_for_webcam`, containing ``target_face`` (single
+        face or ``None``) and ``many_faces`` (list or ``None``).
+
+        When no faces are detected the smoothing state is cleared so the
+        next detected face starts fresh.
+        """
+        faces = self._collect_faces(detection_result)
+        if not faces:
+            self.reset()
+            return
+        for face in faces:
+            self._smooth_face(face)
+
+    # ------------------------------------------------------------------
+    # Private helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _collect_faces(detection_result: dict) -> list:
+        faces = []
+        target = detection_result.get('target_face')
+        if target is not None:
+            faces.append(target)
+        many = detection_result.get('many_faces')
+        if many:
+            faces.extend(many)
+        return faces
+
+    def _find_matching_state(self, face) -> Optional[dict]:
+        """Return the saved state whose embedding best matches *face*.
+
+        Returns ``None`` when no saved state reaches the identity threshold
+        or when the face has no embedding.
+        """
+        if not hasattr(face, 'normed_embedding') or face.normed_embedding is None:
+            return None
+        best_state = None
+        best_score = self.IDENTITY_COSINE_THRESHOLD
+        for state in self._states:
+            score = float(np.dot(face.normed_embedding, state['embedding']))
+            if score > best_score:
+                best_score = score
+                best_state = state
+        return best_state
+
+    def _smooth_face(self, face) -> None:
+        """Apply EMA to *face* and update the per-identity state."""
+        state = self._find_matching_state(face)
+        alpha = self._alpha
+
+        if state is None:
+            # No matching history — create new state from current detection.
+            new_state: dict = {}
+            if hasattr(face, 'normed_embedding') and face.normed_embedding is not None:
+                new_state['embedding'] = face.normed_embedding.copy()
+            if hasattr(face, 'bbox') and face.bbox is not None:
+                new_state['bbox'] = face.bbox.copy().astype(np.float32)
+            if hasattr(face, 'kps') and face.kps is not None:
+                new_state['kps'] = face.kps.copy().astype(np.float32)
+            self._states.append(new_state)
+            return
+
+        # Apply EMA: smoothed = alpha * current + (1-alpha) * prev
+        if hasattr(face, 'bbox') and face.bbox is not None and 'bbox' in state:
+            smoothed_bbox = alpha * face.bbox.astype(np.float32) + (1 - alpha) * state['bbox']
+            state['bbox'] = smoothed_bbox
+            face.bbox = smoothed_bbox
+
+        if hasattr(face, 'kps') and face.kps is not None and 'kps' in state:
+            smoothed_kps = alpha * face.kps.astype(np.float32) + (1 - alpha) * state['kps']
+            state['kps'] = smoothed_kps
+            face.kps = smoothed_kps
+
+        # Update embedding reference with current detection for drift tracking
+        if hasattr(face, 'normed_embedding') and face.normed_embedding is not None:
+            state['embedding'] = face.normed_embedding.copy()
+
+
 def compute_bbox_iou(bbox1: np.ndarray, bbox2: np.ndarray) -> float:
     """Compute IoU between two bounding boxes in [x1, y1, x2, y2] format."""
     x1 = max(float(bbox1[0]), float(bbox2[0]))
