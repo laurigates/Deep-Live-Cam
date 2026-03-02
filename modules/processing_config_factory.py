@@ -50,6 +50,7 @@ def build_config_from_globals() -> ProcessingConfig:
         sharpness=modules.globals.sharpness,
         prepaste_upscale=modules.globals.prepaste_upscale,
         color_correction=modules.globals.color_correction,
+        color_correction_mode=modules.globals.color_correction_mode,
         poisson_blend=modules.globals.poisson_blend,
         # Face Enhancer
         codeformer_fidelity=modules.globals.codeformer_fidelity,

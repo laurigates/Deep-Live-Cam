@@ -39,6 +39,57 @@ def apply_color_transfer(source, target):
     result_bgr = cv2.cvtColor(result_lab, cv2.COLOR_LAB2BGR)
     return np.clip(result_bgr * 255.0, 0, 255).astype(np.uint8)
 
+
+def apply_histogram_matching(source: np.ndarray, target: np.ndarray) -> np.ndarray:
+    """Apply histogram matching from target to source image in LAB color space.
+
+    Performs per-channel CDF matching, which produces more aggressive correction
+    than LAB mean/std transfer.  Particularly effective for cross-skin-tone swaps
+    where source and target complexions differ significantly.
+
+    Args:
+        source: Swapped face crop (BGR uint8).
+        target: Aligned target crop to match colours against (BGR uint8).
+
+    Returns:
+        Colour-corrected crop as BGR uint8.
+    """
+    if source is None or target is None:
+        return source
+    if source.size == 0 or target.size == 0:
+        return source
+
+    source_lab = cv2.cvtColor(source, cv2.COLOR_BGR2LAB)
+    target_lab = cv2.cvtColor(target, cv2.COLOR_BGR2LAB)
+
+    result_channels = []
+    for ch in range(3):
+        src_ch = source_lab[:, :, ch]
+        tgt_ch = target_lab[:, :, ch]
+
+        # Unique pixel values and their counts — avoids building a full 256-bin
+        # histogram when the image has many identical values (e.g. synthetic crops).
+        src_vals, src_inv, src_cnt = np.unique(
+            src_ch.ravel(), return_inverse=True, return_counts=True
+        )
+        tgt_vals, tgt_cnt = np.unique(tgt_ch.ravel(), return_counts=True)
+
+        # Normalised CDFs
+        src_cdf = src_cnt.cumsum().astype(np.float64)
+        src_cdf /= src_cdf[-1]
+        tgt_cdf = tgt_cnt.cumsum().astype(np.float64)
+        tgt_cdf /= tgt_cdf[-1]
+
+        # For each source CDF value, interpolate the target pixel value whose
+        # CDF is closest — this is the standard "histogram specification" mapping.
+        mapped = np.interp(src_cdf, tgt_cdf, tgt_vals.astype(np.float64))
+        result_channels.append(
+            mapped[src_inv].reshape(src_ch.shape).clip(0, 255).astype(np.uint8)
+        )
+
+    result_lab = np.stack(result_channels, axis=2)
+    return cv2.cvtColor(result_lab, cv2.COLOR_LAB2BGR)
+
 def create_face_mask(face: Face, frame: Frame, config=None) -> np.ndarray:
     """Creates a feathered mask covering the whole face area based on landmarks."""
     mask = np.zeros(frame.shape[:2], dtype=np.uint8)

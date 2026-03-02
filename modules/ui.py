@@ -189,6 +189,7 @@ def save_switch_states():
         "map_faces": modules.globals.map_faces,
         "poisson_blend": modules.globals.poisson_blend,
         "color_correction": modules.globals.color_correction,
+        "color_correction_mode": modules.globals.color_correction_mode,
         "nsfw_filter": modules.globals.nsfw_filter,
         "live_mirror": modules.globals.live_mirror,
         "live_resizable": modules.globals.live_resizable,
@@ -224,6 +225,7 @@ def load_switch_states():
         modules.globals.map_faces = switch_states.get("map_faces", False)
         modules.globals.poisson_blend = switch_states.get("poisson_blend", False)
         modules.globals.color_correction = switch_states.get("color_correction", False)
+        modules.globals.color_correction_mode = switch_states.get("color_correction_mode", "none")
         modules.globals.nsfw_filter = switch_states.get("nsfw_filter", False)
         modules.globals.live_mirror = switch_states.get("live_mirror", False)
         modules.globals.live_resizable = switch_states.get("live_resizable", False)
@@ -523,6 +525,10 @@ def _add_settings_tabview(root: ctk.CTk, live_button: ctk.CTkButton) -> None:
             sw = _create_switch(tab, label, attr, tooltip)
             sw.grid(row=i, column=0, columnspan=2, sticky="w", padx=8, pady=3)
 
+    # Processing tab: add color correction mode dropdown below switches
+    processing_tab = tabview.tab("Processing")
+    _add_color_correction_to_processing_tab(processing_tab, len(switch_defs["Processing"]))
+
     # Enhancement tab: add sliders then RIFE model/multiplier dropdowns
     enhancement_tab = tabview.tab("Enhancement")
     _add_sliders_to_tab(enhancement_tab, len(switch_defs["Enhancement"]))
@@ -639,6 +645,35 @@ def _add_rife_controls_to_tab(tab: ctk.CTkFrame, num_switches: int, row_offset: 
         row=start_row + 1, column=1, sticky="ew", padx=(0, 8), pady=2,
     )
     ToolTip(multiplier_optionmenu, _("Frame rate multiplication factor"))
+
+
+def _add_color_correction_to_processing_tab(tab: ctk.CTkFrame, num_switches: int) -> None:
+    """Add color correction mode dropdown below existing Processing tab switches."""
+    start_row = num_switches
+
+    label = ctk.CTkLabel(tab, text=_("Color Correction:"))
+    label.grid(row=start_row, column=0, sticky="w", padx=8, pady=(10, 2))
+
+    mode_values = ["none", "lab", "histogram"]
+    current_mode = getattr(modules.globals, "color_correction_mode", "none")
+    if current_mode not in mode_values:
+        current_mode = "none"
+    mode_variable = ctk.StringVar(value=current_mode)
+
+    def on_mode_change(choice: str) -> None:
+        modules.globals.color_correction_mode = choice
+        save_switch_states()
+        update_status(f"Color correction mode: {choice}")
+
+    mode_optionmenu = ctk.CTkOptionMenu(
+        tab, variable=mode_variable, values=mode_values,
+        command=on_mode_change,
+    )
+    mode_optionmenu.grid(row=start_row, column=1, sticky="ew", padx=(0, 8), pady=(10, 2))
+    ToolTip(
+        mode_optionmenu,
+        _("none = off  |  lab = LAB mean/std transfer  |  histogram = per-channel CDF matching (stronger correction for cross-skin-tone swaps)"),
+    )
 
 
 def _add_half_rate_controls_to_tab(tab: ctk.CTkFrame, num_switches: int) -> None:

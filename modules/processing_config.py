@@ -110,6 +110,10 @@ class ProcessingConfig:
     color_correction: bool = False
     """Enable color correction for swapped face"""
 
+    color_correction_mode: str = 'none'
+    """Color correction mode for swapped face crop: 'none', 'lab', or 'histogram'.
+    'lab' applies LAB mean/std transfer; 'histogram' applies per-channel CDF matching."""
+
     poisson_blend: bool = False
     """Enable Poisson blending for smoother face swaps"""
 
