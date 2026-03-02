@@ -77,3 +77,55 @@ def test_options_dict_has_all_expected_keys(mock_makedirs):
         "ModelCacheDirectory",
     }
     assert set(opts.keys()) == expected_keys
+
+
+@patch("modules.onnx_providers.IS_APPLE_SILICON", True)
+@patch("modules.onnx_providers.os.makedirs")
+def test_coreml_compute_units_override(mock_makedirs):
+    """Explicitly passed coreml_compute_units overrides the default."""
+    from modules.onnx_providers import build_providers_config
+
+    result = build_providers_config(
+        ["CoreMLExecutionProvider"], coreml_compute_units="CPUAndGPU"
+    )
+    assert result[0][1]["MLComputeUnits"] == "CPUAndGPU"
+
+
+@patch("modules.onnx_providers.IS_APPLE_SILICON", True)
+@patch("modules.onnx_providers.os.makedirs")
+def test_coreml_compute_units_cpu_only(mock_makedirs):
+    """CPUOnly compute units disables GPU and ANE routing."""
+    from modules.onnx_providers import build_providers_config
+
+    result = build_providers_config(
+        ["CoreMLExecutionProvider"], coreml_compute_units="CPUOnly"
+    )
+    assert result[0][1]["MLComputeUnits"] == "CPUOnly"
+
+
+@patch("modules.onnx_providers.IS_APPLE_SILICON", True)
+@patch("modules.onnx_providers.os.makedirs")
+def test_invalid_compute_units_falls_back_to_all(mock_makedirs):
+    """Invalid compute unit values fall back to 'ALL'."""
+    from modules.onnx_providers import build_providers_config
+
+    result = build_providers_config(
+        ["CoreMLExecutionProvider"], coreml_compute_units="InvalidValue"
+    )
+    assert result[0][1]["MLComputeUnits"] == "ALL"
+
+
+@patch("modules.onnx_providers.IS_APPLE_SILICON", True)
+@patch("modules.onnx_providers.os.makedirs")
+def test_coreml_compute_units_reads_from_globals(mock_makedirs):
+    """Without explicit override, reads coreml_compute_units from modules.globals."""
+    from modules.onnx_providers import build_providers_config
+    import modules.globals
+
+    original = modules.globals.coreml_compute_units
+    try:
+        modules.globals.coreml_compute_units = "CPUAndGPU"
+        result = build_providers_config(["CoreMLExecutionProvider"])
+        assert result[0][1]["MLComputeUnits"] == "CPUAndGPU"
+    finally:
+        modules.globals.coreml_compute_units = original

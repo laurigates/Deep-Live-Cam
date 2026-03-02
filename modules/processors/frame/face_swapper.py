@@ -120,8 +120,6 @@ class GhostSwapper:
         bgr_fake = np.clip((fake_rgb * 0.5 + 0.5) * 255.0, 0, 255)[:, :, ::-1]
 
         return bgr_fake, M
-
-
 # --- START: Added for Interpolation ---
 # Per-thread previous frame for interpolation (avoids cross-thread contamination)
 _THREAD_LOCAL = threading.local()
@@ -447,10 +445,10 @@ def _paste_back(
 def _paste_scale_from_M(M: np.ndarray, max_k: float = 4.0) -> float:
     """Return the upscale factor k for pre-paste upscaling.
 
-    M maps the full frame to a 128×128 crop.  The scale embedded in M tells us
+    M maps the full frame to a 128x128 crop.  The scale embedded in M tells us
     how many source pixels map to one 128px output pixel.  Upscaling by k before
     the inverse-affine paste ensures we paste a resolution-appropriate crop rather
-    than stretching a tiny 128×128 result over a large face region.
+    than stretching a tiny 128x128 result over a large face region.
     """
     scale_to_128 = float(np.sqrt(M[0, 0] ** 2 + M[0, 1] ** 2))
     if scale_to_128 <= 0:
@@ -477,7 +475,7 @@ def _upscale_crop_for_paste(
     target = (int(round(bgr_fake.shape[1] * k)), int(round(bgr_fake.shape[0] * k)))
     bgr_up = gpu_resize(bgr_fake, target, interpolation=interpolation)
     aimg_up = gpu_resize(aimg, target, interpolation=interpolation)
-    M_scaled = M * k  # broadcast over 2×3; maps k×128 → full frame via invertAffine
+    M_scaled = M * k  # broadcast over 2x3; maps k*128 -> full frame via invertAffine
     return bgr_up, aimg_up, M_scaled
 
 
@@ -510,7 +508,6 @@ def batch_swap_faces(
         for source_face, target_face in zip(source_faces, target_faces):
             result = swap_face(source_face, target_face, result, config)
         return result
-
     session = face_swapper.session
     emap = face_swapper.emap
     input_size = face_swapper.input_size
@@ -579,7 +576,7 @@ def batch_swap_faces(
         aimg = aligned_imgs[j]
         M = affine_matrices[j]
 
-        # Denormalize prediction — keep float32 to avoid quantization loss
+        # Denormalize prediction -- keep float32 to avoid quantization loss
         # from uint8 round-trip (paste_back works in float32 internally)
         img_fake = preds[j].transpose((1, 2, 0))
         bgr_fake = np.clip(255 * img_fake, 0, 255)[:, :, ::-1]
@@ -651,7 +648,7 @@ def swap_face(source_face: Face, target_face: Face, temp_frame: Frame, config=No
 
         # Retrieve the aligned crop that was used as the swap base (needed by
         # _paste_back to compute the diff mask).  Reuse the already-computed M
-        # instead of calling norm_crop2 again — saves ~0.5-1ms per face by
+        # instead of calling norm_crop2 again -- saves ~0.5-1ms per face by
         # skipping the redundant estimate_norm matrix computation.
         input_size = face_swapper.input_size[0]
         aimg = cv2.warpAffine(
@@ -719,7 +716,7 @@ def get_faces_optimized(frame: Frame, use_cache: bool = True, config=None) -> Op
             face = get_one_face(frame)
             return [face] if face else None
 
-    # TTL-based detection caching — skips detection when the previous result
+    # TTL-based detection caching -- skips detection when the previous result
     # is still fresh (within DETECTION_INTERVAL).  Previously gated behind
     # IS_APPLE_SILICON; now enabled on all platforms for live mode.
     current_time = time.time()
@@ -813,7 +810,7 @@ def apply_post_processing(current_frame: Frame, swapped_face_bboxes: List[np.nda
             # If previous frame invalid or doesn't match, use current frame and update state
             _set_previous_frame(processed_frame.copy())
     else:
-         # Interpolation is off or weight is invalid — no need to cache
+         # Interpolation is off or weight is invalid -- no need to cache
          _set_previous_frame(None)
 
 
@@ -1066,7 +1063,7 @@ def _process_single_frame(
 def process_frames(
     source_path: str, temp_frame_paths: List[str], progress: Any = None, config=None
 ) -> None:
-    """Process a list of frame paths for video — read, swap, write back."""
+    """Process a list of frame paths for video -- read, swap, write back."""
     config = config or build_config_from_globals()
     use_v2 = config.map_faces
     source_face = None
@@ -1164,4 +1161,3 @@ def process_video(source_path: str, temp_frame_paths: List[str], config=None) ->
     modules.processors.frame.core.process_video(
         source_path, temp_frame_paths, _process_frames_with_config
     )
-

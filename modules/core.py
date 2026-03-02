@@ -75,6 +75,7 @@ def parse_args() -> None:
     program.add_argument('--landmark-smoothing-alpha', help='EMA alpha for landmark smoothing: weight given to current frame (0.0=full history, 1.0=no smoothing, default: 0.7)', dest='landmark_smoothing_alpha', type=float, default=0.7)
     program.add_argument('--face-swap-model', help='face swap model variant to use (default: inswapper)', dest='face_swap_model', default='inswapper', choices=['inswapper', 'ghost_256_v1', 'ghost_256_v2', 'ghost_256_v3'])
     program.add_argument('--max-memory', help='maximum amount of RAM in GB', dest='max_memory', type=int, default=suggest_max_memory())
+    program.add_argument('--coreml-compute-units', help='CoreML compute units for Apple Silicon ANE routing (ALL=ANE+GPU+CPU, CPUAndGPU=GPU+CPU, CPUOnly=CPU)', dest='coreml_compute_units', default='ALL', choices=['ALL', 'CPUAndGPU', 'CPUOnly'])
     program.add_argument('--execution-provider', help='execution provider', dest='execution_provider', default=['cpu'], choices=suggest_execution_providers(), nargs='+')
     program.add_argument('--execution-threads', help='number of execution threads', dest='execution_threads', type=int, default=suggest_execution_threads())
     program.add_argument('-v', '--version', action='version', version=f'{modules.metadata.name} {modules.metadata.version}')
@@ -106,6 +107,8 @@ def parse_args() -> None:
     modules.globals.live_resizable = args.live_resizable
     modules.globals.virtual_cam = args.virtual_cam
     modules.globals.max_memory = args.max_memory
+    modules.globals.face_swap_model = args.face_swap_model
+    modules.globals.coreml_compute_units = args.coreml_compute_units
     modules.globals.execution_providers = decode_execution_providers(args.execution_provider)
     modules.globals.execution_threads = args.execution_threads
     modules.globals.lang = args.lang

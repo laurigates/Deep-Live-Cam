@@ -13,6 +13,7 @@ import modules.globals
 import modules.processors.frame.core
 from modules.core import update_status
 from modules.iobinding import create_iobinding_context
+from modules.onnx_providers import build_providers_config
 from modules.face_analyser import get_many_faces
 from modules.paths import MODELS_DIR
 from modules.typing import Frame, Face
@@ -131,7 +132,7 @@ def get_face_enhancer(providers: list | None = None) -> onnxruntime.InferenceSes
 
             try:
                 _providers = providers if providers is not None else modules.globals.execution_providers
-                providers_config = build_providers_config(_providers)
+                providers_config = build_providers_config(_providers, coreml_compute_units=getattr(modules.globals, 'coreml_compute_units', None))
 
                 session_options = onnxruntime.SessionOptions()
                 session_options.graph_optimization_level = (
