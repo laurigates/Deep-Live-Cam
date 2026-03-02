@@ -248,7 +248,7 @@ def _processing_thread_func(capture_queue, processed_queue, stop_event,
                 motion_adaptive = modules.globals.motion_adaptive_enhancement
                 iou_thresh = modules.globals.motion_adaptive_iou_threshold
                 cos_thresh = modules.globals.motion_adaptive_cosine_threshold
-                if motion_adaptive and cached_faces_list is not None:
+                if motion_adaptive and cached_faces_list is not None and prev_enhanced_faces is not None:
                     skip_enhancer = faces_are_similar(
                         cached_faces_list, prev_enhanced_faces, iou_thresh, cos_thresh
                     )
@@ -632,15 +632,17 @@ def create_webcam_preview(camera_index: int, config: Optional[ProcessingConfig] 
             ROOT.after(max(1, 1000 // modules.globals.live_max_fps), _display_next_frame)
             return
 
-        if modules.globals.live_resizable:
-            if _ui._preview_embedded and _ui._embedded_label:
-                w = _ui._embedded_label.winfo_width()
-                h = _ui._embedded_label.winfo_height()
-            else:
-                w = PREVIEW.winfo_width()
-                h = PREVIEW.winfo_height()
+        if _ui._preview_embedded and _ui._embedded_label:
+            # Embedded panel: always scale to fit so the window never grows
+            w = _ui._embedded_label.winfo_width()
+            h = _ui._embedded_label.winfo_height()
             frame = fit_image_to_size(frame, w, h)
-        # live_resizable=False: display at native camera resolution
+        elif modules.globals.live_resizable:
+            # Pop-out window with resizable enabled: scale to window size
+            w = PREVIEW.winfo_width()
+            h = PREVIEW.winfo_height()
+            frame = fit_image_to_size(frame, w, h)
+        # Pop-out + live_resizable=False: display at native camera resolution
 
         image = Image.fromarray(gpu_cvt_color(frame, cv2.COLOR_BGR2RGB))
 
