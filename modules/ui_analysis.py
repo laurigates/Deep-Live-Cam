@@ -14,12 +14,13 @@ def analyze_target(start, root):
         get_unique_faces_from_target_image,
         get_unique_faces_from_target_video,
     )
+    from modules.mapping_list import MAPPING_LIST
 
     if POPUP is not None and POPUP.winfo_exists():
         update_status("Please complete pop-up or close it.")
         return
 
-    if modules.globals.map_faces:
+    if MAPPING_LIST.effective_map_faces():
         from modules.face_map_store import STORE as _MAP_STORE
         _MAP_STORE.clear()
 
