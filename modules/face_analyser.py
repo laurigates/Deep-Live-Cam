@@ -431,6 +431,9 @@ class LandmarkSmoother:
         * The state history is empty.
         * The face has no ``normed_embedding``.
         * No stored identity exceeds ``IDENTITY_THRESHOLD``.
+
+        All pairwise similarities are computed in a single BLAS matrix
+        multiply (state_matrix @ embedding) rather than an O(n) Python loop.
         """
         if not self._state:
             return None
@@ -438,15 +441,12 @@ class LandmarkSmoother:
         if embedding is None:
             return None
 
-        best_entry: Optional[dict] = None
-        best_sim = -1.0
-        for entry in self._state:
-            sim = float(np.dot(embedding, entry['embedding']))
-            if sim > best_sim:
-                best_sim = sim
-                best_entry = entry
+        state_matrix = np.stack([e['embedding'] for e in self._state])
+        sims = state_matrix @ embedding  # single BLAS call
+        best_idx = int(np.argmax(sims))
+        best_sim = float(sims[best_idx])
 
-        return best_entry if best_sim >= self.IDENTITY_THRESHOLD else None
+        return self._state[best_idx] if best_sim >= self.IDENTITY_THRESHOLD else None
 
     def smooth(self, faces: list) -> list:
         """Apply EMA smoothing to *faces* in-place and return the same list.
