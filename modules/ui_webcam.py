@@ -56,6 +56,24 @@ def _is_enhancer_enabled(processor, fp_ui: Optional[dict] = None) -> bool:
     return key is not None and fp_ui.get(key, False)
 
 
+def stop_active_session(timeout: float = 0.5) -> None:
+    """Signal the active webcam session to stop and wait for threads to finish.
+
+    Call this before Python's shutdown sequence to prevent SIGSEGV crashes
+    where daemon threads are still running MLX/ONNX inference when native
+    library resources are freed during shutdown.  Safe to call with no
+    active session.
+    """
+    if _active_stop_event is not None and not _active_stop_event.is_set():
+        _active_stop_event.set()
+    # Give threads up to `timeout` seconds to finish their current inference
+    # cycle and exit their loops before Python tears down native resources.
+    # _session_ready is cleared at session start and set again after cleanup;
+    # if cleanup doesn't run (e.g., ROOT.quit() stopped the display loop),
+    # the wait just times out — which is still enough grace time.
+    _session_ready.wait(timeout=timeout)
+
+
 def _capture_thread_func(cap, capture_queue, stop_event):
     """Capture thread: reads frames from camera and puts them into the queue.
     Drops frames when the queue is full to avoid backpressure on the camera."""
