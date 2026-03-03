@@ -241,6 +241,10 @@ def _processing_thread_func(capture_queue, processed_queue, stop_event,
     last_consumed_enh_seq = -1
     latest_enhanced_frame = None
 
+    # Processors are fixed at session start — capture once.
+    # Changing processors requires restarting the webcam session.
+    frame_processors = get_frame_processors_modules(config.frame_processors)
+
     while not stop_event.is_set():
         try:
             frame = capture_queue.get(timeout=0.05)
@@ -262,10 +266,6 @@ def _processing_thread_func(capture_queue, processed_queue, stop_event,
         snap_rife_enabled = modules.globals.rife_enabled
         snap_rife_multiplier = modules.globals.rife_multiplier
         snap_virtual_cam = modules.globals.virtual_cam
-
-        # Processors are fixed at session start (config snapshot).
-        # Changing processors requires restarting the webcam session.
-        frame_processors = get_frame_processors_modules(config.frame_processors)
 
         temp_frame = frame
 
