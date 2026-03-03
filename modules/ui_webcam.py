@@ -245,13 +245,29 @@ def _processing_thread_func(capture_queue, processed_queue, stop_event,
         except queue.Empty:
             continue
 
+        # Snapshot mutable globals for this frame — ensures consistent config
+        # even if the UI thread toggles settings mid-frame.
+        snap_live_mirror = modules.globals.live_mirror
+        snap_half_rate = modules.globals.half_rate_processing
+        snap_keyframe_interval = max(2, modules.globals.keyframe_interval)
+        snap_map_faces = modules.globals.map_faces
+        snap_source_path = modules.globals.source_path
+        snap_many_faces = modules.globals.many_faces
+        snap_motion_adaptive = modules.globals.motion_adaptive_enhancement
+        snap_iou_thresh = modules.globals.motion_adaptive_iou_threshold
+        snap_cos_thresh = modules.globals.motion_adaptive_cosine_threshold
+        snap_enh_interval = max(1, modules.globals.enhancer_skip_interval)
+        snap_rife_enabled = modules.globals.rife_enabled
+        snap_rife_multiplier = modules.globals.rife_multiplier
+        snap_virtual_cam = modules.globals.virtual_cam
+
         # Processors are fixed at session start (config snapshot).
         # Changing processors requires restarting the webcam session.
         frame_processors = get_frame_processors_modules(config.frame_processors)
 
         temp_frame = frame
 
-        if modules.globals.live_mirror:
+        if snap_live_mirror:
             temp_frame = gpu_flip(temp_frame, 1)
 
         # Publish the mirrored frame for the detection thread to pick up
@@ -259,15 +275,15 @@ def _processing_thread_func(capture_queue, processed_queue, stop_event,
             latest_frame_holder[0] = temp_frame
 
         # Half-rate processing: run face processing only on keyframes
-        half_rate_enabled = modules.globals.half_rate_processing
-        keyframe_interval = max(2, modules.globals.keyframe_interval)
+        half_rate_enabled = snap_half_rate
+        keyframe_interval = snap_keyframe_interval
         frame_counter += 1
         is_keyframe = (frame_counter % keyframe_interval) == 1
         skip_face_processing = half_rate_enabled and not is_keyframe
 
         if not skip_face_processing:
-            if not modules.globals.map_faces:
-                current_source_path = modules.globals.source_path
+            if not snap_map_faces:
+                current_source_path = snap_source_path
                 if current_source_path and current_source_path != last_source_path:
                     last_source_path = current_source_path
                     source_image = get_one_face(cv2.imread(current_source_path))
@@ -286,16 +302,16 @@ def _processing_thread_func(capture_queue, processed_queue, stop_event,
                     cached_faces_list = [cached_target_face]
 
                 # Enhancer skip-frame: motion-adaptive or fixed-interval
-                motion_adaptive = modules.globals.motion_adaptive_enhancement
-                iou_thresh = modules.globals.motion_adaptive_iou_threshold
-                cos_thresh = modules.globals.motion_adaptive_cosine_threshold
+                motion_adaptive = snap_motion_adaptive
+                iou_thresh = snap_iou_thresh
+                cos_thresh = snap_cos_thresh
                 if motion_adaptive and cached_faces_list is not None and prev_enhanced_faces is not None:
                     skip_enhancer = faces_are_similar(
                         cached_faces_list, prev_enhanced_faces, iou_thresh, cos_thresh
                     )
                 else:
                     enhancer_frame_counter += 1
-                    enh_interval = max(1, modules.globals.enhancer_skip_interval)
+                    enh_interval = snap_enh_interval
                     skip_enhancer = enh_interval > 1 and (enhancer_frame_counter % enh_interval) != 1
 
                 for frame_processor in frame_processors:
@@ -332,7 +348,7 @@ def _processing_thread_func(capture_queue, processed_queue, stop_event,
                                 'frame': temp_frame.copy(),
                                 'source_face': source_image,
                                 'target_face': cached_target_face,
-                                'many_faces': cached_many_faces if modules.globals.many_faces else None,
+                                'many_faces': cached_many_faces if snap_many_faces else None,
                                 'processor': frame_processor,
                                 'map_faces': False,
                                 'seq': swap_seq,
@@ -353,7 +369,7 @@ def _processing_thread_func(capture_queue, processed_queue, stop_event,
 
                 # Enhancer skip-frame for map_faces path
                 enhancer_frame_counter += 1
-                enh_interval = max(1, modules.globals.enhancer_skip_interval)
+                enh_interval = snap_enh_interval
                 skip_enhancer = enh_interval > 1 and (enhancer_frame_counter % enh_interval) != 1
 
                 for frame_processor in frame_processors:
@@ -414,7 +430,7 @@ def _processing_thread_func(capture_queue, processed_queue, stop_event,
         # In half-rate mode this fires on keyframes, bridging the gap since the previous keyframe
         # (which may be keyframe_interval camera frames back). Skip frames are held above and
         # never reach this block.
-        rife_enabled = modules.globals.rife_enabled
+        rife_enabled = snap_rife_enabled
         if rife_enabled and prev_processed_frame is not None and not skip_face_processing:
             if not has_native_binding():
                 if not rife_warned:
@@ -427,14 +443,14 @@ def _processing_thread_func(capture_queue, processed_queue, stop_event,
                 if half_rate_enabled:
                     multiplier = keyframe_interval
                 else:
-                    multiplier = modules.globals.rife_multiplier
+                    multiplier = snap_rife_multiplier
                 intermediates = interpolate_frame_pair(
                     prev_processed_frame, temp_frame, multiplier=multiplier,
                     should_stop=stop_event.is_set,
                 )
                 for interp_frame in intermediates:
                     tick_count += 1
-                    if modules.globals.virtual_cam:
+                    if snap_virtual_cam:
                         virtual_cam.send(interp_frame)
                     try:
                         processed_queue.put_nowait(interp_frame)
@@ -472,7 +488,7 @@ def _processing_thread_func(capture_queue, processed_queue, stop_event,
             continue
 
         # Send full-resolution processed frame to virtual camera if enabled
-        if modules.globals.virtual_cam:
+        if snap_virtual_cam:
             virtual_cam.send(temp_frame)
 
         # Put processed frame into output queue, dropping old frames if full
