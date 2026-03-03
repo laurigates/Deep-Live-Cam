@@ -63,7 +63,7 @@ class TestJPEGIntermediateFrames:
              patch("cv2.imwrite") as mock_write, \
              patch("modules.processors.frame.face_swapper.get_one_face") as mock_face, \
              patch("modules.processors.frame.face_swapper.process_frame") as mock_proc, \
-             patch("modules.processors.frame.face_swapper.update_status"):
+             patch("modules.processors.frame.face_swapper.BUS"):
             import numpy as np
             fake_frame = np.zeros((100, 100, 3), dtype=np.uint8)
             mock_read.return_value = fake_frame
