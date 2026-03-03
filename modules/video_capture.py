@@ -55,7 +55,6 @@ class VideoCapturer:
 
         ret, frame = self.cap.read()
         if ret:
-            self._current_frame = frame
             if self.frame_callback:
                 self.frame_callback(frame)
             return True, frame

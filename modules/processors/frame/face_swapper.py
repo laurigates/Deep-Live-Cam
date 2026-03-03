@@ -453,12 +453,13 @@ def get_face_swapper(providers: list | None = None) -> Any:
     return FACE_SWAPPER
 
 
-def _apply_mouth_mask(swapped: Frame, target_face: Face, original: Frame, config=None) -> Frame:
+def _apply_mouth_mask(swapped: Frame, target_face: Face, original: Frame, config=None, face_mask=None) -> Frame:
     config = config or build_config_from_globals()
     if not config.mouth_mask:
         return swapped
 
-    face_mask = create_face_mask(target_face, original, config=config)
+    if face_mask is None:
+        face_mask = create_face_mask(target_face, original, config=config)
     mouth_mask, mouth_cutout, mouth_box, lower_lip_polygon = (
         create_lower_mouth_mask(target_face, original, config=config)
     )
@@ -477,12 +478,13 @@ def _apply_mouth_mask(swapped: Frame, target_face: Face, original: Frame, config
     return swapped
 
 
-def _apply_poisson_blend(swapped: Frame, target_face: Face, original: Frame, pre_swap: Frame, config=None) -> Frame:
+def _apply_poisson_blend(swapped: Frame, target_face: Face, original: Frame, pre_swap: Frame, config=None, face_mask=None) -> Frame:
     config = config or build_config_from_globals()
     if not config.poisson_blend:
         return swapped
 
-    face_mask = create_face_mask(target_face, original)
+    if face_mask is None:
+        face_mask = create_face_mask(target_face, original)
     if face_mask is None:
         return swapped
 
@@ -762,9 +764,10 @@ def batch_swap_faces(
         # Paste back onto result frame
         result = _paste_back(bgr_fake, aimg, M, result, config)
 
-        # Apply mouth mask and Poisson blend per-face
-        result = _apply_mouth_mask(result, target_face, temp_frame, config)
-        result = _apply_poisson_blend(result, target_face, temp_frame, original_frame, config)
+        # Apply mouth mask and Poisson blend per-face — compute mask once and share
+        shared_face_mask = create_face_mask(target_face, temp_frame, config=config)
+        result = _apply_mouth_mask(result, target_face, temp_frame, config, face_mask=shared_face_mask)
+        result = _apply_poisson_blend(result, target_face, temp_frame, original_frame, config, face_mask=shared_face_mask)
 
     if opacity < 1.0:
         result = gpu_add_weighted(
@@ -869,8 +872,10 @@ def swap_face(source_face: Face, target_face: Face, temp_frame: Frame, config=No
     # --- Post-swap Processing (Masking, Opacity, etc.) ---
     # Now, work with the guaranteed uint8 'swapped_frame'
 
-    swapped_frame = _apply_mouth_mask(swapped_frame, target_face, temp_frame, config)
-    swapped_frame = _apply_poisson_blend(swapped_frame, target_face, temp_frame, original_frame, config)
+    # Compute face mask once and share between mouth mask and Poisson blend
+    shared_face_mask = create_face_mask(target_face, temp_frame, config=config)
+    swapped_frame = _apply_mouth_mask(swapped_frame, target_face, temp_frame, config, face_mask=shared_face_mask)
+    swapped_frame = _apply_poisson_blend(swapped_frame, target_face, temp_frame, original_frame, config, face_mask=shared_face_mask)
 
     # Apply opacity blend between the original frame and the swapped frame
     if opacity >= 1.0:

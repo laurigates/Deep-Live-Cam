@@ -711,7 +711,7 @@ def create_webcam_preview(camera_index: int, config: Optional[ProcessingConfig] 
             frame = fit_image_to_size(frame, w, h)
         # Pop-out + live_resizable=False: display at native camera resolution
 
-        image = Image.fromarray(gpu_cvt_color(frame, cv2.COLOR_BGR2RGB))
+        image = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
 
         if modules.globals.show_fps:
             draw = ImageDraw.Draw(image)
