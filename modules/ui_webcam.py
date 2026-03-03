@@ -150,9 +150,12 @@ def _swap_process_fn(inp):
     """Process a single swap request (called by single_slot_worker_loop)."""
     frame = inp['frame']
     processor = inp['processor']
+    # Build config once per request — use pre-built config from inp when available to
+    # avoid reconstructing the ~80-field ProcessingConfig dataclass on every frame.
+    config = inp.get('config') or build_config_from_globals()
 
     if inp['map_faces']:
-        frame = processor.process_frame_v2(frame)
+        frame = processor.process_frame_v2(frame, config=config)
     else:
         source_face = inp['source_face']
         many_faces_list = inp['many_faces']
@@ -160,19 +163,18 @@ def _swap_process_fn(inp):
 
         swapped_bboxes = []
         if many_faces_list:
-            opacity = getattr(modules.globals, "opacity", 1.0)
-            result = frame if opacity >= 1.0 else frame.copy()
+            result = frame if config.opacity >= 1.0 else frame.copy()
             for t_face in many_faces_list:
-                result = processor.swap_face(source_face, t_face, result)
+                result = processor.swap_face(source_face, t_face, result, config=config)
                 if hasattr(t_face, 'bbox') and t_face.bbox is not None:
                     swapped_bboxes.append(t_face.bbox.astype(int))
             frame = result
         elif target_face is not None:
-            frame = processor.swap_face(source_face, target_face, frame)
+            frame = processor.swap_face(source_face, target_face, frame, config=config)
             if hasattr(target_face, 'bbox') and target_face.bbox is not None:
                 swapped_bboxes.append(target_face.bbox.astype(int))
 
-        frame = processor.apply_post_processing(frame, swapped_bboxes)
+        frame = processor.apply_post_processing(frame, swapped_bboxes, config=config)
 
     return {'frame': frame, 'seq': inp['seq']}
 
@@ -352,6 +354,7 @@ def _processing_thread_func(capture_queue, processed_queue, stop_event,
                                 'processor': frame_processor,
                                 'map_faces': False,
                                 'seq': swap_seq,
+                                'config': config,
                             }
                         with swap_lock:
                             swap_out = swap_output[0]
@@ -408,6 +411,7 @@ def _processing_thread_func(capture_queue, processed_queue, stop_event,
                                 'processor': frame_processor,
                                 'map_faces': True,
                                 'seq': swap_seq,
+                                'config': config,
                             }
                         with swap_lock:
                             swap_out = swap_output[0]
