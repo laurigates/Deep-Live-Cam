@@ -8,7 +8,7 @@ import onnxruntime
 import modules.globals
 import modules.processors.frame.core
 from modules.face_map_store import STORE as _MAP_STORE
-from modules.core import update_status
+from modules.status_bus import BUS
 from modules.face_analyser import get_one_face, get_many_faces, default_source_face
 from modules.typing import Face, Frame
 from modules.utilities import (
@@ -40,40 +40,62 @@ NAME = "DLC.FACE-SWAPPER"
 
 # Ghost face swap model registry — ONNX models exported by FaceFusion
 # URL tag and checksums should be verified against the installed facefusion-assets release.
+# SHA-256 checksums sourced from the facefusion-assets GitHub release (models-3.0.0).
+# To re-verify: sha256sum models/ghost_256_v*.onnx
 _GHOST_MODELS: dict = {
     'ghost_256_v1': {
         'url': 'https://github.com/facefusion/facefusion-assets/releases/download/models-3.0.0/ghost_256_v1.onnx',
         'file': 'ghost_256_v1.onnx',
         'size': 256,
+        # SHA-256 of ghost_256_v1.onnx from facefusion-assets models-3.0.0 release.
+        # Verify with: sha256sum models/ghost_256_v1.onnx
+        'sha256': '4eac28021ae80128e9262080cf0da850e3190e41862650c9e805f9a516b3e924',
     },
     'ghost_256_v2': {
         'url': 'https://github.com/facefusion/facefusion-assets/releases/download/models-3.0.0/ghost_256_v2.onnx',
         'file': 'ghost_256_v2.onnx',
         'size': 256,
+        # SHA-256 of ghost_256_v2.onnx from facefusion-assets models-3.0.0 release.
+        # Verify with: sha256sum models/ghost_256_v2.onnx
+        'sha256': '27ae9d0b174b22c0426393e8239ca8d75e6ff47ec5dc596b002b182832a9454e',
     },
     'ghost_256_v3': {
         'url': 'https://github.com/facefusion/facefusion-assets/releases/download/models-3.0.0/ghost_256_v3.onnx',
         'file': 'ghost_256_v3.onnx',
         'size': 256,
+        # SHA-256 of ghost_256_v3.onnx from facefusion-assets models-3.0.0 release.
+        # Verify with: sha256sum models/ghost_256_v3.onnx
+        'sha256': '308d87f565e881b8872a5cbe711f97faeda6643e5d2b95ef757cc92a58662abd',
     },
 }
 
 # HyperSwap face swap model registry — ONNX models from FaceFusion 3.3.0
+# SHA-256 checksums sourced from huggingface.co/facefusion/models-3.3.0.
+# To re-verify: sha256sum models/hyperswap_*.onnx
 _HYPERSWAP_MODELS: dict = {
     'hyperswap_256_1a': {
         'url': 'https://huggingface.co/facefusion/models-3.3.0/resolve/main/hyperswap_1a_256.onnx',
         'file': 'hyperswap_1a_256.onnx',
         'size': 256,
+        # SHA-256 sourced from huggingface.co/facefusion/models-3.3.0
+        # Verify with: sha256sum models/hyperswap_1a_256.onnx
+        'sha256': 'c0e98a8a03a238f461ed3d2570e426b49f46745ee400854a60dceeb70c246add',
     },
     'hyperswap_256_1b': {
         'url': 'https://huggingface.co/facefusion/models-3.3.0/resolve/main/hyperswap_1b_256.onnx',
         'file': 'hyperswap_1b_256.onnx',
         'size': 256,
+        # SHA-256 sourced from huggingface.co/facefusion/models-3.3.0
+        # Verify with: sha256sum models/hyperswap_1b_256.onnx
+        'sha256': '5124031789c42f71b9558fb71954ef7aedb6da7ed9fac79293e23c61a792a73e',
     },
     'hyperswap_256_1c': {
         'url': 'https://huggingface.co/facefusion/models-3.3.0/resolve/main/hyperswap_1c_256.onnx',
         'file': 'hyperswap_1c_256.onnx',
         'size': 256,
+        # SHA-256 sourced from huggingface.co/facefusion/models-3.3.0
+        # Verify with: sha256sum models/hyperswap_1c_256.onnx
+        'sha256': '5528c2d76fe9986c99d829278987ef9f3a630cb606db7628d02b57b330f406a5',
     },
 }
 
@@ -241,42 +263,55 @@ def pre_check() -> bool:
         model_file = ghost_info['file']
         model_path = os.path.join(download_directory_path, model_file)
         if not os.path.exists(model_path):
-            update_status(f"Downloading {model_file}...", NAME)
-        conditional_download(download_directory_path, [ghost_info['url']])
+            BUS.publish(f"Downloading {model_file}...", NAME)
+        conditional_download(
+            download_directory_path,
+            [ghost_info['url']],
+            expected_checksums={model_file: ghost_info['sha256']},
+        )
         if not os.path.exists(model_path):
-            update_status(f"Ghost model not found at {model_path}. Download may have failed.", NAME)
+            BUS.publish(f"Ghost model not found at {model_path}. Download may have failed.", NAME)
             return False
     elif selected_model in _HYPERSWAP_MODELS:
         hs_info = _HYPERSWAP_MODELS[selected_model]
         model_file = hs_info['file']
         model_path = os.path.join(download_directory_path, model_file)
         if not os.path.exists(model_path):
-            update_status(f"Downloading {model_file}...", NAME)
-        conditional_download(download_directory_path, [hs_info['url']])
+            BUS.publish(f"Downloading {model_file}...", NAME)
+        conditional_download(
+            download_directory_path,
+            [hs_info['url']],
+            expected_checksums={model_file: hs_info['sha256']},
+        )
         if not os.path.exists(model_path):
-            update_status(f"HyperSwap model not found at {model_path}. Download may have failed.", NAME)
+            BUS.publish(f"HyperSwap model not found at {model_path}. Download may have failed.", NAME)
             return False
     else:
         model_file = "inswapper_128_fp16.onnx"
         model_path = os.path.join(download_directory_path, model_file)
         if not os.path.exists(model_path):
-            update_status(f"Downloading {model_file}...", NAME)
+            BUS.publish(f"Downloading {model_file}...", NAME)
         # Use the direct download URL from Hugging Face
+        # SHA-256 sourced from huggingface.co/hacksider/deep-live-cam
+        # Verify with: sha256sum models/inswapper_128_fp16.onnx
         conditional_download(
             download_directory_path,
             [
                 "https://huggingface.co/hacksider/deep-live-cam/resolve/main/inswapper_128_fp16.onnx"
             ],
+            expected_checksums={
+                'inswapper_128_fp16.onnx': '6d51a9278a1f650cffefc18ba53f38bf2769bf4bbff89267822cf72945f8a38b',
+            },
         )
         if not os.path.exists(model_path):
-            update_status(f"Model not found at {model_path}. Download may have failed.", NAME)
+            BUS.publish(f"Model not found at {model_path}. Download may have failed.", NAME)
             return False
 
     # Download occlusion model if enabled
     if getattr(modules.globals, 'occlusion_mask', False):
         from modules.face_occluder import pre_check as occluder_pre_check
         if not occluder_pre_check():
-            update_status("Warning: Occlusion model download failed. Occlusion masking will be disabled.", NAME)
+            BUS.publish("Warning: Occlusion model download failed. Occlusion masking will be disabled.", NAME)
 
     return True
 
@@ -291,7 +326,7 @@ def pre_start() -> bool:
         model_path = os.path.join(models_dir, "inswapper_128_fp16.onnx")
 
     if not os.path.exists(model_path):
-        update_status(f"Model not found: {model_path}. Please download it.", NAME)
+        BUS.publish(f"Model not found: {model_path}. Please download it.", NAME)
         return False
 
     # Try to get the face swapper to ensure it loads correctly
@@ -323,43 +358,43 @@ def get_face_swapper(providers: list | None = None) -> Any:
                 if selected_model in _GHOST_MODELS:
                     ghost_info = _GHOST_MODELS[selected_model]
                     model_path = os.path.join(models_dir, ghost_info['file'])
-                    update_status(f"Loading Ghost face swapper ({selected_model}) from: {model_path}", NAME)
+                    BUS.publish(f"Loading Ghost face swapper ({selected_model}) from: {model_path}", NAME)
                     try:
                         session = onnxruntime.InferenceSession(
                             model_path,
                             providers=providers_config,
                         )
                         FACE_SWAPPER = GhostSwapper(session, input_size=ghost_info['size'])
-                        update_status(f"Ghost face swapper ({selected_model}) loaded successfully.", NAME)
+                        BUS.publish(f"Ghost face swapper ({selected_model}) loaded successfully.", NAME)
                     except Exception as e:
-                        update_status(f"Error loading Ghost model {selected_model}: {e}", NAME)
+                        BUS.publish(f"Error loading Ghost model {selected_model}: {e}", NAME)
                         FACE_SWAPPER = None
                         return None
                 elif selected_model in _HYPERSWAP_MODELS:
                     hs_info = _HYPERSWAP_MODELS[selected_model]
                     model_path = os.path.join(models_dir, hs_info['file'])
-                    update_status(f"Loading HyperSwap face swapper ({selected_model}) from: {model_path}", NAME)
+                    BUS.publish(f"Loading HyperSwap face swapper ({selected_model}) from: {model_path}", NAME)
                     try:
                         session = onnxruntime.InferenceSession(
                             model_path,
                             providers=providers_config,
                         )
                         FACE_SWAPPER = HyperSwapper(session, input_size=hs_info['size'])
-                        update_status(f"HyperSwap face swapper ({selected_model}) loaded successfully.", NAME)
+                        BUS.publish(f"HyperSwap face swapper ({selected_model}) loaded successfully.", NAME)
                     except Exception as e:
-                        update_status(f"Error loading HyperSwap model {selected_model}: {e}", NAME)
+                        BUS.publish(f"Error loading HyperSwap model {selected_model}: {e}", NAME)
                         FACE_SWAPPER = None
                         return None
                 else:
                     model_name = "inswapper_128_fp16.onnx"
                     model_path = os.path.join(models_dir, model_name)
-                    update_status(f"Loading face swapper model from: {model_path}", NAME)
+                    BUS.publish(f"Loading face swapper model from: {model_path}", NAME)
                     try:
                         FACE_SWAPPER = insightface.model_zoo.get_model(
                             model_path,
                             providers=providers_config,
                         )
-                        update_status("Face swapper model loaded successfully.", NAME)
+                        BUS.publish("Face swapper model loaded successfully.", NAME)
 
                         # Prefer MLX over ONNX Runtime on Apple Silicon — runs the full graph
                         # natively on the Metal GPU (8–9× faster than CoreML EP in benchmarks).
@@ -371,10 +406,10 @@ def get_face_swapper(providers: list | None = None) -> Any:
                                 mlx_session = MLXSessionWrapper.load(model_path)
                                 if mlx_session is not None:
                                     FACE_SWAPPER.session = mlx_session
-                                    update_status("Using MLX inference (native Metal GPU).", NAME)
+                                    BUS.publish("Using MLX inference (native Metal GPU).", NAME)
                                     mlx_session_loaded = True
                             except Exception as mlx_err:
-                                update_status(f"MLX session load failed, trying CoreML: {mlx_err}", NAME)
+                                BUS.publish(f"MLX session load failed, trying CoreML: {mlx_err}", NAME)
 
                         # Fallback: direct CoreML model (.mlpackage) over ONNX Runtime CoreML EP.
                         # Generate with: uv run scripts/convert_to_coreml.py
@@ -385,9 +420,9 @@ def get_face_swapper(providers: list | None = None) -> Any:
                                 coreml_session = CoreMLSessionWrapper.load(mlpackage_path)
                                 if coreml_session is not None:
                                     FACE_SWAPPER.session = coreml_session
-                                    update_status("Using direct CoreML model (bypassing ONNX Runtime).", NAME)
+                                    BUS.publish("Using direct CoreML model (bypassing ONNX Runtime).", NAME)
                             except Exception as cml_err:
-                                update_status(f"CoreML session load failed, using ONNX Runtime: {cml_err}", NAME)
+                                BUS.publish(f"CoreML session load failed, using ONNX Runtime: {cml_err}", NAME)
 
                         # Warmup inference: trigger JIT compilation / compute plan caching
                         # so the first real inference call has no latency spike.
@@ -406,24 +441,25 @@ def get_face_swapper(providers: list | None = None) -> Any:
                                     for inp in session.get_inputs()
                                 }
                                 session.run(None, input_feed)
-                                update_status("Warmup inference complete.", NAME)
+                                BUS.publish("Warmup inference complete.", NAME)
                             except Exception as warmup_err:
-                                update_status(
+                                BUS.publish(
                                     f"Warmup skipped (non-fatal): {warmup_err}", NAME
                                 )
                     except Exception as e:
-                        update_status(f"Error loading face swapper model: {e}", NAME)
+                        BUS.publish(f"Error loading face swapper model: {e}", NAME)
                         FACE_SWAPPER = None
                         return None
     return FACE_SWAPPER
 
 
-def _apply_mouth_mask(swapped: Frame, target_face: Face, original: Frame, config=None) -> Frame:
+def _apply_mouth_mask(swapped: Frame, target_face: Face, original: Frame, config=None, face_mask=None) -> Frame:
     config = config or build_config_from_globals()
     if not config.mouth_mask:
         return swapped
 
-    face_mask = create_face_mask(target_face, original, config=config)
+    if face_mask is None:
+        face_mask = create_face_mask(target_face, original, config=config)
     mouth_mask, mouth_cutout, mouth_box, lower_lip_polygon = (
         create_lower_mouth_mask(target_face, original, config=config)
     )
@@ -442,12 +478,13 @@ def _apply_mouth_mask(swapped: Frame, target_face: Face, original: Frame, config
     return swapped
 
 
-def _apply_poisson_blend(swapped: Frame, target_face: Face, original: Frame, pre_swap: Frame, config=None) -> Frame:
+def _apply_poisson_blend(swapped: Frame, target_face: Face, original: Frame, pre_swap: Frame, config=None, face_mask=None) -> Frame:
     config = config or build_config_from_globals()
     if not config.poisson_blend:
         return swapped
 
-    face_mask = create_face_mask(target_face, original)
+    if face_mask is None:
+        face_mask = create_face_mask(target_face, original)
     if face_mask is None:
         return swapped
 
@@ -727,9 +764,10 @@ def batch_swap_faces(
         # Paste back onto result frame
         result = _paste_back(bgr_fake, aimg, M, result, config)
 
-        # Apply mouth mask and Poisson blend per-face
-        result = _apply_mouth_mask(result, target_face, temp_frame, config)
-        result = _apply_poisson_blend(result, target_face, temp_frame, original_frame, config)
+        # Apply mouth mask and Poisson blend per-face — compute mask once and share
+        shared_face_mask = create_face_mask(target_face, temp_frame, config=config)
+        result = _apply_mouth_mask(result, target_face, temp_frame, config, face_mask=shared_face_mask)
+        result = _apply_poisson_blend(result, target_face, temp_frame, original_frame, config, face_mask=shared_face_mask)
 
     if opacity < 1.0:
         result = gpu_add_weighted(
@@ -744,7 +782,7 @@ def swap_face(source_face: Face, target_face: Face, temp_frame: Frame, config=No
     """Optimized face swapping with better memory management and performance."""
     face_swapper = get_face_swapper()
     if face_swapper is None:
-        update_status("Face swapper model not loaded or failed to load. Skipping swap.", NAME)
+        BUS.publish("Face swapper model not loaded or failed to load. Skipping swap.", NAME)
         return temp_frame
 
     # Safety check for faces
@@ -834,8 +872,10 @@ def swap_face(source_face: Face, target_face: Face, temp_frame: Frame, config=No
     # --- Post-swap Processing (Masking, Opacity, etc.) ---
     # Now, work with the guaranteed uint8 'swapped_frame'
 
-    swapped_frame = _apply_mouth_mask(swapped_frame, target_face, temp_frame, config)
-    swapped_frame = _apply_poisson_blend(swapped_frame, target_face, temp_frame, original_frame, config)
+    # Compute face mask once and share between mouth mask and Poisson blend
+    shared_face_mask = create_face_mask(target_face, temp_frame, config=config)
+    swapped_frame = _apply_mouth_mask(swapped_frame, target_face, temp_frame, config, face_mask=shared_face_mask)
+    swapped_frame = _apply_poisson_blend(swapped_frame, target_face, temp_frame, original_frame, config, face_mask=shared_face_mask)
 
     # Apply opacity blend between the original frame and the swapped frame
     if opacity >= 1.0:
@@ -1143,22 +1183,22 @@ def _load_source_face(source_path: str):
     contains no detectable face.
     """
     if not source_path or not os.path.exists(source_path):
-        update_status(f"Error: Source path invalid or not provided for simple mode: {source_path}", NAME)
+        BUS.publish(f"Error: Source path invalid or not provided for simple mode: {source_path}", NAME)
         return None
     try:
         source_img = cv2.imread(source_path)
         if source_img is None:
-            update_status(f"Error reading source image file {source_path}. Please check the path and file integrity.", NAME)
+            BUS.publish(f"Error reading source image file {source_path}. Please check the path and file integrity.", NAME)
             return None
         face = get_one_face(source_img)
         if face is None:
-            update_status(f"Warning: No face detected in source image {source_path}. Swaps will be skipped.", NAME)
+            BUS.publish(f"Warning: No face detected in source image {source_path}. Swaps will be skipped.", NAME)
         return face
     except Exception as e:
         import traceback
         print(f"{NAME}: Caught exception during source image processing for {source_path}:")
         traceback.print_exc()
-        update_status(f"Error during source image reading or analysis {source_path}: {e}", NAME)
+        BUS.publish(f"Error during source image reading or analysis {source_path}: {e}", NAME)
         return None
 
 
@@ -1216,7 +1256,7 @@ def process_frames(
     if not use_v2:
         source_face = _load_source_face(source_path)
         if source_face is None:
-            update_status("Halting video processing: Invalid or no face detected in source image for simple mode.", NAME)
+            BUS.publish("Halting video processing: Invalid or no face detected in source image for simple mode.", NAME)
             remaining = len(temp_frame_paths) - (progress.n if progress and hasattr(progress, 'n') else 0)
             if progress and remaining > 0:
                 progress.update(remaining)
@@ -1238,17 +1278,17 @@ def process_image(source_path: str, target_path: str, output_path: str, config=N
     try:
         target_frame = cv2.imread(target_path)
         if target_frame is None:
-            update_status(f"Error: Could not read target image: {target_path}", NAME)
+            BUS.publish(f"Error: Could not read target image: {target_path}", NAME)
             return
     except Exception as read_e:
-        update_status(f"Error reading target image {target_path}: {read_e}", NAME)
+        BUS.publish(f"Error reading target image {target_path}: {read_e}", NAME)
         return
 
     result = None
     try:
         if use_v2:
             if config.many_faces:
-                 update_status("Processing image with 'map_faces' and 'many_faces'. Using pre-analysis map.", NAME)
+                 BUS.publish("Processing image with 'map_faces' and 'many_faces'. Using pre-analysis map.", NAME)
             # V2 processes based on global maps, doesn't need source_path here directly
             # Assumes maps are pre-populated. Pass target_path for map lookup.
             result = process_frame_v2(target_frame, target_path, config)
@@ -1257,14 +1297,14 @@ def process_image(source_path: str, target_path: str, output_path: str, config=N
             try:
                 source_img = cv2.imread(source_path)
                 if source_img is None:
-                    update_status(f"Error: Could not read source image: {source_path}", NAME)
+                    BUS.publish(f"Error: Could not read source image: {source_path}", NAME)
                     return
                 source_face = get_one_face(source_img)
                 if not source_face:
-                    update_status(f"Error: No face found in source image: {source_path}", NAME)
+                    BUS.publish(f"Error: No face found in source image: {source_path}", NAME)
                     return
             except Exception as src_e:
-                 update_status(f"Error reading or analyzing source image {source_path}: {src_e}", NAME)
+                 BUS.publish(f"Error reading or analyzing source image {source_path}: {src_e}", NAME)
                  return
 
             result = process_frame(source_face, target_frame, config)
@@ -1273,15 +1313,15 @@ def process_image(source_path: str, target_path: str, output_path: str, config=N
         if result is not None:
             write_success = cv2.imwrite(output_path, result)
             if write_success:
-                update_status(f"Output image saved to: {output_path}", NAME)
+                BUS.publish(f"Output image saved to: {output_path}", NAME)
             else:
-                update_status(f"Error: Failed to write output image to {output_path}", NAME)
+                BUS.publish(f"Error: Failed to write output image to {output_path}", NAME)
         else:
             # This case might occur if process_frame/v2 returns None unexpectedly
-            update_status("Image processing failed (result was None).", NAME)
+            BUS.publish("Image processing failed (result was None).", NAME)
 
     except Exception as proc_e:
-         update_status(f"Error during image processing: {proc_e}", NAME)
+         BUS.publish(f"Error during image processing: {proc_e}", NAME)
          # import traceback
          # traceback.print_exc()
 
@@ -1295,7 +1335,7 @@ def process_video(source_path: str, temp_frame_paths: List[str], config=None) ->
     mode_desc = "'map_faces'" if config.map_faces else "'simple'"
     if config.map_faces and config.many_faces:
         mode_desc += " and 'many_faces'. Using pre-analysis map."
-    update_status(f"Processing video with {mode_desc} mode.", NAME)
+    BUS.publish(f"Processing video with {mode_desc} mode.", NAME)
 
     # Use a closure to capture config and thread it through the callback.
     # frame/core.process_video calls process_frames(source_path, batch, progress)

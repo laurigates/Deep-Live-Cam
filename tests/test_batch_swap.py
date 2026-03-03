@@ -86,8 +86,8 @@ class TestPasteBack:
 class TestBatchSwapFaces:
 
     @patch("modules.processors.frame.face_swapper.get_face_swapper")
-    @patch("modules.processors.frame.face_swapper._apply_mouth_mask", side_effect=lambda f, *a: f)
-    @patch("modules.processors.frame.face_swapper._apply_poisson_blend", side_effect=lambda f, *a: f)
+    @patch("modules.processors.frame.face_swapper._apply_mouth_mask", side_effect=lambda f, *a, **kw: f)
+    @patch("modules.processors.frame.face_swapper._apply_poisson_blend", side_effect=lambda f, *a, **kw: f)
     def test_batch_tensor_shapes_two_faces(self, _mock_blend, _mock_mouth, mock_get_swapper):
         """With 2 faces, session.run receives (2, 3, 128, 128) blob and (2, 512) latent."""
         from modules.processors.frame.face_swapper import batch_swap_faces
@@ -111,8 +111,8 @@ class TestBatchSwapFaces:
         swapper.session.run.assert_called_once()
 
     @patch("modules.processors.frame.face_swapper.get_face_swapper")
-    @patch("modules.processors.frame.face_swapper._apply_mouth_mask", side_effect=lambda f, *a: f)
-    @patch("modules.processors.frame.face_swapper._apply_poisson_blend", side_effect=lambda f, *a: f)
+    @patch("modules.processors.frame.face_swapper._apply_mouth_mask", side_effect=lambda f, *a, **kw: f)
+    @patch("modules.processors.frame.face_swapper._apply_poisson_blend", side_effect=lambda f, *a, **kw: f)
     def test_batch_three_faces(self, _mock_blend, _mock_mouth, mock_get_swapper):
         """With 3 faces, session.run receives batch dim = 3."""
         from modules.processors.frame.face_swapper import batch_swap_faces

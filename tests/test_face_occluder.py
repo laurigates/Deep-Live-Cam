@@ -223,8 +223,9 @@ class TestCreateOcclusionMask:
         original = face_occluder.FACE_OCCLUDER
         face_occluder.FACE_OCCLUDER = None
         try:
-            crop = np.random.randint(0, 256, (100, 80, 3), dtype=np.uint8)
-            mask = face_occluder.create_occlusion_mask(crop)
+            with patch.object(face_occluder, 'get_face_occluder', return_value=None):
+                crop = np.random.randint(0, 256, (100, 80, 3), dtype=np.uint8)
+                mask = face_occluder.create_occlusion_mask(crop)
         finally:
             face_occluder.FACE_OCCLUDER = original
 

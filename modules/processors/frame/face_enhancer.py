@@ -82,11 +82,16 @@ def pre_check() -> bool:
     model_path = fp16_path if os.path.exists(fp16_path) else fp32_path
     if not os.path.exists(model_path):
         update_status("Downloading gfpgan-1024.onnx...", NAME)
+        # SHA-256 sourced from huggingface.co/hacksider/deep-live-cam
+        # Verify with: sha256sum models/gfpgan-1024.onnx
         conditional_download(
             MODELS_DIR,
             [
                 "https://huggingface.co/hacksider/deep-live-cam/resolve/main/gfpgan-1024.onnx"
             ],
+            expected_checksums={
+                'gfpgan-1024.onnx': 'ee8dd6415e388b3a410689d5d9395a2bf50b5973b588421ebfa57bc266f19e24',
+            },
         )
     if not os.path.exists(model_path):
         update_status(

@@ -10,7 +10,7 @@ import onnxruntime
 import os
 
 import modules.globals
-from modules.core import update_status
+from modules.status_bus import BUS
 from modules.paths import MODELS_DIR
 from modules.onnx_providers import build_providers_config
 from modules.utilities import conditional_download
@@ -22,6 +22,9 @@ NAME = "DLC.FACE-OCCLUDER"
 _XSEG_MODEL = {
     'url': 'https://github.com/facefusion/facefusion-assets/releases/download/models-3.1.0/xseg_2.onnx',
     'file': 'xseg_2.onnx',
+    # SHA-256 sourced from huggingface.co/facefusion/models-3.1.0
+    # Verify with: sha256sum models/xseg_2.onnx
+    'sha256': 'cd9a0879eaf43841d765472cf1f8c330dbf9dcb03da0eace93e95f3bcc399042',
 }
 
 
@@ -29,10 +32,14 @@ def pre_check() -> bool:
     """Download XSeg model if missing."""
     model_path = os.path.join(MODELS_DIR, _XSEG_MODEL['file'])
     if not os.path.exists(model_path):
-        update_status(f"Downloading {_XSEG_MODEL['file']}...", NAME)
-    conditional_download(MODELS_DIR, [_XSEG_MODEL['url']])
+        BUS.publish(f"Downloading {_XSEG_MODEL['file']}...", NAME)
+    conditional_download(
+        MODELS_DIR,
+        [_XSEG_MODEL['url']],
+        expected_checksums={_XSEG_MODEL['file']: _XSEG_MODEL['sha256']},
+    )
     if not os.path.exists(model_path):
-        update_status(f"XSeg model not found at {model_path}. Download may have failed.", NAME)
+        BUS.publish(f"XSeg model not found at {model_path}. Download may have failed.", NAME)
         return False
     return True
 
@@ -47,16 +54,16 @@ def get_face_occluder(providers: list | None = None) -> onnxruntime.InferenceSes
                 providers_config = build_providers_config(_providers)
                 model_path = os.path.join(MODELS_DIR, _XSEG_MODEL['file'])
                 if not os.path.exists(model_path):
-                    update_status("XSeg model not found — downloading now...", NAME)
+                    BUS.publish("XSeg model not found — downloading now...", NAME)
                     if not pre_check():
                         return None
                 try:
                     FACE_OCCLUDER = onnxruntime.InferenceSession(
                         model_path, providers=providers_config,
                     )
-                    update_status("XSeg occlusion model loaded.", NAME)
+                    BUS.publish("XSeg occlusion model loaded.", NAME)
                 except Exception as e:
-                    update_status(f"Error loading XSeg model: {e}", NAME)
+                    BUS.publish(f"Error loading XSeg model: {e}", NAME)
                     FACE_OCCLUDER = None
     return FACE_OCCLUDER
 

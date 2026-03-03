@@ -5,7 +5,7 @@ description = "Real-time face swap and video deepfake application"
 readme = "README.md"
 requires-python = "==3.13.*"
 dependencies = [
-    "numpy>=1.23.5",
+    "numpy>=1.23.5,<3",
     "typing-extensions>=4.8.0",
     "opencv-python==4.10.0.84",
     "cv2_enumerate_cameras==1.1.15",
@@ -15,7 +15,7 @@ dependencies = [
     "tk==0.1.0",
     "customtkinter==5.2.2",
     "pillow==11.1.0",
-    "torch; sys_platform == 'darwin'",
+    "torch>=2.0,<3; sys_platform == 'darwin'",
     "torch==2.8.0+cu128; sys_platform != 'darwin'",
     "torchvision; sys_platform == 'darwin'",
     "torchvision; sys_platform != 'darwin'",
@@ -24,8 +24,8 @@ dependencies = [
     "tensorflow>=2.20.0; sys_platform != 'darwin'",
     "opennsfw2==0.10.2",
     "protobuf>=4.25.1",
-    "basicsr @ git+https://github.com/xinntao/BasicSR.git@master",
-    "gfpgan @ git+https://github.com/TencentARC/GFPGAN.git@master",
+    "basicsr @ git+https://github.com/xinntao/BasicSR.git@8d56e3a045f9fb3e1d8872f92ee4a4f07f886b0a",
+    "gfpgan @ git+https://github.com/TencentARC/GFPGAN.git@7552a7791caad982045a7bbe5634bbf1cd5c8679",
     "pygrabber; sys_platform == 'win32'",
     "coremltools>=9.0 ; sys_platform == 'darwin'",
     "onnx2torch>=1.5.15 ; sys_platform == 'darwin'",

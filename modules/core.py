@@ -373,6 +373,15 @@ def destroy(to_quit=True) -> None:
     if modules.globals.target_path:
         clean_temp(modules.globals.target_path)
     if to_quit:
+        # Stop any active webcam session and wait for its daemon threads to
+        # finish their current MLX/ONNX inference cycle.  Without this,
+        # Python's shutdown sequence frees native resources (MLX stream,
+        # ONNX session) while threads are still mid-inference → SIGSEGV.
+        try:
+            from modules.ui_webcam import stop_active_session
+            stop_active_session()
+        except Exception:
+            pass
         try:
             import modules.ui as ui
             if ui.ROOT is not None:
