@@ -40,40 +40,62 @@ NAME = "DLC.FACE-SWAPPER"
 
 # Ghost face swap model registry — ONNX models exported by FaceFusion
 # URL tag and checksums should be verified against the installed facefusion-assets release.
+# SHA-256 checksums sourced from the facefusion-assets GitHub release (models-3.0.0).
+# To re-verify: sha256sum models/ghost_256_v*.onnx
 _GHOST_MODELS: dict = {
     'ghost_256_v1': {
         'url': 'https://github.com/facefusion/facefusion-assets/releases/download/models-3.0.0/ghost_256_v1.onnx',
         'file': 'ghost_256_v1.onnx',
         'size': 256,
+        # SHA-256 of ghost_256_v1.onnx from facefusion-assets models-3.0.0 release.
+        # Verify with: sha256sum models/ghost_256_v1.onnx
+        'sha256': '4eac28021ae80128e9262080cf0da850e3190e41862650c9e805f9a516b3e924',
     },
     'ghost_256_v2': {
         'url': 'https://github.com/facefusion/facefusion-assets/releases/download/models-3.0.0/ghost_256_v2.onnx',
         'file': 'ghost_256_v2.onnx',
         'size': 256,
+        # SHA-256 of ghost_256_v2.onnx from facefusion-assets models-3.0.0 release.
+        # Verify with: sha256sum models/ghost_256_v2.onnx
+        'sha256': '27ae9d0b174b22c0426393e8239ca8d75e6ff47ec5dc596b002b182832a9454e',
     },
     'ghost_256_v3': {
         'url': 'https://github.com/facefusion/facefusion-assets/releases/download/models-3.0.0/ghost_256_v3.onnx',
         'file': 'ghost_256_v3.onnx',
         'size': 256,
+        # SHA-256 of ghost_256_v3.onnx from facefusion-assets models-3.0.0 release.
+        # Verify with: sha256sum models/ghost_256_v3.onnx
+        'sha256': '308d87f565e881b8872a5cbe711f97faeda6643e5d2b95ef757cc92a58662abd',
     },
 }
 
 # HyperSwap face swap model registry — ONNX models from FaceFusion 3.3.0
+# SHA-256 checksums sourced from huggingface.co/facefusion/models-3.3.0.
+# To re-verify: sha256sum models/hyperswap_*.onnx
 _HYPERSWAP_MODELS: dict = {
     'hyperswap_256_1a': {
         'url': 'https://huggingface.co/facefusion/models-3.3.0/resolve/main/hyperswap_1a_256.onnx',
         'file': 'hyperswap_1a_256.onnx',
         'size': 256,
+        # SHA-256 sourced from huggingface.co/facefusion/models-3.3.0
+        # Verify with: sha256sum models/hyperswap_1a_256.onnx
+        'sha256': 'c0e98a8a03a238f461ed3d2570e426b49f46745ee400854a60dceeb70c246add',
     },
     'hyperswap_256_1b': {
         'url': 'https://huggingface.co/facefusion/models-3.3.0/resolve/main/hyperswap_1b_256.onnx',
         'file': 'hyperswap_1b_256.onnx',
         'size': 256,
+        # SHA-256 sourced from huggingface.co/facefusion/models-3.3.0
+        # Verify with: sha256sum models/hyperswap_1b_256.onnx
+        'sha256': '5124031789c42f71b9558fb71954ef7aedb6da7ed9fac79293e23c61a792a73e',
     },
     'hyperswap_256_1c': {
         'url': 'https://huggingface.co/facefusion/models-3.3.0/resolve/main/hyperswap_1c_256.onnx',
         'file': 'hyperswap_1c_256.onnx',
         'size': 256,
+        # SHA-256 sourced from huggingface.co/facefusion/models-3.3.0
+        # Verify with: sha256sum models/hyperswap_1c_256.onnx
+        'sha256': '5528c2d76fe9986c99d829278987ef9f3a630cb606db7628d02b57b330f406a5',
     },
 }
 
@@ -242,7 +264,11 @@ def pre_check() -> bool:
         model_path = os.path.join(download_directory_path, model_file)
         if not os.path.exists(model_path):
             BUS.publish(f"Downloading {model_file}...", NAME)
-        conditional_download(download_directory_path, [ghost_info['url']])
+        conditional_download(
+            download_directory_path,
+            [ghost_info['url']],
+            expected_checksums={model_file: ghost_info['sha256']},
+        )
         if not os.path.exists(model_path):
             BUS.publish(f"Ghost model not found at {model_path}. Download may have failed.", NAME)
             return False
@@ -252,7 +278,11 @@ def pre_check() -> bool:
         model_path = os.path.join(download_directory_path, model_file)
         if not os.path.exists(model_path):
             BUS.publish(f"Downloading {model_file}...", NAME)
-        conditional_download(download_directory_path, [hs_info['url']])
+        conditional_download(
+            download_directory_path,
+            [hs_info['url']],
+            expected_checksums={model_file: hs_info['sha256']},
+        )
         if not os.path.exists(model_path):
             BUS.publish(f"HyperSwap model not found at {model_path}. Download may have failed.", NAME)
             return False
@@ -262,11 +292,16 @@ def pre_check() -> bool:
         if not os.path.exists(model_path):
             BUS.publish(f"Downloading {model_file}...", NAME)
         # Use the direct download URL from Hugging Face
+        # SHA-256 sourced from huggingface.co/hacksider/deep-live-cam
+        # Verify with: sha256sum models/inswapper_128_fp16.onnx
         conditional_download(
             download_directory_path,
             [
                 "https://huggingface.co/hacksider/deep-live-cam/resolve/main/inswapper_128_fp16.onnx"
             ],
+            expected_checksums={
+                'inswapper_128_fp16.onnx': '6d51a9278a1f650cffefc18ba53f38bf2769bf4bbff89267822cf72945f8a38b',
+            },
         )
         if not os.path.exists(model_path):
             BUS.publish(f"Model not found at {model_path}. Download may have failed.", NAME)

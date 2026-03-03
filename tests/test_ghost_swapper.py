@@ -276,7 +276,7 @@ class TestPreCheckModelSelection:
 
         downloaded_urls = []
 
-        def fake_conditional_download(directory, urls):
+        def fake_conditional_download(directory, urls, expected_checksums=None):
             downloaded_urls.extend(urls)
             # Create the file so pre_check thinks download succeeded
             for url in urls:
@@ -306,7 +306,7 @@ class TestPreCheckModelSelection:
 
         downloaded_urls = []
 
-        def fake_conditional_download(directory, urls):
+        def fake_conditional_download(directory, urls, expected_checksums=None):
             downloaded_urls.extend(urls)
             for url in urls:
                 fname = url.split('/')[-1]

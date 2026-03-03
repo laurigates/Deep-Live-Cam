@@ -22,6 +22,9 @@ NAME = "DLC.FACE-OCCLUDER"
 _XSEG_MODEL = {
     'url': 'https://github.com/facefusion/facefusion-assets/releases/download/models-3.1.0/xseg_2.onnx',
     'file': 'xseg_2.onnx',
+    # SHA-256 sourced from huggingface.co/facefusion/models-3.1.0
+    # Verify with: sha256sum models/xseg_2.onnx
+    'sha256': 'cd9a0879eaf43841d765472cf1f8c330dbf9dcb03da0eace93e95f3bcc399042',
 }
 
 
@@ -30,7 +33,11 @@ def pre_check() -> bool:
     model_path = os.path.join(MODELS_DIR, _XSEG_MODEL['file'])
     if not os.path.exists(model_path):
         BUS.publish(f"Downloading {_XSEG_MODEL['file']}...", NAME)
-    conditional_download(MODELS_DIR, [_XSEG_MODEL['url']])
+    conditional_download(
+        MODELS_DIR,
+        [_XSEG_MODEL['url']],
+        expected_checksums={_XSEG_MODEL['file']: _XSEG_MODEL['sha256']},
+    )
     if not os.path.exists(model_path):
         BUS.publish(f"XSeg model not found at {model_path}. Download may have failed.", NAME)
         return False
