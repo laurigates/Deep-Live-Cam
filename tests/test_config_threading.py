@@ -361,7 +361,7 @@ class TestConfigValuesPropagateCorrectly:
 
         received_configs = []
 
-        def capture_mouth_mask(swapped, target_face, original, config=None):
+        def capture_mouth_mask(swapped, target_face, original, config=None, face_mask=None):
             received_configs.append(config)
             return swapped  # pass-through
 
