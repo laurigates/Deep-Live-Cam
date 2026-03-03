@@ -22,7 +22,6 @@ from modules.utilities import (
     is_image,
     is_video,
 )
-from modules.onnx_providers import build_providers_config
 from modules.processing_config import ProcessingConfig
 from modules.processing_config_factory import build_config_from_globals
 from modules.face_preprocessing import (

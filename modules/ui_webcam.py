@@ -38,6 +38,7 @@ _ENHANCER_NAMES = frozenset({
     "DLC.FACE-ENHANCER",
     "DLC.FACE-ENHANCER-GPEN256",
     "DLC.FACE-ENHANCER-GPEN512",
+    "DLC.FACE-ENHANCER-CODEFORMER",
 })
 
 # Map from processor NAME to fp_ui toggle key
@@ -45,6 +46,7 @@ _ENHANCER_UI_KEYS = {
     "DLC.FACE-ENHANCER": "face_enhancer",
     "DLC.FACE-ENHANCER-GPEN256": "face_enhancer_gpen256",
     "DLC.FACE-ENHANCER-GPEN512": "face_enhancer_gpen512",
+    "DLC.FACE-ENHANCER-CODEFORMER": "face_enhancer_codeformer",
 }
 
 
@@ -72,8 +74,6 @@ def stop_active_session(timeout: float = 0.5) -> None:
     # if cleanup doesn't run (e.g., ROOT.quit() stopped the display loop),
     # the wait just times out — which is still enough grace time.
     _session_ready.wait(timeout=timeout)
-
-
 def _capture_thread_func(cap, capture_queue, stop_event):
     """Capture thread: reads frames from camera and puts them into the queue.
     Drops frames when the queue is full to avoid backpressure on the camera."""
@@ -595,8 +595,7 @@ def create_webcam_preview(camera_index: int, config: Optional[ProcessingConfig] 
         config = build_config_from_globals()
 
     # If a session is already running, stop it and defer start until cleanup finishes.
-    if _active_stop_event is not None and not _active_stop_event.is_set():
-        _active_stop_event.set()
+    stop_active_session()
 
     if not _session_ready.is_set():
         def _retry():

@@ -47,8 +47,8 @@ def _ensure_torch() -> bool:
 def parse_args() -> None:
     signal.signal(signal.SIGINT, lambda signal_number, frame: destroy())
     program = argparse.ArgumentParser()
-    program.add_argument('-s', '--source', help='select an source image', dest='source_path')
-    program.add_argument('-t', '--target', help='select an target image or video', dest='target_path')
+    program.add_argument('-s', '--source', help='select a source image', dest='source_path')
+    program.add_argument('-t', '--target', help='select a target image or video', dest='target_path')
     program.add_argument('-o', '--output', help='select output file or directory', dest='output_path')
     program.add_argument('--frame-processor', help='pipeline of frame processors', dest='frame_processor', default=['face_swapper'], choices=['face_swapper', 'face_enhancer', 'face_enhancer_gpen256', 'face_enhancer_gpen512', 'face_enhancer_codeformer'], nargs='+')
     program.add_argument('--png-frames', help='use lossless PNG for intermediate frames (larger files, no artifacts)', dest='use_png_frames', action='store_true', default=False)
@@ -124,7 +124,6 @@ def parse_args() -> None:
     modules.globals.live_enhance_size = args.live_enhance_size
     modules.globals.landmark_smoothing = args.landmark_smoothing
     modules.globals.landmark_smoothing_alpha = max(0.0, min(1.0, args.landmark_smoothing_alpha))
-    modules.globals.face_swap_model = args.face_swap_model
 
     #for ENHANCER tumblers:
     for enhancer_key in ('face_enhancer', 'face_enhancer_gpen256', 'face_enhancer_gpen512', 'face_enhancer_codeformer'):
