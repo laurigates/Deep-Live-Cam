@@ -208,6 +208,112 @@ def _enhancement_thread_func(enhancement_input, enhancement_output,
                             _enhancement_process_fn)
 
 
+def _process_frame_with_processors(
+    *,
+    frame_processor,
+    temp_frame,
+    map_faces: bool,
+    skip_enhancer: bool,
+    enhancement_seq: int,
+    last_consumed_enh_seq: int,
+    latest_enhanced_frame,
+    swap_seq: int,
+    last_consumed_swap_seq: int,
+    latest_swapped_frame,
+    enhancement_input,
+    enhancement_output,
+    enhancement_lock,
+    swap_input,
+    swap_output,
+    swap_lock,
+    source_image=None,
+    cached_target_face=None,
+    cached_many_faces=None,
+    cached_faces_list=None,
+    prev_enhanced_faces=None,
+    config: Optional[ProcessingConfig] = None,
+    snap_many_faces: bool = False,
+):
+    """Apply a single frame processor to *temp_frame*, updating async slot state.
+
+    This is the common inner-loop body shared between the normal-mode and
+    map_faces-mode branches of _processing_thread_func.  The caller computes
+    *skip_enhancer* (which differs between the two modes) and passes the
+    relevant face references (None for map_faces mode).
+
+    Returns a dict of mutable state fields that may have changed:
+        temp_frame, enhancement_seq, last_consumed_enh_seq, latest_enhanced_frame,
+        swap_seq, last_consumed_swap_seq, latest_swapped_frame, prev_enhanced_faces.
+    """
+    if frame_processor.NAME in _ENHANCER_NAMES:
+        if _is_enhancer_enabled(frame_processor):
+            if not skip_enhancer:
+                enhancement_seq += 1
+                if not map_faces:
+                    prev_enhanced_faces = cached_faces_list
+                with enhancement_lock:
+                    enhancement_input[0] = {
+                        'frame': temp_frame.copy(),
+                        'faces': cached_faces_list if not map_faces else None,
+                        'map_faces': map_faces,
+                        'processor': frame_processor,
+                        'seq': enhancement_seq,
+                    }
+            with enhancement_lock:
+                enh_out = enhancement_output[0]
+            if enh_out is not None and enh_out['seq'] != last_consumed_enh_seq:
+                last_consumed_enh_seq = enh_out['seq']
+                latest_enhanced_frame = enh_out['frame']
+            if latest_enhanced_frame is not None:
+                temp_frame = latest_enhanced_frame
+        else:
+            latest_enhanced_frame = None
+            if not map_faces:
+                prev_enhanced_faces = None
+            with enhancement_lock:
+                enhancement_input[0] = None
+                enhancement_output[0] = None
+    elif frame_processor.NAME == "DLC.FACE-SWAPPER":
+        swap_seq += 1
+        with swap_lock:
+            swap_input[0] = {
+                'frame': temp_frame.copy(),
+                'source_face': source_image if not map_faces else None,
+                'target_face': cached_target_face if not map_faces else None,
+                'many_faces': (
+                    (cached_many_faces if snap_many_faces else None)
+                    if not map_faces else None
+                ),
+                'processor': frame_processor,
+                'map_faces': map_faces,
+                'seq': swap_seq,
+                'config': config,
+            }
+        with swap_lock:
+            swap_out = swap_output[0]
+        if swap_out is not None and swap_out['seq'] != last_consumed_swap_seq:
+            last_consumed_swap_seq = swap_out['seq']
+            latest_swapped_frame = swap_out['frame']
+        if latest_swapped_frame is not None:
+            temp_frame = latest_swapped_frame
+    else:
+        temp_frame = frame_processor.process_frame(
+            source_image if not map_faces else None,
+            temp_frame,
+        )
+
+    return {
+        'temp_frame': temp_frame,
+        'enhancement_seq': enhancement_seq,
+        'last_consumed_enh_seq': last_consumed_enh_seq,
+        'latest_enhanced_frame': latest_enhanced_frame,
+        'swap_seq': swap_seq,
+        'last_consumed_swap_seq': last_consumed_swap_seq,
+        'latest_swapped_frame': latest_swapped_frame,
+        'prev_enhanced_faces': prev_enhanced_faces,
+    }
+
+
 def _processing_thread_func(capture_queue, processed_queue, stop_event,
                              latest_frame_holder, detection_result, detection_lock,
                              swap_input, swap_output, swap_lock,
@@ -317,111 +423,76 @@ def _processing_thread_func(capture_queue, processed_queue, stop_event,
                     skip_enhancer = enh_interval > 1 and (enhancer_frame_counter % enh_interval) != 1
 
                 for frame_processor in frame_processors:
-                    if frame_processor.NAME in _ENHANCER_NAMES:
-                        if _is_enhancer_enabled(frame_processor):
-                            if not skip_enhancer:
-                                enhancement_seq += 1
-                                prev_enhanced_faces = cached_faces_list
-                                with enhancement_lock:
-                                    enhancement_input[0] = {
-                                        'frame': temp_frame.copy(),
-                                        'faces': cached_faces_list,
-                                        'map_faces': False,
-                                        'processor': frame_processor,
-                                        'seq': enhancement_seq,
-                                    }
-                            with enhancement_lock:
-                                enh_out = enhancement_output[0]
-                            if enh_out is not None and enh_out['seq'] != last_consumed_enh_seq:
-                                last_consumed_enh_seq = enh_out['seq']
-                                latest_enhanced_frame = enh_out['frame']
-                            if latest_enhanced_frame is not None:
-                                temp_frame = latest_enhanced_frame
-                        else:
-                            latest_enhanced_frame = None
-                            prev_enhanced_faces = None
-                            with enhancement_lock:
-                                enhancement_input[0] = None
-                                enhancement_output[0] = None
-                    elif frame_processor.NAME == "DLC.FACE-SWAPPER":
-                        swap_seq += 1
-                        with swap_lock:
-                            swap_input[0] = {
-                                'frame': temp_frame.copy(),
-                                'source_face': source_image,
-                                'target_face': cached_target_face,
-                                'many_faces': cached_many_faces if snap_many_faces else None,
-                                'processor': frame_processor,
-                                'map_faces': False,
-                                'seq': swap_seq,
-                                'config': config,
-                            }
-                        with swap_lock:
-                            swap_out = swap_output[0]
-                        if swap_out is not None and swap_out['seq'] != last_consumed_swap_seq:
-                            last_consumed_swap_seq = swap_out['seq']
-                            latest_swapped_frame = swap_out['frame']
-                        if latest_swapped_frame is not None:
-                            temp_frame = latest_swapped_frame
-                    else:
-                        temp_frame = frame_processor.process_frame(source_image, temp_frame)
+                    state = _process_frame_with_processors(
+                        frame_processor=frame_processor,
+                        temp_frame=temp_frame,
+                        map_faces=False,
+                        skip_enhancer=skip_enhancer,
+                        enhancement_seq=enhancement_seq,
+                        last_consumed_enh_seq=last_consumed_enh_seq,
+                        latest_enhanced_frame=latest_enhanced_frame,
+                        swap_seq=swap_seq,
+                        last_consumed_swap_seq=last_consumed_swap_seq,
+                        latest_swapped_frame=latest_swapped_frame,
+                        enhancement_input=enhancement_input,
+                        enhancement_output=enhancement_output,
+                        enhancement_lock=enhancement_lock,
+                        swap_input=swap_input,
+                        swap_output=swap_output,
+                        swap_lock=swap_lock,
+                        source_image=source_image,
+                        cached_target_face=cached_target_face,
+                        cached_many_faces=cached_many_faces,
+                        cached_faces_list=cached_faces_list,
+                        prev_enhanced_faces=prev_enhanced_faces,
+                        config=config,
+                        snap_many_faces=snap_many_faces,
+                    )
+                    temp_frame = state['temp_frame']
+                    enhancement_seq = state['enhancement_seq']
+                    last_consumed_enh_seq = state['last_consumed_enh_seq']
+                    latest_enhanced_frame = state['latest_enhanced_frame']
+                    swap_seq = state['swap_seq']
+                    last_consumed_swap_seq = state['last_consumed_swap_seq']
+                    latest_swapped_frame = state['latest_swapped_frame']
+                    prev_enhanced_faces = state['prev_enhanced_faces']
             else:
                 # In map_faces mode there is no fixed target file; clear globals for UI
                 # consistency (legacy behaviour kept as side-effect).
                 modules.globals.target_path = None
 
-                # Enhancer skip-frame for map_faces path
+                # Enhancer skip-frame for map_faces path (fixed-interval only; no motion adaptive)
                 enhancer_frame_counter += 1
                 enh_interval = snap_enh_interval
                 skip_enhancer = enh_interval > 1 and (enhancer_frame_counter % enh_interval) != 1
 
                 for frame_processor in frame_processors:
-                    if frame_processor.NAME in _ENHANCER_NAMES:
-                        if _is_enhancer_enabled(frame_processor):
-                            if not skip_enhancer:
-                                enhancement_seq += 1
-                                with enhancement_lock:
-                                    enhancement_input[0] = {
-                                        'frame': temp_frame.copy(),
-                                        'faces': None,
-                                        'map_faces': True,
-                                        'processor': frame_processor,
-                                        'seq': enhancement_seq,
-                                    }
-                            with enhancement_lock:
-                                enh_out = enhancement_output[0]
-                            if enh_out is not None and enh_out['seq'] != last_consumed_enh_seq:
-                                last_consumed_enh_seq = enh_out['seq']
-                                latest_enhanced_frame = enh_out['frame']
-                            if latest_enhanced_frame is not None:
-                                temp_frame = latest_enhanced_frame
-                        else:
-                            latest_enhanced_frame = None
-                            with enhancement_lock:
-                                enhancement_input[0] = None
-                                enhancement_output[0] = None
-                    elif frame_processor.NAME == "DLC.FACE-SWAPPER":
-                        swap_seq += 1
-                        with swap_lock:
-                            swap_input[0] = {
-                                'frame': temp_frame.copy(),
-                                'source_face': None,
-                                'target_face': None,
-                                'many_faces': None,
-                                'processor': frame_processor,
-                                'map_faces': True,
-                                'seq': swap_seq,
-                                'config': config,
-                            }
-                        with swap_lock:
-                            swap_out = swap_output[0]
-                        if swap_out is not None and swap_out['seq'] != last_consumed_swap_seq:
-                            last_consumed_swap_seq = swap_out['seq']
-                            latest_swapped_frame = swap_out['frame']
-                        if latest_swapped_frame is not None:
-                            temp_frame = latest_swapped_frame
-                    else:
-                        temp_frame = frame_processor.process_frame(None, temp_frame)
+                    state = _process_frame_with_processors(
+                        frame_processor=frame_processor,
+                        temp_frame=temp_frame,
+                        map_faces=True,
+                        skip_enhancer=skip_enhancer,
+                        enhancement_seq=enhancement_seq,
+                        last_consumed_enh_seq=last_consumed_enh_seq,
+                        latest_enhanced_frame=latest_enhanced_frame,
+                        swap_seq=swap_seq,
+                        last_consumed_swap_seq=last_consumed_swap_seq,
+                        latest_swapped_frame=latest_swapped_frame,
+                        enhancement_input=enhancement_input,
+                        enhancement_output=enhancement_output,
+                        enhancement_lock=enhancement_lock,
+                        swap_input=swap_input,
+                        swap_output=swap_output,
+                        swap_lock=swap_lock,
+                        config=config,
+                    )
+                    temp_frame = state['temp_frame']
+                    enhancement_seq = state['enhancement_seq']
+                    last_consumed_enh_seq = state['last_consumed_enh_seq']
+                    latest_enhanced_frame = state['latest_enhanced_frame']
+                    swap_seq = state['swap_seq']
+                    last_consumed_swap_seq = state['last_consumed_swap_seq']
+                    latest_swapped_frame = state['latest_swapped_frame']
         else:
             # Skip frame: hold the last processed frame to avoid blending swapped/raw content.
             # Interpolating against a raw (unswapped) frame produces visible face-flicker artifacts.
