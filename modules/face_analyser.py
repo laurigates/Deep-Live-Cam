@@ -96,7 +96,7 @@ class FaceAnalyser:
         """Return all detected faces (empty list if none found)."""
         try:
             return list(self._inner.get(frame))
-        except (IndexError, Exception):
+        except (IndexError, ValueError):
             return []
 
     def set_det_size(self, det_size: tuple[int, int]) -> None:
@@ -210,11 +210,11 @@ def get_one_face(frame: Frame) -> Any:
         return None
 
 
-def get_many_faces(frame: Frame) -> Any:
+def get_many_faces(frame: Frame) -> list:
     try:
         return _detect_all_faces(frame)
     except IndexError:
-        return None
+        return []
 
 
 def detect_faces(frame: Frame, config: Optional[ProcessingConfig] = None) -> list:
