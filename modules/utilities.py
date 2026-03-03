@@ -76,6 +76,7 @@ def run_ffmpeg(args: List[str], config: Optional[ProcessingConfig] = None) -> bo
 
 
 def detect_fps(target_path: str) -> float:
+    _validate_path_for_subprocess(target_path)
     command = [
         "ffprobe",
         "-v",
@@ -99,6 +100,7 @@ def detect_fps(target_path: str) -> float:
 
 def extract_frames(target_path: str, config: Optional[ProcessingConfig] = None) -> None:
     """Extract frames with hardware acceleration and optimized settings."""
+    _validate_path_for_subprocess(target_path)
     if config is None:
         config = build_config_from_globals()
     temp_directory_path = get_temp_directory_path(target_path)
@@ -196,6 +198,7 @@ def _build_video_ffmpeg_args(
 def create_video(target_path: str, fps: float = 30.0,
                  config: Optional[ProcessingConfig] = None) -> None:
     """Create video with hardware-accelerated encoding and optimized settings."""
+    _validate_path_for_subprocess(target_path)
     if config is None:
         config = build_config_from_globals()
     temp_output_path = get_temp_output_path(target_path)
@@ -221,6 +224,8 @@ def create_video(target_path: str, fps: float = 30.0,
 
 
 def restore_audio(target_path: str, output_path: str) -> None:
+    _validate_path_for_subprocess(target_path)
+    _validate_path_for_subprocess(output_path)
     temp_output_path = get_temp_output_path(target_path)
     done = run_ffmpeg(
         [
