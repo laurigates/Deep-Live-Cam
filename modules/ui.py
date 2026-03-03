@@ -198,6 +198,7 @@ def save_switch_states():
         "virtual_cam": modules.globals.virtual_cam,
         "mouth_mask": modules.globals.mouth_mask,
         "show_mouth_mask_box": modules.globals.show_mouth_mask_box,
+        "occlusion_mask": modules.globals.occlusion_mask,
         "rife_enabled": modules.globals.rife_enabled,
         "rife_model": modules.globals.rife_model,
         "rife_multiplier": modules.globals.rife_multiplier,
@@ -238,6 +239,7 @@ def load_switch_states():
         modules.globals.show_mouth_mask_box = switch_states.get(
             "show_mouth_mask_box", False
         )
+        modules.globals.occlusion_mask = switch_states.get("occlusion_mask", False)
         modules.globals.rife_enabled = switch_states.get("rife_enabled", False)
         modules.globals.rife_model = switch_states.get("rife_model", "rife-v4.25-lite")
         modules.globals.rife_multiplier = switch_states.get("rife_multiplier", 2)
@@ -440,6 +442,8 @@ def _get_switch_defs():
              _("Preserve original mouth movement in the swapped face")),
             (_("Show Mask Outline"), "show_mouth_mask_box", False,
              _("Display the mouth mask boundary for debugging")),
+            (_("Occlusion Mask"), "occlusion_mask", False,
+             _("Preserve hands, glasses, and other objects covering the face during swap")),
             (_("Swap All Faces"), "many_faces", False,
              _("Swap every detected face, not just the primary one")),
             (_("Seamless Blend"), "poisson_blend", False,

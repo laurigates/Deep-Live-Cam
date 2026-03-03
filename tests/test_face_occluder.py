@@ -113,13 +113,14 @@ class TestFaceOccluderSingleton:
         assert call_count == 1, f"Expected 1 session creation, got {call_count}"
 
     def test_get_face_occluder_returns_none_when_model_missing(self):
-        """Returns None when model file does not exist."""
+        """Returns None when model file does not exist and download fails."""
         from modules import face_occluder
 
         original = face_occluder.FACE_OCCLUDER
         face_occluder.FACE_OCCLUDER = None
         try:
-            with patch('modules.face_occluder.os.path.exists', return_value=False):
+            with patch('modules.face_occluder.os.path.exists', return_value=False), \
+                 patch('modules.face_occluder.pre_check', return_value=False):
                 result = face_occluder.get_face_occluder(
                     providers=['CPUExecutionProvider']
                 )

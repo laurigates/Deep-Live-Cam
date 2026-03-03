@@ -47,8 +47,9 @@ def get_face_occluder(providers: list | None = None) -> onnxruntime.InferenceSes
                 providers_config = build_providers_config(_providers)
                 model_path = os.path.join(MODELS_DIR, _XSEG_MODEL['file'])
                 if not os.path.exists(model_path):
-                    update_status(f"XSeg model not found: {model_path}", NAME)
-                    return None
+                    update_status("XSeg model not found — downloading now...", NAME)
+                    if not pre_check():
+                        return None
                 try:
                     FACE_OCCLUDER = onnxruntime.InferenceSession(
                         model_path, providers=providers_config,
