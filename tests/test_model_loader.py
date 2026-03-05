@@ -1,7 +1,9 @@
 """Tests for modules/model_loader.py."""
 
 import threading
+
 import pytest
+
 from modules.model_loader import ModelHolder
 
 

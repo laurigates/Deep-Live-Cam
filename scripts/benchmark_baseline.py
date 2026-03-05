@@ -14,6 +14,7 @@ Usage:
     # Delete a specific baseline
     python scripts/benchmark_baseline.py delete <name>
 """
+
 import argparse
 import json
 import subprocess
@@ -32,9 +33,14 @@ def cmd_save(args):
     print("Running benchmarks...")
     result = subprocess.run(
         [
-            sys.executable, "-m", "pytest",
-            "tests/benchmarks/", "-m", "benchmark",
-            "-v", "--tb=short",
+            sys.executable,
+            "-m",
+            "pytest",
+            "tests/benchmarks/",
+            "-m",
+            "benchmark",
+            "-v",
+            "--tb=short",
             f"--benchmark-json={RESULTS_DIR / 'latest.json'}",
         ],
         capture_output=False,

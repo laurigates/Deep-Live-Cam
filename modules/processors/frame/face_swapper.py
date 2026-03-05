@@ -1,71 +1,122 @@
-from typing import Any, List, Optional, Tuple
+import logging
+import os
+import threading
+import time
+from typing import Any
+
 import cv2
 import insightface
-import logging
-import threading
 import numpy as np
 import onnxruntime
+
 import modules.globals
 import modules.processors.frame.core
+from modules.cluster_analysis import find_closest_centroid
+from modules.face_analyser import default_source_face, get_many_faces, get_one_face
 from modules.face_map_store import STORE as _MAP_STORE
+from modules.gpu_processing import gpu_add_weighted, gpu_resize, gpu_sharpen
+from modules.onnx_providers import build_providers_config
+from modules.paths import MODELS_DIR
+from modules.platform_info import IS_APPLE_SILICON
+from modules.processing_config_factory import build_config_from_globals
+from modules.processors.frame.face_masking import (
+    apply_color_transfer,
+    apply_histogram_matching,
+    apply_mouth_area,
+    create_face_mask,
+    create_lower_mouth_mask,
+    draw_mouth_mask_visualization,
+)
 from modules.status_bus import BUS
-from modules.face_analyser import get_one_face, get_many_faces, default_source_face
 from modules.typing import Face, Frame
 from modules.utilities import (
     conditional_download,
     is_image,
     is_video,
 )
-from modules.cluster_analysis import find_closest_centroid
-from modules.gpu_processing import gpu_gaussian_blur, gpu_sharpen, gpu_add_weighted, gpu_resize, gpu_cvt_color
-from modules.paths import MODELS_DIR
-from modules.platform_info import IS_APPLE_SILICON
-from modules.onnx_providers import build_providers_config
-from modules.processors.frame.face_masking import (
-    apply_color_transfer,
-    apply_histogram_matching,
-    create_face_mask,
-    create_lower_mouth_mask,
-    draw_mouth_mask_visualization,
-    apply_mouth_area,
-)
-from modules.processing_config import ProcessingConfig
-from modules.processing_config_factory import build_config_from_globals
-import os
-import time
 
 FACE_SWAPPER = None
 THREAD_LOCK = threading.Lock()
 NAME = "DLC.FACE-SWAPPER"
+
+# --- Affine scale EMA smoother for expression-stable face sizing ---
+_scale_ema: float | None = None
+_scale_ema_lock = threading.Lock()
+
+
+def reset_scale_smoother() -> None:
+    """Reset the affine scale EMA state (call when starting a new webcam session)."""
+    global _scale_ema
+    with _scale_ema_lock:
+        _scale_ema = None
+
+
+def _smooth_affine_scale(M: np.ndarray, alpha: float, input_size: int = 128) -> np.ndarray:
+    """Apply EMA smoothing to the scale component of affine matrix M.
+
+    Adjusts the rotation/scale submatrix of M so the face region size
+    changes smoothly across frames, preventing expression-driven resizing
+    (e.g., open mouth → larger face, squinted eyes → smaller face).
+
+    Translation is adjusted to keep the face center anchored at the crop
+    center after rescaling (``t' = half*(1 - ratio) + ratio*t``).
+    """
+    global _scale_ema
+    scale = float(np.sqrt(M[0, 0] ** 2 + M[0, 1] ** 2))
+    if scale <= 0:
+        return M
+
+    with _scale_ema_lock:
+        if _scale_ema is None:
+            _scale_ema = scale
+            return M
+        smoothed = alpha * scale + (1.0 - alpha) * _scale_ema
+        _scale_ema = smoothed
+
+    if abs(smoothed - scale) < 1e-6:
+        return M
+
+    ratio = smoothed / scale
+    half = input_size / 2.0
+    M_out = M.copy()
+    M_out[0, 0] *= ratio
+    M_out[0, 1] *= ratio
+    M_out[1, 0] *= ratio
+    M_out[1, 1] *= ratio
+    # Adjust translation so the face center maps to the crop center after rescaling
+    M_out[0, 2] = half * (1.0 - ratio) + ratio * M[0, 2]
+    M_out[1, 2] = half * (1.0 - ratio) + ratio * M[1, 2]
+    return M_out
+
 
 # Ghost face swap model registry — ONNX models exported by FaceFusion
 # URL tag and checksums should be verified against the installed facefusion-assets release.
 # SHA-256 checksums sourced from the facefusion-assets GitHub release (models-3.0.0).
 # To re-verify: sha256sum models/ghost_256_v*.onnx
 _GHOST_MODELS: dict = {
-    'ghost_256_v1': {
-        'url': 'https://github.com/facefusion/facefusion-assets/releases/download/models-3.0.0/ghost_256_v1.onnx',
-        'file': 'ghost_256_v1.onnx',
-        'size': 256,
+    "ghost_256_v1": {
+        "url": "https://github.com/facefusion/facefusion-assets/releases/download/models-3.0.0/ghost_256_v1.onnx",
+        "file": "ghost_256_v1.onnx",
+        "size": 256,
         # SHA-256 of ghost_256_v1.onnx from facefusion-assets models-3.0.0 release.
         # Verify with: sha256sum models/ghost_256_v1.onnx
-        'sha256': '4eac28021ae80128e9262080cf0da850e3190e41862650c9e805f9a516b3e924',
+        "sha256": "4eac28021ae80128e9262080cf0da850e3190e41862650c9e805f9a516b3e924",
     },
-    'ghost_256_v2': {
-        'url': 'https://github.com/facefusion/facefusion-assets/releases/download/models-3.0.0/ghost_256_v2.onnx',
-        'file': 'ghost_256_v2.onnx',
-        'size': 256,
+    "ghost_256_v2": {
+        "url": "https://github.com/facefusion/facefusion-assets/releases/download/models-3.0.0/ghost_256_v2.onnx",
+        "file": "ghost_256_v2.onnx",
+        "size": 256,
         # SHA-256 of ghost_256_v2.onnx from facefusion-assets models-3.0.0 release.
         # Verify with: sha256sum models/ghost_256_v2.onnx
-        'sha256': '27ae9d0b174b22c0426393e8239ca8d75e6ff47ec5dc596b002b182832a9454e',
+        "sha256": "27ae9d0b174b22c0426393e8239ca8d75e6ff47ec5dc596b002b182832a9454e",
     },
-    'ghost_256_v3': {
-        'url': 'https://github.com/facefusion/facefusion-assets/releases/download/models-3.0.0/ghost_256_v3.onnx',
-        'file': 'ghost_256_v3.onnx',
-        'size': 256,
+    "ghost_256_v3": {
+        "url": "https://github.com/facefusion/facefusion-assets/releases/download/models-3.0.0/ghost_256_v3.onnx",
+        "file": "ghost_256_v3.onnx",
+        "size": 256,
         # SHA-256 of ghost_256_v3.onnx from facefusion-assets models-3.0.0 release.
         # Verify with: sha256sum models/ghost_256_v3.onnx
-        'sha256': '308d87f565e881b8872a5cbe711f97faeda6643e5d2b95ef757cc92a58662abd',
+        "sha256": "308d87f565e881b8872a5cbe711f97faeda6643e5d2b95ef757cc92a58662abd",
     },
 }
 
@@ -73,29 +124,29 @@ _GHOST_MODELS: dict = {
 # SHA-256 checksums sourced from huggingface.co/facefusion/models-3.3.0.
 # To re-verify: sha256sum models/hyperswap_*.onnx
 _HYPERSWAP_MODELS: dict = {
-    'hyperswap_256_1a': {
-        'url': 'https://huggingface.co/facefusion/models-3.3.0/resolve/main/hyperswap_1a_256.onnx',
-        'file': 'hyperswap_1a_256.onnx',
-        'size': 256,
+    "hyperswap_256_1a": {
+        "url": "https://huggingface.co/facefusion/models-3.3.0/resolve/main/hyperswap_1a_256.onnx",
+        "file": "hyperswap_1a_256.onnx",
+        "size": 256,
         # SHA-256 sourced from huggingface.co/facefusion/models-3.3.0
         # Verify with: sha256sum models/hyperswap_1a_256.onnx
-        'sha256': 'c0e98a8a03a238f461ed3d2570e426b49f46745ee400854a60dceeb70c246add',
+        "sha256": "c0e98a8a03a238f461ed3d2570e426b49f46745ee400854a60dceeb70c246add",
     },
-    'hyperswap_256_1b': {
-        'url': 'https://huggingface.co/facefusion/models-3.3.0/resolve/main/hyperswap_1b_256.onnx',
-        'file': 'hyperswap_1b_256.onnx',
-        'size': 256,
+    "hyperswap_256_1b": {
+        "url": "https://huggingface.co/facefusion/models-3.3.0/resolve/main/hyperswap_1b_256.onnx",
+        "file": "hyperswap_1b_256.onnx",
+        "size": 256,
         # SHA-256 sourced from huggingface.co/facefusion/models-3.3.0
         # Verify with: sha256sum models/hyperswap_1b_256.onnx
-        'sha256': '5124031789c42f71b9558fb71954ef7aedb6da7ed9fac79293e23c61a792a73e',
+        "sha256": "5124031789c42f71b9558fb71954ef7aedb6da7ed9fac79293e23c61a792a73e",
     },
-    'hyperswap_256_1c': {
-        'url': 'https://huggingface.co/facefusion/models-3.3.0/resolve/main/hyperswap_1c_256.onnx',
-        'file': 'hyperswap_1c_256.onnx',
-        'size': 256,
+    "hyperswap_256_1c": {
+        "url": "https://huggingface.co/facefusion/models-3.3.0/resolve/main/hyperswap_1c_256.onnx",
+        "file": "hyperswap_1c_256.onnx",
+        "size": 256,
         # SHA-256 sourced from huggingface.co/facefusion/models-3.3.0
         # Verify with: sha256sum models/hyperswap_1c_256.onnx
-        'sha256': '5528c2d76fe9986c99d829278987ef9f3a630cb606db7628d02b57b330f406a5',
+        "sha256": "5528c2d76fe9986c99d829278987ef9f3a630cb606db7628d02b57b330f406a5",
     },
 }
 
@@ -131,7 +182,7 @@ class GhostSwapper:
         target_face: Any,
         source_face: Any,
         paste_back: bool = True,
-    ) -> Tuple[np.ndarray, np.ndarray]:
+    ) -> tuple[np.ndarray, np.ndarray]:
         """Swap the face in *img* using Ghost inference.
 
         Returns ``(bgr_fake, M)`` regardless of *paste_back* — pasting is
@@ -195,7 +246,7 @@ class HyperSwapper:
         target_face: Any,
         source_face: Any,
         paste_back: bool = True,
-    ) -> Tuple[np.ndarray, np.ndarray]:
+    ) -> tuple[np.ndarray, np.ndarray]:
         """Swap the face in *img* using HyperSwap inference.
 
         Returns ``(bgr_fake, M)`` regardless of *paste_back* — pasting is
@@ -233,17 +284,20 @@ _THREAD_LOCAL = threading.local()
 
 
 def _get_previous_frame():
-    return getattr(_THREAD_LOCAL, 'previous_frame_result', None)
+    return getattr(_THREAD_LOCAL, "previous_frame_result", None)
 
 
 def _set_previous_frame(frame):
     _THREAD_LOCAL.previous_frame_result = frame
+
+
 # --- END: Added for Interpolation ---
 
 FACE_DETECTION_CACHE = {}  # Cache face detections (2 fixed keys: 'faces', 'timestamp')
 LAST_DETECTION_TIME = 0
 
 models_dir = MODELS_DIR
+
 
 def pre_check() -> bool:
     # Use models_dir instead of abs_dir to save to the correct location
@@ -256,32 +310,32 @@ def pre_check() -> bool:
         print(f"{NAME}: Failed to create directory {download_directory_path}: {e}")
         return False
 
-    selected_model = getattr(modules.globals, 'face_swap_model', 'inswapper')
+    selected_model = getattr(modules.globals, "face_swap_model", "inswapper")
 
     if selected_model in _GHOST_MODELS:
         ghost_info = _GHOST_MODELS[selected_model]
-        model_file = ghost_info['file']
+        model_file = ghost_info["file"]
         model_path = os.path.join(download_directory_path, model_file)
         if not os.path.exists(model_path):
             BUS.publish(f"Downloading {model_file}...", NAME)
         conditional_download(
             download_directory_path,
-            [ghost_info['url']],
-            expected_checksums={model_file: ghost_info['sha256']},
+            [ghost_info["url"]],
+            expected_checksums={model_file: ghost_info["sha256"]},
         )
         if not os.path.exists(model_path):
             BUS.publish(f"Ghost model not found at {model_path}. Download may have failed.", NAME)
             return False
     elif selected_model in _HYPERSWAP_MODELS:
         hs_info = _HYPERSWAP_MODELS[selected_model]
-        model_file = hs_info['file']
+        model_file = hs_info["file"]
         model_path = os.path.join(download_directory_path, model_file)
         if not os.path.exists(model_path):
             BUS.publish(f"Downloading {model_file}...", NAME)
         conditional_download(
             download_directory_path,
-            [hs_info['url']],
-            expected_checksums={model_file: hs_info['sha256']},
+            [hs_info["url"]],
+            expected_checksums={model_file: hs_info["sha256"]},
         )
         if not os.path.exists(model_path):
             BUS.publish(f"HyperSwap model not found at {model_path}. Download may have failed.", NAME)
@@ -296,11 +350,9 @@ def pre_check() -> bool:
         # Verify with: sha256sum models/inswapper_128_fp16.onnx
         conditional_download(
             download_directory_path,
-            [
-                "https://huggingface.co/hacksider/deep-live-cam/resolve/main/inswapper_128_fp16.onnx"
-            ],
+            ["https://huggingface.co/hacksider/deep-live-cam/resolve/main/inswapper_128_fp16.onnx"],
             expected_checksums={
-                'inswapper_128_fp16.onnx': '6d51a9278a1f650cffefc18ba53f38bf2769bf4bbff89267822cf72945f8a38b',
+                "inswapper_128_fp16.onnx": "6d51a9278a1f650cffefc18ba53f38bf2769bf4bbff89267822cf72945f8a38b",
             },
         )
         if not os.path.exists(model_path):
@@ -308,8 +360,9 @@ def pre_check() -> bool:
             return False
 
     # Download occlusion model if enabled
-    if getattr(modules.globals, 'occlusion_mask', False):
+    if getattr(modules.globals, "occlusion_mask", False):
         from modules.face_occluder import pre_check as occluder_pre_check
+
         if not occluder_pre_check():
             BUS.publish("Warning: Occlusion model download failed. Occlusion masking will be disabled.", NAME)
 
@@ -317,11 +370,11 @@ def pre_check() -> bool:
 
 
 def pre_start() -> bool:
-    selected_model = getattr(modules.globals, 'face_swap_model', 'inswapper')
+    selected_model = getattr(modules.globals, "face_swap_model", "inswapper")
     if selected_model in _GHOST_MODELS:
-        model_path = os.path.join(models_dir, _GHOST_MODELS[selected_model]['file'])
+        model_path = os.path.join(models_dir, _GHOST_MODELS[selected_model]["file"])
     elif selected_model in _HYPERSWAP_MODELS:
-        model_path = os.path.join(models_dir, _HYPERSWAP_MODELS[selected_model]['file'])
+        model_path = os.path.join(models_dir, _HYPERSWAP_MODELS[selected_model]["file"])
     else:
         model_path = os.path.join(models_dir, "inswapper_128_fp16.onnx")
 
@@ -351,20 +404,20 @@ def get_face_swapper(providers: list | None = None) -> Any:
     if FACE_SWAPPER is None:
         with THREAD_LOCK:
             if FACE_SWAPPER is None:
-                selected_model = getattr(modules.globals, 'face_swap_model', 'inswapper')
+                selected_model = getattr(modules.globals, "face_swap_model", "inswapper")
                 _providers = providers if providers is not None else modules.globals.execution_providers
                 providers_config = build_providers_config(_providers)
 
                 if selected_model in _GHOST_MODELS:
                     ghost_info = _GHOST_MODELS[selected_model]
-                    model_path = os.path.join(models_dir, ghost_info['file'])
+                    model_path = os.path.join(models_dir, ghost_info["file"])
                     BUS.publish(f"Loading Ghost face swapper ({selected_model}) from: {model_path}", NAME)
                     try:
                         session = onnxruntime.InferenceSession(
                             model_path,
                             providers=providers_config,
                         )
-                        FACE_SWAPPER = GhostSwapper(session, input_size=ghost_info['size'])
+                        FACE_SWAPPER = GhostSwapper(session, input_size=ghost_info["size"])
                         BUS.publish(f"Ghost face swapper ({selected_model}) loaded successfully.", NAME)
                     except Exception as e:
                         BUS.publish(f"Error loading Ghost model {selected_model}: {e}", NAME)
@@ -372,14 +425,14 @@ def get_face_swapper(providers: list | None = None) -> Any:
                         return None
                 elif selected_model in _HYPERSWAP_MODELS:
                     hs_info = _HYPERSWAP_MODELS[selected_model]
-                    model_path = os.path.join(models_dir, hs_info['file'])
+                    model_path = os.path.join(models_dir, hs_info["file"])
                     BUS.publish(f"Loading HyperSwap face swapper ({selected_model}) from: {model_path}", NAME)
                     try:
                         session = onnxruntime.InferenceSession(
                             model_path,
                             providers=providers_config,
                         )
-                        FACE_SWAPPER = HyperSwapper(session, input_size=hs_info['size'])
+                        FACE_SWAPPER = HyperSwapper(session, input_size=hs_info["size"])
                         BUS.publish(f"HyperSwap face swapper ({selected_model}) loaded successfully.", NAME)
                     except Exception as e:
                         BUS.publish(f"Error loading HyperSwap model {selected_model}: {e}", NAME)
@@ -403,6 +456,7 @@ def get_face_swapper(providers: list | None = None) -> Any:
                         if IS_APPLE_SILICON:
                             try:
                                 from modules.mlx_inswapper import MLXSessionWrapper
+
                                 mlx_session = MLXSessionWrapper.load(model_path)
                                 if mlx_session is not None:
                                     FACE_SWAPPER.session = mlx_session
@@ -417,6 +471,7 @@ def get_face_swapper(providers: list | None = None) -> Any:
                         if IS_APPLE_SILICON and not mlx_session_loaded and os.path.exists(mlpackage_path):
                             try:
                                 from modules.coreml_session import CoreMLSessionWrapper
+
                                 coreml_session = CoreMLSessionWrapper.load(mlpackage_path)
                                 if coreml_session is not None:
                                     FACE_SWAPPER.session = coreml_session
@@ -426,16 +481,19 @@ def get_face_swapper(providers: list | None = None) -> Any:
 
                         # Warmup inference: trigger JIT compilation / compute plan caching
                         # so the first real inference call has no latency spike.
-                        if mlx_session_loaded or any(
-                            (p[0] if isinstance(p, tuple) else p) == "CoreMLExecutionProvider"
-                            for p in providers_config
-                        ) or (IS_APPLE_SILICON and os.path.exists(mlpackage_path)):
+                        if (
+                            mlx_session_loaded
+                            or any(
+                                (p[0] if isinstance(p, tuple) else p) == "CoreMLExecutionProvider"
+                                for p in providers_config
+                            )
+                            or (IS_APPLE_SILICON and os.path.exists(mlpackage_path))
+                        ):
                             try:
                                 session = FACE_SWAPPER.session
                                 input_feed = {
                                     inp.name: np.zeros(
-                                        [d if isinstance(d, int) and d > 0 else 1
-                                         for d in inp.shape],
+                                        [d if isinstance(d, int) and d > 0 else 1 for d in inp.shape],
                                         dtype=np.float32,
                                     )
                                     for inp in session.get_inputs()
@@ -443,9 +501,7 @@ def get_face_swapper(providers: list | None = None) -> Any:
                                 session.run(None, input_feed)
                                 BUS.publish("Warmup inference complete.", NAME)
                             except Exception as warmup_err:
-                                BUS.publish(
-                                    f"Warmup skipped (non-fatal): {warmup_err}", NAME
-                                )
+                                BUS.publish(f"Warmup skipped (non-fatal): {warmup_err}", NAME)
                     except Exception as e:
                         BUS.publish(f"Error loading face swapper model: {e}", NAME)
                         FACE_SWAPPER = None
@@ -460,25 +516,23 @@ def _apply_mouth_mask(swapped: Frame, target_face: Face, original: Frame, config
 
     if face_mask is None:
         face_mask = create_face_mask(target_face, original, config=config)
-    mouth_mask, mouth_cutout, mouth_box, lower_lip_polygon = (
-        create_lower_mouth_mask(target_face, original, config=config)
+    mouth_mask, mouth_cutout, mouth_box, lower_lip_polygon = create_lower_mouth_mask(
+        target_face, original, config=config
     )
 
     if mouth_cutout is not None and mouth_box != (0, 0, 0, 0):
-        swapped = apply_mouth_area(
-            swapped, mouth_cutout, mouth_box, face_mask, lower_lip_polygon, config=config
-        )
+        swapped = apply_mouth_area(swapped, mouth_cutout, mouth_box, face_mask, lower_lip_polygon, config=config)
 
         if config.show_mouth_mask_box:
             mouth_mask_data = (mouth_mask, mouth_cutout, mouth_box, lower_lip_polygon)
-            swapped = draw_mouth_mask_visualization(
-                swapped, target_face, mouth_mask_data
-            )
+            swapped = draw_mouth_mask_visualization(swapped, target_face, mouth_mask_data)
 
     return swapped
 
 
-def _apply_poisson_blend(swapped: Frame, target_face: Face, original: Frame, pre_swap: Frame, config=None, face_mask=None) -> Frame:
+def _apply_poisson_blend(
+    swapped: Frame, target_face: Face, original: Frame, pre_swap: Frame, config=None, face_mask=None
+) -> Frame:
     config = config or build_config_from_globals()
     if not config.poisson_blend:
         return swapped
@@ -552,7 +606,8 @@ def _paste_back(
 
     bgr_fake_canvas = target_img.astype(np.float32).copy()
     cv2.warpAffine(
-        bgr_fake.astype(np.float32), IM,
+        bgr_fake.astype(np.float32),
+        IM,
         (target_img.shape[1], target_img.shape[0]),
         dst=bgr_fake_canvas,
         borderMode=cv2.BORDER_TRANSPARENT,
@@ -636,8 +691,8 @@ def _upscale_crop_for_paste(
 
 
 def batch_swap_faces(
-    source_faces: List[Face],
-    target_faces: List[Face],
+    source_faces: list[Face],
+    target_faces: list[Face],
     temp_frame: Frame,
     config=None,
 ) -> Frame:
@@ -680,13 +735,12 @@ def batch_swap_faces(
     for i, (source_face, target_face) in enumerate(zip(source_faces, target_faces)):
         if source_face is None or target_face is None:
             continue
-        if not hasattr(source_face, 'normed_embedding') or source_face.normed_embedding is None:
+        if not hasattr(source_face, "normed_embedding") or source_face.normed_embedding is None:
             continue
 
         aimg, M = face_align.norm_crop2(temp_frame, target_face.kps, input_size[0])
         blob = cv2.dnn.blobFromImage(
-            aimg, 1.0 / input_std, input_size,
-            (input_mean, input_mean, input_mean), swapRB=True
+            aimg, 1.0 / input_std, input_size, (input_mean, input_mean, input_mean), swapRB=True
         )
         latent = source_face.normed_embedding.reshape((1, -1))
         latent = np.dot(latent, emap)
@@ -739,17 +793,17 @@ def batch_swap_faces(
 
         # Optionally upscale crop before paste-back to reduce stretch artifact
         if config.prepaste_upscale:
-            k = _paste_scale_from_M(M)
+            k = _paste_scale_from_M(M, max_k=config.prepaste_upscale_max)
             bgr_fake, aimg, M = _upscale_crop_for_paste(bgr_fake, aimg, M, k)
 
         # Optional color correction: match swapped crop colours to the target crop
         _cc_mode = config.color_correction_mode
-        if _cc_mode == 'none' and config.swap_color_transfer:
-            _cc_mode = 'lab'
-        if _cc_mode in ('lab', 'histogram'):
+        if _cc_mode == "none" and config.swap_color_transfer:
+            _cc_mode = "lab"
+        if _cc_mode in ("lab", "histogram"):
             bgr_fake_u8 = np.clip(bgr_fake, 0, 255).astype(np.uint8)
             aimg_u8 = np.clip(aimg, 0, 255).astype(np.uint8) if aimg.dtype != np.uint8 else aimg
-            if _cc_mode == 'lab':
+            if _cc_mode == "lab":
                 bgr_fake = apply_color_transfer(bgr_fake_u8, aimg_u8).astype(bgr_fake.dtype)
             else:
                 bgr_fake = apply_histogram_matching(bgr_fake_u8, aimg_u8).astype(bgr_fake.dtype)
@@ -757,9 +811,10 @@ def batch_swap_faces(
         # Apply occlusion mask to preserve target pixels where occluders are detected
         if config.occlusion_mask:
             from modules.face_occluder import create_occlusion_mask
+
             occ_mask = create_occlusion_mask(aimg if aimg.dtype == np.uint8 else np.clip(aimg, 0, 255).astype(np.uint8))
             occ_3ch = occ_mask[:, :, np.newaxis]
-            bgr_fake = (bgr_fake.astype(np.float32) * occ_3ch + aimg.astype(np.float32) * (1.0 - occ_3ch))
+            bgr_fake = bgr_fake.astype(np.float32) * occ_3ch + aimg.astype(np.float32) * (1.0 - occ_3ch)
 
         # Paste back onto result frame
         result = _paste_back(bgr_fake, aimg, M, result, config)
@@ -767,12 +822,17 @@ def batch_swap_faces(
         # Apply mouth mask and Poisson blend per-face — compute mask once and share
         shared_face_mask = create_face_mask(target_face, temp_frame, config=config)
         result = _apply_mouth_mask(result, target_face, temp_frame, config, face_mask=shared_face_mask)
-        result = _apply_poisson_blend(result, target_face, temp_frame, original_frame, config, face_mask=shared_face_mask)
+        result = _apply_poisson_blend(
+            result, target_face, temp_frame, original_frame, config, face_mask=shared_face_mask
+        )
 
     if opacity < 1.0:
         result = gpu_add_weighted(
-            original_frame.astype(np.uint8), 1 - opacity,
-            result.astype(np.uint8), opacity, 0,
+            original_frame.astype(np.uint8),
+            1 - opacity,
+            result.astype(np.uint8),
+            opacity,
+            0,
         )
 
     return np.clip(result, 0, 255).astype(np.uint8)
@@ -788,7 +848,7 @@ def swap_face(source_face: Face, target_face: Face, temp_frame: Frame, config=No
     # Safety check for faces
     if source_face is None or target_face is None:
         return temp_frame
-    if not hasattr(source_face, 'normed_embedding') or source_face.normed_embedding is None:
+    if not hasattr(source_face, "normed_embedding") or source_face.normed_embedding is None:
         return temp_frame
 
     config = config or build_config_from_globals()
@@ -804,40 +864,42 @@ def swap_face(source_face: Face, target_face: Face, temp_frame: Frame, config=No
     # Apply the face swap with optimized memory handling
     try:
         # Ensure contiguous memory layout for better performance on all platforms
-        if not temp_frame.flags['C_CONTIGUOUS']:
+        if not temp_frame.flags["C_CONTIGUOUS"]:
             temp_frame = np.ascontiguousarray(temp_frame)
 
         # Use paste_back=False to get the raw crop + affine matrix so we can
         # optionally upscale the crop before warping it back onto the frame.
-        bgr_fake, M = face_swapper.get(
-            temp_frame, target_face, source_face, paste_back=False
-        )
+        bgr_fake, M = face_swapper.get(temp_frame, target_face, source_face, paste_back=False)
 
         if bgr_fake is None or M is None:
             return original_frame
+
+        # Smooth the affine scale to prevent expression-driven face resizing.
+        # Disabled in many_faces mode — the single EMA would be contaminated
+        # by multiple faces per frame.
+        if config.scale_smoothing and not config.many_faces:
+            M = _smooth_affine_scale(M, config.scale_smoothing_alpha, input_size=face_swapper.input_size[0])
 
         # Retrieve the aligned crop that was used as the swap base (needed by
         # _paste_back to compute the diff mask).  Reuse the already-computed M
         # instead of calling norm_crop2 again -- saves ~0.5-1ms per face by
         # skipping the redundant estimate_norm matrix computation.
         input_size = face_swapper.input_size[0]
-        aimg = cv2.warpAffine(
-            temp_frame, M, (input_size, input_size), borderValue=0.0
-        )
+        aimg = cv2.warpAffine(temp_frame, M, (input_size, input_size), borderValue=0.0)
 
         # Optionally upscale crop before paste-back to reduce stretch artifact
         if config.prepaste_upscale:
-            k = _paste_scale_from_M(M)
+            k = _paste_scale_from_M(M, max_k=config.prepaste_upscale_max)
             bgr_fake, aimg, M = _upscale_crop_for_paste(bgr_fake, aimg, M, k)
 
         # Optional color correction: match swapped crop colours to the target crop
         _cc_mode = config.color_correction_mode
-        if _cc_mode == 'none' and config.swap_color_transfer:
-            _cc_mode = 'lab'
-        if _cc_mode in ('lab', 'histogram'):
+        if _cc_mode == "none" and config.swap_color_transfer:
+            _cc_mode = "lab"
+        if _cc_mode in ("lab", "histogram"):
             bgr_fake_u8 = np.clip(bgr_fake, 0, 255).astype(np.uint8)
             aimg_u8 = np.clip(aimg, 0, 255).astype(np.uint8) if aimg.dtype != np.uint8 else aimg
-            if _cc_mode == 'lab':
+            if _cc_mode == "lab":
                 bgr_fake = apply_color_transfer(bgr_fake_u8, aimg_u8).astype(bgr_fake.dtype)
             else:
                 bgr_fake = apply_histogram_matching(bgr_fake_u8, aimg_u8).astype(bgr_fake.dtype)
@@ -845,9 +907,10 @@ def swap_face(source_face: Face, target_face: Face, temp_frame: Frame, config=No
         # Apply occlusion mask to preserve target pixels where occluders are detected
         if config.occlusion_mask:
             from modules.face_occluder import create_occlusion_mask
+
             occ_mask = create_occlusion_mask(aimg if aimg.dtype == np.uint8 else np.clip(aimg, 0, 255).astype(np.uint8))
             occ_3ch = occ_mask[:, :, np.newaxis]
-            bgr_fake = (bgr_fake.astype(np.float32) * occ_3ch + aimg.astype(np.float32) * (1.0 - occ_3ch))
+            bgr_fake = bgr_fake.astype(np.float32) * occ_3ch + aimg.astype(np.float32) * (1.0 - occ_3ch)
 
         swapped_frame_raw = _paste_back(bgr_fake, aimg, M, temp_frame, config)
 
@@ -875,19 +938,23 @@ def swap_face(source_face: Face, target_face: Face, temp_frame: Frame, config=No
     # Compute face mask once and share between mouth mask and Poisson blend
     shared_face_mask = create_face_mask(target_face, temp_frame, config=config)
     swapped_frame = _apply_mouth_mask(swapped_frame, target_face, temp_frame, config, face_mask=shared_face_mask)
-    swapped_frame = _apply_poisson_blend(swapped_frame, target_face, temp_frame, original_frame, config, face_mask=shared_face_mask)
+    swapped_frame = _apply_poisson_blend(
+        swapped_frame, target_face, temp_frame, original_frame, config, face_mask=shared_face_mask
+    )
 
     # Apply opacity blend between the original frame and the swapped frame
     if opacity >= 1.0:
         return swapped_frame.astype(np.uint8)
 
     # Blend the original_frame with the (potentially mouth-masked) swapped_frame
-    final_swapped_frame = gpu_add_weighted(original_frame.astype(np.uint8), 1 - opacity, swapped_frame.astype(np.uint8), opacity, 0)
+    final_swapped_frame = gpu_add_weighted(
+        original_frame.astype(np.uint8), 1 - opacity, swapped_frame.astype(np.uint8), opacity, 0
+    )
     return final_swapped_frame.astype(np.uint8)
 
 
 # --- START: Mac M1-M5 Optimized Face Detection ---
-def get_faces_optimized(frame: Frame, use_cache: bool = True, config=None) -> Optional[List[Face]]:
+def get_faces_optimized(frame: Frame, use_cache: bool = True, config=None) -> list[Face] | None:
     """Optimized face detection for live mode on Apple Silicon"""
     global LAST_DETECTION_TIME, FACE_DETECTION_CACHE
 
@@ -909,7 +976,7 @@ def get_faces_optimized(frame: Frame, use_cache: bool = True, config=None) -> Op
 
     # Skip detection if too soon (adaptive frame skipping)
     if time_since_last < config.detection_interval and FACE_DETECTION_CACHE:
-        return FACE_DETECTION_CACHE.get('faces')
+        return FACE_DETECTION_CACHE.get("faces")
 
     # Perform detection
     LAST_DETECTION_TIME = current_time
@@ -920,14 +987,17 @@ def get_faces_optimized(frame: Frame, use_cache: bool = True, config=None) -> Op
         faces = [face] if face else None
 
     # Cache results
-    FACE_DETECTION_CACHE['faces'] = faces
-    FACE_DETECTION_CACHE['timestamp'] = current_time
+    FACE_DETECTION_CACHE["faces"] = faces
+    FACE_DETECTION_CACHE["timestamp"] = current_time
 
     return faces
+
+
 # --- END: Mac M1-M5 Optimized Face Detection ---
 
+
 # --- START: Helper function for interpolation and sharpening ---
-def apply_post_processing(current_frame: Frame, swapped_face_bboxes: List[np.ndarray], config=None) -> Frame:
+def apply_post_processing(current_frame: Frame, swapped_face_bboxes: list[np.ndarray], config=None) -> Frame:
     """Applies sharpening and interpolation with Apple Silicon optimizations."""
     config = config or build_config_from_globals()
     processed_frame = current_frame
@@ -938,24 +1008,24 @@ def apply_post_processing(current_frame: Frame, swapped_face_bboxes: List[np.nda
         height, width = processed_frame.shape[:2]
         for bbox in swapped_face_bboxes:
             # Ensure bbox is iterable and has 4 elements
-            if not hasattr(bbox, '__iter__') or len(bbox) != 4:
+            if not hasattr(bbox, "__iter__") or len(bbox) != 4:
                 # print(f"Warning: Invalid bbox format for sharpening: {bbox}") # Debug
                 continue
             x1, y1, x2, y2 = bbox
             # Ensure coordinates are integers and within bounds
             try:
-                 x1, y1 = max(0, int(x1)), max(0, int(y1))
-                 x2, y2 = min(width, int(x2)), min(height, int(y2))
+                x1, y1 = max(0, int(x1)), max(0, int(y1))
+                x2, y2 = min(width, int(x2)), min(height, int(y2))
             except ValueError:
                 # print(f"Warning: Could not convert bbox coordinates to int: {bbox}") # Debug
                 continue
-
 
             if x2 <= x1 or y2 <= y1:
                 continue
 
             face_region = processed_frame[y1:y2, x1:x2]
-            if face_region.size == 0: continue
+            if face_region.size == 0:
+                continue
 
             # Apply sharpening (GPU-accelerated when CUDA OpenCV is available)
             try:
@@ -965,29 +1035,30 @@ def apply_post_processing(current_frame: Frame, swapped_face_bboxes: List[np.nda
             except cv2.error:
                 pass
 
-
     # 2. Apply Interpolation (if enabled)
     enable_interpolation = config.enable_interpolation
     interpolation_weight = config.interpolation_weight
 
-    final_frame = processed_frame # Start with the current (potentially sharpened) frame
+    final_frame = processed_frame  # Start with the current (potentially sharpened) frame
     prev_frame = _get_previous_frame()
 
     if enable_interpolation and 0 < interpolation_weight < 1:
-        if prev_frame is not None and prev_frame.shape == processed_frame.shape and prev_frame.dtype == processed_frame.dtype:
+        if (
+            prev_frame is not None
+            and prev_frame.shape == processed_frame.shape
+            and prev_frame.dtype == processed_frame.dtype
+        ):
             # Perform interpolation
             try:
-                 final_frame = gpu_add_weighted(
-                    prev_frame, 1.0 - interpolation_weight,
-                    processed_frame, interpolation_weight,
-                    0
-                 )
-                 # Ensure final frame is uint8
-                 final_frame = np.clip(final_frame, 0, 255).astype(np.uint8)
-            except cv2.error as interp_e:
-                 # print(f"Warning: OpenCV error during interpolation: {interp_e}") # Debug
-                 final_frame = processed_frame # Use current frame if interpolation fails
-                 _set_previous_frame(None) # Reset state if error occurs
+                final_frame = gpu_add_weighted(
+                    prev_frame, 1.0 - interpolation_weight, processed_frame, interpolation_weight, 0
+                )
+                # Ensure final frame is uint8
+                final_frame = np.clip(final_frame, 0, 255).astype(np.uint8)
+            except cv2.error:
+                # print(f"Warning: OpenCV error during interpolation: {interp_e}") # Debug
+                final_frame = processed_frame  # Use current frame if interpolation fails
+                _set_previous_frame(None)  # Reset state if error occurs
 
             # Update the state for the next frame *with the interpolated result*
             _set_previous_frame(final_frame.copy())
@@ -995,11 +1066,12 @@ def apply_post_processing(current_frame: Frame, swapped_face_bboxes: List[np.nda
             # If previous frame invalid or doesn't match, use current frame and update state
             _set_previous_frame(processed_frame.copy())
     else:
-         # Interpolation is off or weight is invalid -- no need to cache
-         _set_previous_frame(None)
-
+        # Interpolation is off or weight is invalid -- no need to cache
+        _set_previous_frame(None)
 
     return final_frame
+
+
 # --- END: Helper function for interpolation and sharpening ---
 
 
@@ -1018,8 +1090,8 @@ def process_frame(source_face: Face, temp_frame: Frame, config=None) -> Frame:
 
     # Color correction removed from here (better applied before swap if needed)
 
-    processed_frame = temp_frame # Start with the input frame
-    swapped_face_bboxes = [] # Keep track of where swaps happened
+    processed_frame = temp_frame  # Start with the input frame
+    swapped_face_bboxes = []  # Keep track of where swaps happened
 
     if config.many_faces:
         many_faces = get_many_faces(processed_frame)
@@ -1037,7 +1109,7 @@ def process_frame(source_face: Face, temp_frame: Frame, config=None) -> Frame:
         if target_face:
             processed_frame = swap_face(source_face, target_face, processed_frame, config)
             if target_face is not None and hasattr(target_face, "bbox") and target_face.bbox is not None:
-                    swapped_face_bboxes.append(target_face.bbox.astype(int))
+                swapped_face_bboxes.append(target_face.bbox.astype(int))
 
     # Apply sharpening and interpolation
     final_frame = apply_post_processing(processed_frame, swapped_face_bboxes, config)
@@ -1141,19 +1213,16 @@ def process_frame_v2(temp_frame: Frame, temp_frame_path: str = "", config=None) 
         _set_previous_frame(None)
         return temp_frame
 
-    processed_frame = temp_frame # Start with the input frame
-    swapped_face_bboxes = [] # Keep track of where swaps happened
+    processed_frame = temp_frame  # Start with the input frame
+    swapped_face_bboxes = []  # Keep track of where swaps happened
 
     # Determine source/target pairs based on mode
-    is_file_target = config.target_path and (
-        is_image(config.target_path) or is_video(config.target_path)
-    )
+    is_file_target = config.target_path and (is_image(config.target_path) or is_video(config.target_path))
 
     if is_file_target:
         source_target_pairs = _build_pairs_from_file_map(temp_frame_path, config)
     else:
         source_target_pairs = _build_pairs_live(processed_frame, config)
-
 
     # Perform swaps based on the collected pairs
     valid_pairs = [(s, t) for s, t in source_target_pairs if s and t]
@@ -1168,7 +1237,6 @@ def process_frame_v2(temp_frame: Frame, temp_frame_path: str = "", config=None) 
     elif len(valid_pairs) == 1:
         source_face, target_face = valid_pairs[0]
         processed_frame = swap_face(source_face, target_face, processed_frame, config)
-
 
     # Apply sharpening and interpolation
     final_frame = apply_post_processing(processed_frame, swapped_face_bboxes, config)
@@ -1188,7 +1256,9 @@ def _load_source_face(source_path: str):
     try:
         source_img = cv2.imread(source_path)
         if source_img is None:
-            BUS.publish(f"Error reading source image file {source_path}. Please check the path and file integrity.", NAME)
+            BUS.publish(
+                f"Error reading source image file {source_path}. Please check the path and file integrity.", NAME
+            )
             return None
         face = get_one_face(source_img)
         if face is None:
@@ -1196,6 +1266,7 @@ def _load_source_face(source_path: str):
         return face
     except Exception as e:
         import traceback
+
         print(f"{NAME}: Caught exception during source image processing for {source_path}:")
         traceback.print_exc()
         BUS.publish(f"Error during source image reading or analysis {source_path}: {e}", NAME)
@@ -1224,9 +1295,7 @@ def _process_single_frame(
 
     try:
         result_frame = (
-            process_frame_v2(temp_frame, temp_frame_path)
-            if use_v2
-            else process_frame(source_face, temp_frame)
+            process_frame_v2(temp_frame, temp_frame_path) if use_v2 else process_frame(source_face, temp_frame)
         )
         if result_frame is None:
             print(f"{NAME}: Warning: Processing returned None for frame {temp_frame_path}. Using original.")
@@ -1245,9 +1314,7 @@ def _process_single_frame(
         progress.update(1)
 
 
-def process_frames(
-    source_path: str, temp_frame_paths: List[str], progress: Any = None, config=None
-) -> None:
+def process_frames(source_path: str, temp_frame_paths: list[str], progress: Any = None, config=None) -> None:
     """Process a list of frame paths for video -- read, swap, write back."""
     config = config or build_config_from_globals()
     use_v2 = config.map_faces
@@ -1257,7 +1324,7 @@ def process_frames(
         source_face = _load_source_face(source_path)
         if source_face is None:
             BUS.publish("Halting video processing: Invalid or no face detected in source image for simple mode.", NAME)
-            remaining = len(temp_frame_paths) - (progress.n if progress and hasattr(progress, 'n') else 0)
+            remaining = len(temp_frame_paths) - (progress.n if progress and hasattr(progress, "n") else 0)
             if progress and remaining > 0:
                 progress.update(remaining)
             return
@@ -1288,12 +1355,12 @@ def process_image(source_path: str, target_path: str, output_path: str, config=N
     try:
         if use_v2:
             if config.many_faces:
-                 BUS.publish("Processing image with 'map_faces' and 'many_faces'. Using pre-analysis map.", NAME)
+                BUS.publish("Processing image with 'map_faces' and 'many_faces'. Using pre-analysis map.", NAME)
             # V2 processes based on global maps, doesn't need source_path here directly
             # Assumes maps are pre-populated. Pass target_path for map lookup.
             result = process_frame_v2(target_frame, target_path, config)
 
-        else: # Simple mode
+        else:  # Simple mode
             try:
                 source_img = cv2.imread(source_path)
                 if source_img is None:
@@ -1304,8 +1371,8 @@ def process_image(source_path: str, target_path: str, output_path: str, config=N
                     BUS.publish(f"Error: No face found in source image: {source_path}", NAME)
                     return
             except Exception as src_e:
-                 BUS.publish(f"Error reading or analyzing source image {source_path}: {src_e}", NAME)
-                 return
+                BUS.publish(f"Error reading or analyzing source image {source_path}: {src_e}", NAME)
+                return
 
             result = process_frame(source_face, target_frame, config)
 
@@ -1321,12 +1388,12 @@ def process_image(source_path: str, target_path: str, output_path: str, config=N
             BUS.publish("Image processing failed (result was None).", NAME)
 
     except Exception as proc_e:
-         BUS.publish(f"Error during image processing: {proc_e}", NAME)
-         # import traceback
-         # traceback.print_exc()
+        BUS.publish(f"Error during image processing: {proc_e}", NAME)
+        # import traceback
+        # traceback.print_exc()
 
 
-def process_video(source_path: str, temp_frame_paths: List[str], config=None) -> None:
+def process_video(source_path: str, temp_frame_paths: list[str], config=None) -> None:
     """Sets up and calls the frame processing for video."""
     config = config or build_config_from_globals()
     # Reset per-thread interpolation state before starting video processing
@@ -1343,6 +1410,4 @@ def process_video(source_path: str, temp_frame_paths: List[str], config=None) ->
     def _process_frames_with_config(sp, tfps, progress=None):
         return process_frames(sp, tfps, progress, config)
 
-    modules.processors.frame.core.process_video(
-        source_path, temp_frame_paths, _process_frames_with_config
-    )
+    modules.processors.frame.core.process_video(source_path, temp_frame_paths, _process_frames_with_config)

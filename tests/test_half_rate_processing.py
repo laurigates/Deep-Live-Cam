@@ -4,13 +4,12 @@ Half-rate mode runs face processing only on every Nth frame (keyframes) and uses
 RIFE interpolation to fill in the skipped frames, trading face-processing compute
 for cheaper RIFE interpolation.
 """
+
 from unittest.mock import patch
 
 import numpy as np
-import pytest
 
 import modules.globals
-
 
 # ---------------------------------------------------------------------------
 # Globals
@@ -73,10 +72,8 @@ class TestKeyframeLogic:
     def test_interval_2_odd_frames_are_keyframes(self):
         """With interval=2 frames 1,3,5,7,9 are keyframes; 2,4,6,8,10 are skips."""
         for i in range(1, 11):
-            expected = (i % 2 == 1)
-            assert self._is_keyframe(i, 2) == expected, (
-                f"Frame {i} with interval=2: expected is_keyframe={expected}"
-            )
+            expected = i % 2 == 1
+            assert self._is_keyframe(i, 2) == expected, f"Frame {i} with interval=2: expected is_keyframe={expected}"
 
     def test_interval_4_frames_1_5_9_are_keyframes(self):
         assert self._is_keyframe(1, 4) is True
@@ -129,8 +126,8 @@ class TestSkipFrameHold:
 
     def test_skip_frame_outputs_prev_processed(self):
         """On a skip frame, temp_frame becomes prev_processed_frame (frame hold)."""
-        prev_processed = self._make_frame(50)   # last swapped keyframe
-        raw_frame = self._make_frame(100)        # current unswapped camera frame
+        prev_processed = self._make_frame(50)  # last swapped keyframe
+        raw_frame = self._make_frame(100)  # current unswapped camera frame
         temp_frame = raw_frame.copy()
 
         # Simulate skip-frame logic from _processing_thread_func

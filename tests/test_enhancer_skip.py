@@ -4,11 +4,10 @@ Enhancer skip-frame mode reuses the previous enhanced result on skipped frames,
 reducing GFPGAN/GPEN compute cost while maintaining visual quality through
 temporal coherence.
 """
+
 import numpy as np
-import pytest
 
 import modules.globals
-
 
 # ---------------------------------------------------------------------------
 # Globals
@@ -195,17 +194,20 @@ class TestEnhancerHelpers:
 
     def test_enhancer_names_contains_all_variants(self):
         from modules.ui_webcam import _ENHANCER_NAMES
+
         assert "DLC.FACE-ENHANCER" in _ENHANCER_NAMES
         assert "DLC.FACE-ENHANCER-GPEN256" in _ENHANCER_NAMES
         assert "DLC.FACE-ENHANCER-GPEN512" in _ENHANCER_NAMES
 
     def test_enhancer_names_excludes_swapper(self):
         from modules.ui_webcam import _ENHANCER_NAMES
+
         assert "DLC.FACE-SWAPPER" not in _ENHANCER_NAMES
 
     def test_is_enhancer_enabled_checks_fp_ui(self):
-        from modules.ui_webcam import _is_enhancer_enabled
         from unittest.mock import MagicMock
+
+        from modules.ui_webcam import _is_enhancer_enabled
 
         processor = MagicMock()
         processor.NAME = "DLC.FACE-ENHANCER"
@@ -221,8 +223,9 @@ class TestEnhancerHelpers:
             modules.globals.fp_ui = original
 
     def test_is_enhancer_enabled_unknown_processor(self):
-        from modules.ui_webcam import _is_enhancer_enabled
         from unittest.mock import MagicMock
+
+        from modules.ui_webcam import _is_enhancer_enabled
 
         processor = MagicMock()
         processor.NAME = "DLC.FACE-SWAPPER"

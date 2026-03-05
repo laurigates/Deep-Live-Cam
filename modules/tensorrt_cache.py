@@ -56,9 +56,7 @@ def has_cached_engines() -> bool:
     """
     if not os.path.exists(TRT_CACHE_DIR):
         return False
-    return any(
-        fname.endswith(".engine") for fname in os.listdir(TRT_CACHE_DIR)
-    )
+    return any(fname.endswith(".engine") for fname in os.listdir(TRT_CACHE_DIR))
 
 
 def build_tensorrt_provider_options() -> dict:

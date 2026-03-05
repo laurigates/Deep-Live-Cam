@@ -5,11 +5,12 @@ Covers three changes:
 2. _current_frame assignment removed from VideoCapturer.read()
 3. create_face_mask called once and shared between _apply_mouth_mask and _apply_poisson_blend
 """
+
+from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
+
 import cv2
 import numpy as np
-import pytest
-from types import SimpleNamespace
-from unittest.mock import patch, MagicMock, call
 
 
 # ---------------------------------------------------------------------------
@@ -20,12 +21,9 @@ class TestDisplayLoopNoCudaUpload:
 
     def test_display_loop_uses_cv2_cvtcolor_not_gpu(self):
         """_display_next_frame must use cv2.cvtColor, not gpu_cvt_color, for BGR→RGB."""
-        import ast
         import pathlib
 
-        src = pathlib.Path(
-            "modules/ui_webcam.py"
-        ).read_text()
+        src = pathlib.Path("modules/ui_webcam.py").read_text()
 
         # Find the _display_next_frame function body as a substring
         fn_start = src.find("def _display_next_frame()")
@@ -41,12 +39,8 @@ class TestDisplayLoopNoCudaUpload:
         image_line = src[line_start:line_end].strip()
 
         # Must use cv2.cvtColor, not gpu_cvt_color
-        assert "cv2.cvtColor" in image_line, (
-            f"Expected cv2.cvtColor in display line, got: {image_line!r}"
-        )
-        assert "gpu_cvt_color" not in image_line, (
-            f"gpu_cvt_color still present in display line: {image_line!r}"
-        )
+        assert "cv2.cvtColor" in image_line, f"Expected cv2.cvtColor in display line, got: {image_line!r}"
+        assert "gpu_cvt_color" not in image_line, f"gpu_cvt_color still present in display line: {image_line!r}"
 
     def test_cv2_cvtcolor_produces_rgb_output(self):
         """cv2.cvtColor(frame, BGR2RGB) produces correct colour conversion."""
@@ -82,15 +76,11 @@ class TestVideoCapturerNoFrameStorage:
                 for child in ast.walk(node):
                     if isinstance(child, ast.Assign):
                         for target in child.targets:
-                            if (
-                                isinstance(target, ast.Attribute)
-                                and target.attr == "_current_frame"
-                            ):
+                            if isinstance(target, ast.Attribute) and target.attr == "_current_frame":
                                 read_method_assigns.append(child)
 
         assert len(read_method_assigns) == 0, (
-            "_current_frame is still being assigned inside read() — "
-            "this prevents frame GC and doubles peak memory"
+            "_current_frame is still being assigned inside read() — this prevents frame GC and doubles peak memory"
         )
 
     def test_read_returns_frame_without_caching(self):
@@ -165,7 +155,6 @@ class TestFaceMaskComputedOnce:
                 return_value=(None, None, (0, 0, 0, 0), None),
             ):
                 # Simulate caller computing the mask once and passing it
-                from modules.processors.frame.face_swapper import create_face_mask as _cfm
                 with patch(
                     "modules.processors.frame.face_swapper.create_face_mask",
                     side_effect=counting_create_face_mask,
@@ -216,18 +205,18 @@ class TestFaceMaskComputedOnce:
 
     def test_apply_mouth_mask_accepts_face_mask_parameter(self):
         """_apply_mouth_mask must accept an optional face_mask keyword argument."""
-        from modules.processors.frame.face_swapper import _apply_mouth_mask
         import inspect
+
+        from modules.processors.frame.face_swapper import _apply_mouth_mask
+
         sig = inspect.signature(_apply_mouth_mask)
-        assert "face_mask" in sig.parameters, (
-            "_apply_mouth_mask does not have a face_mask parameter"
-        )
+        assert "face_mask" in sig.parameters, "_apply_mouth_mask does not have a face_mask parameter"
 
     def test_apply_poisson_blend_accepts_face_mask_parameter(self):
         """_apply_poisson_blend must accept an optional face_mask keyword argument."""
-        from modules.processors.frame.face_swapper import _apply_poisson_blend
         import inspect
+
+        from modules.processors.frame.face_swapper import _apply_poisson_blend
+
         sig = inspect.signature(_apply_poisson_blend)
-        assert "face_mask" in sig.parameters, (
-            "_apply_poisson_blend does not have a face_mask parameter"
-        )
+        assert "face_mask" in sig.parameters, "_apply_poisson_blend does not have a face_mask parameter"

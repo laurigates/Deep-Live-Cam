@@ -1,18 +1,19 @@
 """Tests for modules.coreml_session — CoreML session wrapper."""
+
 import sys
-import types
 from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # _NodeArg
 # ---------------------------------------------------------------------------
 
+
 def test_nodearg_attributes():
     from modules.coreml_session import _NodeArg
+
     node = _NodeArg("target", [1, 3, 128, 128], "tensor(float)")
     assert node.name == "target"
     assert node.shape == [1, 3, 128, 128]
@@ -21,6 +22,7 @@ def test_nodearg_attributes():
 
 def test_nodearg_default_type():
     from modules.coreml_session import _NodeArg
+
     node = _NodeArg("x", [1])
     assert node.type == "tensor(float)"
 
@@ -29,8 +31,10 @@ def test_nodearg_default_type():
 # CoreMLSessionWrapper.load — platform guard
 # ---------------------------------------------------------------------------
 
+
 def test_load_returns_none_on_non_darwin():
     from modules.coreml_session import CoreMLSessionWrapper
+
     with patch("modules.coreml_session.sys") as mock_sys:
         mock_sys.platform = "linux"
         result = CoreMLSessionWrapper.load("/fake/path.mlpackage")
@@ -40,6 +44,7 @@ def test_load_returns_none_on_non_darwin():
 def test_load_returns_none_when_coremltools_missing():
     """If coremltools is not installed, load() returns None gracefully."""
     from modules.coreml_session import CoreMLSessionWrapper
+
     with patch("modules.coreml_session.sys") as mock_sys:
         mock_sys.platform = "darwin"
         with patch.dict(sys.modules, {"coremltools": None}):
@@ -51,17 +56,20 @@ def test_load_returns_none_when_coremltools_missing():
 
 def _import_raiser(blocked_name):
     """Return an __import__ replacement that raises ImportError for *blocked_name*."""
-    real_import = __builtins__.__import__ if hasattr(__builtins__, '__import__') else __import__
+    real_import = __builtins__.__import__ if hasattr(__builtins__, "__import__") else __import__
+
     def _import(name, *args, **kwargs):
         if name == blocked_name:
             raise ImportError(f"No module named '{blocked_name}'")
         return real_import(name, *args, **kwargs)
+
     return _import
 
 
 # ---------------------------------------------------------------------------
 # CoreMLSessionWrapper — interface contract
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def mock_coreml_wrapper():
@@ -104,6 +112,7 @@ def _patch_ct_import(func):
         ct_mock = MagicMock()
         with patch.dict(sys.modules, {"coremltools": ct_mock}):
             return func(*args, **kwargs)
+
     return wrapper
 
 
@@ -147,9 +156,11 @@ def test_run_casts_inputs_to_float32(mock_coreml_wrapper):
 # Conversion script — unit tests
 # ---------------------------------------------------------------------------
 
+
 def test_convert_missing_model(tmp_path):
     """convert() returns 1 when the ONNX model doesn't exist."""
     from scripts.convert_to_coreml import convert
+
     assert convert(str(tmp_path)) == 1
 
 
@@ -159,4 +170,5 @@ def test_convert_already_exists(tmp_path):
     (tmp_path / "inswapper_128_fp16.onnx").touch()
     (tmp_path / "inswapper_128.mlpackage").mkdir()
     from scripts.convert_to_coreml import convert
+
     assert convert(str(tmp_path)) == 0

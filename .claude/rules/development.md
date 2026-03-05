@@ -102,6 +102,10 @@ Use the justfile debug recipes in order:
   during startup.  Non-UI modules must not import `modules.ui` at module level.
 - **FaceMapStore** (`modules/face_map_store.STORE`) owns all face map state.
   Do not add new mutable state to `modules/globals.py`.
+- **Live config refresh** — `ProcessingConfig` is rebuilt every frame inside the webcam
+  processing loop via `build_config_from_globals()`.  Do not cache or freeze the config
+  outside the loop — UI toggle changes must propagate immediately.  See
+  `.claude/rules/face-processing.md` § "Live Config Refresh" for details.
 
 ## Security
 

@@ -5,15 +5,15 @@ The behaviour is identical — these tests document correctness, not a new featu
 
 RED → GREEN workflow (this is a perf refactor, so tests may pass with old code too).
 """
+
 import numpy as np
-import pytest
 
 from modules.face_analyser import LandmarkSmoother
-
 
 # ---------------------------------------------------------------------------
 # Helpers (mirrors test_ema_smoothing.py helper)
 # ---------------------------------------------------------------------------
+
 
 def _make_face(embedding=None):
     """Minimal InsightFace-like face object with only what _find_match() needs."""
@@ -55,6 +55,7 @@ _EMB_Z = [0.0, 0.0, 1.0]  # unit-z
 # _find_match: empty state
 # ---------------------------------------------------------------------------
 
+
 class TestFindMatchEmptyState:
     def test_returns_none_when_state_is_empty(self):
         s = LandmarkSmoother()
@@ -65,7 +66,7 @@ class TestFindMatchEmptyState:
         s = LandmarkSmoother()
         # Populate state with a real entry so we reach the embedding-check path
         face_with = _make_face(_EMB_X)
-        s._state = [{'embedding': _unit(_EMB_X), 'bbox': None, 'kps': None}]
+        s._state = [{"embedding": _unit(_EMB_X), "bbox": None, "kps": None}]
         face_without = _make_face(None)
         assert s._find_match(face_without) is None
 
@@ -74,11 +75,12 @@ class TestFindMatchEmptyState:
 # _find_match: threshold behaviour
 # ---------------------------------------------------------------------------
 
+
 class TestFindMatchThreshold:
     def test_exact_match_above_threshold(self):
         """Identical embedding → cosine = 1.0 → match returned."""
         s = LandmarkSmoother()
-        entry = {'embedding': _unit(_EMB_X), 'bbox': None, 'kps': None}
+        entry = {"embedding": _unit(_EMB_X), "bbox": None, "kps": None}
         s._state = [entry]
         face = _make_face(_EMB_X)
         result = s._find_match(face)
@@ -87,7 +89,7 @@ class TestFindMatchThreshold:
     def test_orthogonal_embedding_below_threshold(self):
         """Cosine = 0 between orthogonal vectors < IDENTITY_THRESHOLD (0.7) → None."""
         s = LandmarkSmoother()
-        s._state = [{'embedding': _unit(_EMB_X), 'bbox': None, 'kps': None}]
+        s._state = [{"embedding": _unit(_EMB_X), "bbox": None, "kps": None}]
         face = _make_face(_EMB_Y)  # orthogonal → cosine = 0
         assert s._find_match(face) is None
 
@@ -96,9 +98,9 @@ class TestFindMatchThreshold:
         s = LandmarkSmoother()
         # Build an embedding whose similarity to _EMB_X is 0.5 (below 0.7 threshold)
         # cos(60°) = 0.5 → use [1, sqrt(3), 0]
-        low_sim_emb = np.array([1.0, 3.0 ** 0.5, 0.0], dtype=np.float32)
+        low_sim_emb = np.array([1.0, 3.0**0.5, 0.0], dtype=np.float32)
         low_sim_emb /= np.linalg.norm(low_sim_emb)
-        s._state = [{'embedding': _unit(_EMB_X), 'bbox': None, 'kps': None}]
+        s._state = [{"embedding": _unit(_EMB_X), "bbox": None, "kps": None}]
         face = _make_face(low_sim_emb)
         assert s._find_match(face) is None
 
@@ -112,12 +114,12 @@ class TestFindMatchThreshold:
         threshold = LandmarkSmoother.IDENTITY_THRESHOLD
         # Nudge slightly above threshold to survive float32 rounding
         sim = threshold + 1e-4
-        perpendicular = (1.0 - sim ** 2) ** 0.5
+        perpendicular = (1.0 - sim**2) ** 0.5
         emb = np.array([sim, perpendicular, 0.0], dtype=np.float32)
         emb /= np.linalg.norm(emb)
         # Verify the cosine is indeed >= threshold after float32 normalisation
         assert float(np.array([1.0, 0.0, 0.0], dtype=np.float32) @ emb) >= threshold
-        entry = {'embedding': _unit(_EMB_X), 'bbox': None, 'kps': None}
+        entry = {"embedding": _unit(_EMB_X), "bbox": None, "kps": None}
         s._state = [entry]
         face = _make_face(emb)
         result = s._find_match(face)
@@ -128,12 +130,13 @@ class TestFindMatchThreshold:
 # _find_match: best-match selection with multiple state entries
 # ---------------------------------------------------------------------------
 
+
 class TestFindMatchMultipleEntries:
     def test_returns_best_matching_entry(self):
         """With multiple state entries, the one with highest cosine is returned."""
         s = LandmarkSmoother()
-        entry_x = {'embedding': _unit(_EMB_X), 'bbox': np.array([0.0]), 'kps': None}
-        entry_y = {'embedding': _unit(_EMB_Y), 'bbox': np.array([1.0]), 'kps': None}
+        entry_x = {"embedding": _unit(_EMB_X), "bbox": np.array([0.0]), "kps": None}
+        entry_y = {"embedding": _unit(_EMB_Y), "bbox": np.array([1.0]), "kps": None}
         s._state = [entry_x, entry_y]
 
         # Face most similar to X → should return entry_x
@@ -144,8 +147,8 @@ class TestFindMatchMultipleEntries:
     def test_returns_second_entry_when_it_is_best(self):
         """Symmetry check: entry_y wins when face embedding is closest to Y."""
         s = LandmarkSmoother()
-        entry_x = {'embedding': _unit(_EMB_X), 'bbox': np.array([0.0]), 'kps': None}
-        entry_y = {'embedding': _unit(_EMB_Y), 'bbox': np.array([1.0]), 'kps': None}
+        entry_x = {"embedding": _unit(_EMB_X), "bbox": np.array([0.0]), "kps": None}
+        entry_y = {"embedding": _unit(_EMB_Y), "bbox": np.array([1.0]), "kps": None}
         s._state = [entry_x, entry_y]
 
         face = _make_face(_EMB_Y)
@@ -155,9 +158,9 @@ class TestFindMatchMultipleEntries:
     def test_three_entries_selects_correct_one(self):
         """Three orthogonal entries — each face embedding should select its own."""
         s = LandmarkSmoother()
-        entry_x = {'embedding': _unit(_EMB_X), 'bbox': None, 'kps': None}
-        entry_y = {'embedding': _unit(_EMB_Y), 'bbox': None, 'kps': None}
-        entry_z = {'embedding': _unit(_EMB_Z), 'bbox': None, 'kps': None}
+        entry_x = {"embedding": _unit(_EMB_X), "bbox": None, "kps": None}
+        entry_y = {"embedding": _unit(_EMB_Y), "bbox": None, "kps": None}
+        entry_z = {"embedding": _unit(_EMB_Z), "bbox": None, "kps": None}
         s._state = [entry_x, entry_y, entry_z]
 
         assert s._find_match(_make_face(_EMB_X)) is entry_x
@@ -167,8 +170,8 @@ class TestFindMatchMultipleEntries:
     def test_all_below_threshold_returns_none(self):
         """If all stored identities are dissimilar, None is returned even with many entries."""
         s = LandmarkSmoother()
-        entry_y = {'embedding': _unit(_EMB_Y), 'bbox': None, 'kps': None}
-        entry_z = {'embedding': _unit(_EMB_Z), 'bbox': None, 'kps': None}
+        entry_y = {"embedding": _unit(_EMB_Y), "bbox": None, "kps": None}
+        entry_z = {"embedding": _unit(_EMB_Z), "bbox": None, "kps": None}
         s._state = [entry_y, entry_z]
 
         # Face is unit-x → cosine with Y = 0, cosine with Z = 0, both < threshold
@@ -181,10 +184,10 @@ class TestFindMatchMultipleEntries:
         # entry_close has cosine ≈ 0.99 to _EMB_X (above threshold)
         close = np.array([0.99, 0.14, 0.0], dtype=np.float32)
         close /= np.linalg.norm(close)
-        entry_close = {'embedding': close, 'bbox': None, 'kps': None}
+        entry_close = {"embedding": close, "bbox": None, "kps": None}
 
         # entry_far is orthogonal (cosine = 0, below threshold)
-        entry_far = {'embedding': _unit(_EMB_Y), 'bbox': None, 'kps': None}
+        entry_far = {"embedding": _unit(_EMB_Y), "bbox": None, "kps": None}
 
         s._state = [entry_far, entry_close]
         face = _make_face(_EMB_X)

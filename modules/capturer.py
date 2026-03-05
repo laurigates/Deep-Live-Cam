@@ -1,19 +1,19 @@
-from typing import Any, Optional
+from typing import Any
+
 import cv2
-import modules.globals
+
+from modules.gpu_processing import gpu_cvt_color
 from modules.processing_config import ProcessingConfig
 from modules.processing_config_factory import build_config_from_globals
-from modules.gpu_processing import gpu_cvt_color
 
 
-def get_video_frame(video_path: str, frame_number: int = 0,
-                    config: Optional[ProcessingConfig] = None) -> Any:
+def get_video_frame(video_path: str, frame_number: int = 0, config: ProcessingConfig | None = None) -> Any:
     if config is None:
         config = build_config_from_globals()
     capture = cv2.VideoCapture(video_path)
 
     # Set MJPEG format to ensure correct color space handling
-    capture.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))
+    capture.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
 
     # Only force RGB conversion if color correction is enabled
     if config.color_correction:

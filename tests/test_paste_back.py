@@ -6,15 +6,15 @@ Verifies:
 - create_feathered_mask_1c produces 1-channel equivalent
 - blend_with_mask blends correctly with mask weights
 """
-import cv2
+
 import numpy as np
 import pytest
 
 from modules.paste_back import (
-    inverse_affine_warp,
+    blend_with_mask,
     create_feathered_mask,
     create_feathered_mask_1c,
-    blend_with_mask,
+    inverse_affine_warp,
 )
 
 

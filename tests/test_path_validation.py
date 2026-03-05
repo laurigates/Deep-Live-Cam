@@ -3,11 +3,12 @@
 Issue #90: _validate_path_for_subprocess() must guard detect_fps, extract_frames,
 create_video, and restore_audio against argument injection via filenames starting with '-'.
 """
+
+from unittest.mock import patch
+
 import pytest
-from unittest.mock import patch, MagicMock
 
 import modules.utilities as utilities
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -24,6 +25,7 @@ SAFE_DIRNAME_UNSAFE_BASENAME = "/-dir/video.mp4"
 # ---------------------------------------------------------------------------
 # detect_fps
 # ---------------------------------------------------------------------------
+
 
 class TestDetectFpsValidation:
     def test_raises_for_dash_prefixed_basename(self):
@@ -48,20 +50,25 @@ class TestDetectFpsValidation:
 # extract_frames
 # ---------------------------------------------------------------------------
 
+
 class TestExtractFramesValidation:
     def test_raises_for_dash_prefixed_basename(self):
         with pytest.raises(ValueError, match="Unsafe file path rejected"):
             utilities.extract_frames(UNSAFE_PATH)
 
     def test_accepts_normal_path(self):
-        with patch.object(utilities, "run_ffmpeg", return_value=True) as mock_ffmpeg, \
-             patch.object(utilities, "get_temp_directory_path", return_value="/tmp/frames"):
+        with (
+            patch.object(utilities, "run_ffmpeg", return_value=True) as mock_ffmpeg,
+            patch.object(utilities, "get_temp_directory_path", return_value="/tmp/frames"),
+        ):
             utilities.extract_frames(SAFE_PATH)
         mock_ffmpeg.assert_called_once()
 
     def test_accepts_path_with_dash_in_dirname(self):
-        with patch.object(utilities, "run_ffmpeg", return_value=True), \
-             patch.object(utilities, "get_temp_directory_path", return_value="/tmp/frames"):
+        with (
+            patch.object(utilities, "run_ffmpeg", return_value=True),
+            patch.object(utilities, "get_temp_directory_path", return_value="/tmp/frames"),
+        ):
             # Should not raise
             utilities.extract_frames(SAFE_DIRNAME_UNSAFE_BASENAME)
 
@@ -70,27 +77,33 @@ class TestExtractFramesValidation:
 # create_video
 # ---------------------------------------------------------------------------
 
+
 class TestCreateVideoValidation:
     def test_raises_for_dash_prefixed_basename(self):
         with pytest.raises(ValueError, match="Unsafe file path rejected"):
             utilities.create_video(UNSAFE_PATH)
 
     def test_accepts_normal_path(self):
-        with patch.object(utilities, "run_ffmpeg", return_value=True), \
-             patch.object(utilities, "get_temp_output_path", return_value="/tmp/temp.mp4"), \
-             patch.object(utilities, "get_temp_directory_path", return_value="/tmp/frames"):
+        with (
+            patch.object(utilities, "run_ffmpeg", return_value=True),
+            patch.object(utilities, "get_temp_output_path", return_value="/tmp/temp.mp4"),
+            patch.object(utilities, "get_temp_directory_path", return_value="/tmp/frames"),
+        ):
             utilities.create_video(SAFE_PATH, fps=30.0)
 
     def test_accepts_path_with_dash_in_dirname(self):
-        with patch.object(utilities, "run_ffmpeg", return_value=True), \
-             patch.object(utilities, "get_temp_output_path", return_value="/tmp/temp.mp4"), \
-             patch.object(utilities, "get_temp_directory_path", return_value="/tmp/frames"):
+        with (
+            patch.object(utilities, "run_ffmpeg", return_value=True),
+            patch.object(utilities, "get_temp_output_path", return_value="/tmp/temp.mp4"),
+            patch.object(utilities, "get_temp_directory_path", return_value="/tmp/frames"),
+        ):
             utilities.create_video(SAFE_DIRNAME_UNSAFE_BASENAME, fps=25.0)
 
 
 # ---------------------------------------------------------------------------
 # restore_audio — validates both target_path and output_path
 # ---------------------------------------------------------------------------
+
 
 class TestRestoreAudioValidation:
     def test_raises_for_dash_prefixed_target_path(self):
@@ -106,11 +119,15 @@ class TestRestoreAudioValidation:
             utilities.restore_audio(UNSAFE_PATH, UNSAFE_OUTPUT)
 
     def test_accepts_normal_paths(self):
-        with patch.object(utilities, "run_ffmpeg", return_value=True), \
-             patch.object(utilities, "get_temp_output_path", return_value="/tmp/temp.mp4"):
+        with (
+            patch.object(utilities, "run_ffmpeg", return_value=True),
+            patch.object(utilities, "get_temp_output_path", return_value="/tmp/temp.mp4"),
+        ):
             utilities.restore_audio(SAFE_PATH, SAFE_OUTPUT)
 
     def test_accepts_paths_with_dash_in_dirname(self):
-        with patch.object(utilities, "run_ffmpeg", return_value=True), \
-             patch.object(utilities, "get_temp_output_path", return_value="/tmp/temp.mp4"):
+        with (
+            patch.object(utilities, "run_ffmpeg", return_value=True),
+            patch.object(utilities, "get_temp_output_path", return_value="/tmp/temp.mp4"),
+        ):
             utilities.restore_audio(SAFE_DIRNAME_UNSAFE_BASENAME, "/safe-dir/output.mp4")

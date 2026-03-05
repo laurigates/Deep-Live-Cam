@@ -51,6 +51,25 @@ while processing.
 - Implement all five interface methods: `pre_check`, `pre_start`, `process_frame`,
   `process_image`, `process_video`
 
+## Live Config Refresh (Webcam Processing Thread)
+
+`ProcessingConfig` must be rebuilt **every frame** inside the `while` loop of
+`_processing_thread_func` by calling `build_config_from_globals()`. This ensures UI
+toggle changes (`occlusion_mask`, `mouth_mask`, `opacity`, `poisson_blend`, etc.)
+propagate immediately to downstream processors.
+
+- **Do NOT build config once before the loop** — this freezes ~60 toggle fields at
+  session-start values and UI changes have no effect until the webcam session restarts
+- `build_config_from_globals()` is cheap (reads module-level vars + creates a dataclass);
+  30 calls/sec is negligible compared to ONNX inference
+- The config rebuild must appear **before** the `snap_*` snapshot section so that both
+  config-based and snapshot-based settings are current for the same frame
+- Frame processors are loaded once at session start (changing processors requires restart);
+  only the config toggles refresh per frame
+- `snap_*` variables (e.g., `snap_live_mirror`, `snap_half_rate`) remain as a separate
+  mechanism for fields that are read directly in the processing thread rather than passed
+  via config — consolidating them is a future task
+
 ## Face Enhancer (GFPGAN)
 
 - Load the model conditionally based on the active device — do not load on CPU if GPU is

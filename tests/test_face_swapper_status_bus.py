@@ -2,21 +2,12 @@
 
 Issue #99: Replace core.update_status import in face_swapper with StatusBus.
 """
+
 import ast
-import importlib
-import sys
 from pathlib import Path
-from unittest.mock import patch, MagicMock
 
-import pytest
-
-
-_FACE_SWAPPER_PATH = (
-    Path(__file__).parent.parent / "modules" / "processors" / "frame" / "face_swapper.py"
-)
-_FACE_OCCLUDER_PATH = (
-    Path(__file__).parent.parent / "modules" / "face_occluder.py"
-)
+_FACE_SWAPPER_PATH = Path(__file__).parent.parent / "modules" / "processors" / "frame" / "face_swapper.py"
+_FACE_OCCLUDER_PATH = Path(__file__).parent.parent / "modules" / "face_occluder.py"
 
 
 def _parse_imports(source_path: Path) -> list[tuple[str, list[str]]]:
@@ -46,16 +37,15 @@ class TestFaceSwapperDoesNotImportFromCore:
         imports = _parse_imports(_FACE_SWAPPER_PATH)
         bus_imports = [names for mod, names in imports if mod == "modules.status_bus"]
         flat = [name for names in bus_imports for name in names]
-        assert "BUS" in flat, (
-            "face_swapper.py does not import BUS from modules.status_bus."
-        )
+        assert "BUS" in flat, "face_swapper.py does not import BUS from modules.status_bus."
 
     def test_no_bare_update_status_calls(self):
         source = _FACE_SWAPPER_PATH.read_text()
         # After the fix, there should be no standalone update_status( calls
         import re
+
         # Match update_status( that is NOT preceded by "." (i.e., not a method call)
-        pattern = re.compile(r'(?<!\.)update_status\s*\(')
+        pattern = re.compile(r"(?<!\.)update_status\s*\(")
         matches = pattern.findall(source)
         assert not matches, (
             f"face_swapper.py still contains {len(matches)} bare update_status() call(s). "
@@ -79,14 +69,13 @@ class TestFaceOccluderDoesNotImportFromCore:
         imports = _parse_imports(_FACE_OCCLUDER_PATH)
         bus_imports = [names for mod, names in imports if mod == "modules.status_bus"]
         flat = [name for names in bus_imports for name in names]
-        assert "BUS" in flat, (
-            "face_occluder.py does not import BUS from modules.status_bus."
-        )
+        assert "BUS" in flat, "face_occluder.py does not import BUS from modules.status_bus."
 
     def test_no_bare_update_status_calls(self):
         source = _FACE_OCCLUDER_PATH.read_text()
         import re
-        pattern = re.compile(r'(?<!\.)update_status\s*\(')
+
+        pattern = re.compile(r"(?<!\.)update_status\s*\(")
         matches = pattern.findall(source)
         assert not matches, (
             f"face_occluder.py still contains {len(matches)} bare update_status() call(s). "

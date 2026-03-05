@@ -50,7 +50,7 @@ class TestExtractArgs:
         """The -s/--source argument should be present with correct help text."""
         source_args = [a for a in extracted_args if "--source" in a["flags"]]
         assert len(source_args) == 1
-        assert source_args[0]["help"] == "select an source image"
+        assert source_args[0]["help"] == "select a source image"
 
     def test_video_quality_choices(self, extracted_args: list[dict]) -> None:
         """range(52) should resolve to '0-51'."""
@@ -112,7 +112,11 @@ class TestCheckMode:
     def test_check_passes_when_fresh(self, tmp_path: Path) -> None:
         """--check should exit 0 when README matches generated content."""
         result = subprocess.run(
-            [sys.executable, str(Path(__file__).resolve().parent.parent / "scripts" / "generate_cli_docs.py"), "--stdout"],
+            [
+                sys.executable,
+                str(Path(__file__).resolve().parent.parent / "scripts" / "generate_cli_docs.py"),
+                "--stdout",
+            ],
             capture_output=True,
             text=True,
         )

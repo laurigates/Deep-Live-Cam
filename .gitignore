@@ -34,6 +34,7 @@ benchmarks/results/
 # Blueprint work orders (task-specific, may contain sensitive details)
 docs/blueprint/work-orders/
 
-# Claude Code local settings (user-specific)
+# Claude Code local settings and worktrees (user-specific)
 .claude/settings.local.json
+.claude/worktrees/
 .cache/

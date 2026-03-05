@@ -9,13 +9,12 @@ Covers:
 """
 
 import os
-import pytest
 from unittest.mock import patch
-
 
 # ---------------------------------------------------------------------------
 # tensorrt_cache — get_cache_dir
 # ---------------------------------------------------------------------------
+
 
 class TestGetCacheDir:
     def test_creates_directory_when_absent(self, tmp_path):
@@ -50,6 +49,7 @@ class TestGetCacheDir:
 # ---------------------------------------------------------------------------
 # tensorrt_cache — has_cached_engines
 # ---------------------------------------------------------------------------
+
 
 class TestHasCachedEngines:
     def test_returns_false_when_cache_dir_does_not_exist(self, tmp_path):
@@ -98,6 +98,7 @@ class TestHasCachedEngines:
 # ---------------------------------------------------------------------------
 # tensorrt_cache — build_tensorrt_provider_options
 # ---------------------------------------------------------------------------
+
 
 class TestBuildTensorrtProviderOptions:
     def test_returns_dict(self):
@@ -154,11 +155,12 @@ class TestBuildTensorrtProviderOptions:
 # onnx_providers — build_providers_config with TensorRT
 # ---------------------------------------------------------------------------
 
+
 class TestBuildProvidersConfigTensorRT:
     def test_tensorrt_provider_becomes_tuple_with_options(self):
         """TensorrtExecutionProvider must be converted to a (name, options) tuple."""
-        from modules.onnx_providers import build_providers_config
         from modules import tensorrt_cache
+        from modules.onnx_providers import build_providers_config
 
         with patch.object(tensorrt_cache, "get_cache_dir", return_value="/tmp/trt"):
             config = build_providers_config(["TensorrtExecutionProvider"])
@@ -172,8 +174,8 @@ class TestBuildProvidersConfigTensorRT:
 
     def test_tensorrt_plus_cuda_ordering(self):
         """TRT EP must come before CUDA EP in the config list (fallback chain)."""
-        from modules.onnx_providers import build_providers_config
         from modules import tensorrt_cache
+        from modules.onnx_providers import build_providers_config
 
         with patch.object(tensorrt_cache, "get_cache_dir", return_value="/tmp/trt"):
             config = build_providers_config(
@@ -194,8 +196,8 @@ class TestBuildProvidersConfigTensorRT:
 
     def test_tensorrt_options_include_cache_path(self):
         """The TRT options dict must specify the engine cache directory path."""
-        from modules.onnx_providers import build_providers_config
         from modules import tensorrt_cache
+        from modules.onnx_providers import build_providers_config
 
         fake_cache_dir = "/tmp/fake_trt_cache"
         with patch.object(tensorrt_cache, "get_cache_dir", return_value=fake_cache_dir):
@@ -209,11 +211,12 @@ class TestBuildProvidersConfigTensorRT:
 # face_enhancer — uses build_providers_config (import check)
 # ---------------------------------------------------------------------------
 
+
 class TestFaceEnhancerUsesProvidersConfig:
     def test_face_enhancer_imports_build_providers_config(self):
         """face_enhancer must import build_providers_config from modules.onnx_providers."""
-        import importlib
         import modules.processors.frame.face_enhancer as fe_module
+
         # Verify the symbol is present (the import was added)
         assert hasattr(fe_module, "build_providers_config"), (
             "face_enhancer.py must import build_providers_config from modules.onnx_providers"
@@ -232,26 +235,24 @@ class TestFaceEnhancerUsesProvidersConfig:
 
         fake_session = __import__("unittest.mock", fromlist=["MagicMock"]).MagicMock()
         fake_session.get_inputs.return_value = [
-            __import__("unittest.mock", fromlist=["MagicMock"]).MagicMock(
-                name="input", shape=[1], type="float"
-            )
+            __import__("unittest.mock", fromlist=["MagicMock"]).MagicMock(name="input", shape=[1], type="float")
         ]
         fake_session.get_outputs.return_value = [
-            __import__("unittest.mock", fromlist=["MagicMock"]).MagicMock(
-                name="out", shape=[1], type="float"
-            )
+            __import__("unittest.mock", fromlist=["MagicMock"]).MagicMock(name="out", shape=[1], type="float")
         ]
         fake_session.get_providers.return_value = injected
 
-        with __import__("unittest.mock", fromlist=["patch"]).patch("os.path.exists", return_value=True), \
-             __import__("unittest.mock", fromlist=["patch"]).patch(
-                 "modules.processors.frame.face_enhancer.build_providers_config",
-                 side_effect=fake_build_providers_config,
-             ), \
-             __import__("unittest.mock", fromlist=["patch"]).patch(
-                 "modules.processors.frame.face_enhancer.onnxruntime.InferenceSession",
-                 return_value=fake_session,
-             ):
+        with (
+            __import__("unittest.mock", fromlist=["patch"]).patch("os.path.exists", return_value=True),
+            __import__("unittest.mock", fromlist=["patch"]).patch(
+                "modules.processors.frame.face_enhancer.build_providers_config",
+                side_effect=fake_build_providers_config,
+            ),
+            __import__("unittest.mock", fromlist=["patch"]).patch(
+                "modules.processors.frame.face_enhancer.onnxruntime.InferenceSession",
+                return_value=fake_session,
+            ),
+        ):
             original = face_enhancer.FACE_ENHANCER
             face_enhancer.FACE_ENHANCER = None
             try:
@@ -260,6 +261,5 @@ class TestFaceEnhancerUsesProvidersConfig:
                 face_enhancer.FACE_ENHANCER = original
 
         assert captured_config == injected, (
-            f"Expected build_providers_config to be called with {injected}, "
-            f"got {captured_config}"
+            f"Expected build_providers_config to be called with {injected}, got {captured_config}"
         )

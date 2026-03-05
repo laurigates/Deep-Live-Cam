@@ -1,7 +1,7 @@
 from typing import Any
 
-from insightface.app.common import Face
 import numpy
+from insightface.app.common import Face
 
 Face = Face
 Frame = numpy.ndarray[Any, Any]

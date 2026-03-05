@@ -6,19 +6,19 @@ This is a source-code inspection test — it parses the AST of ui_webcam.py and 
 that every expected `snap_X` variable is assigned from `modules.globals.X` before any
 read of `modules.globals.X` occurs inside the while loop body.
 """
+
 import ast
 import inspect
 import textwrap
-from pathlib import Path
 
 import pytest
 
 import modules.ui_webcam as ui_webcam
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _get_func_source(func) -> str:
     """Return dedented source of a function."""
@@ -28,9 +28,7 @@ def _get_func_source(func) -> str:
 def _find_while_loop_node(func_source: str) -> ast.While:
     """Return the first While node in the function body."""
     tree = ast.parse(func_source)
-    func_def = next(
-        node for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)
-    )
+    func_def = next(node for node in ast.walk(tree) if isinstance(node, ast.FunctionDef))
     for node in func_def.body:
         if isinstance(node, ast.While):
             return node
@@ -170,9 +168,7 @@ class TestGlobalsSnapshot:
         for snap_name, expected_attr in EXPECTED_SNAP_VARS.items():
             if snap_name in assignments and assignments[snap_name] != expected_attr:
                 wrong[snap_name] = (expected_attr, assignments[snap_name])
-        assert not wrong, (
-            f"Snapshot variables assigned from wrong globals attribute: {wrong}"
-        )
+        assert not wrong, f"Snapshot variables assigned from wrong globals attribute: {wrong}"
 
     def test_no_raw_globals_reads_in_loop_body(self, while_node):
         """

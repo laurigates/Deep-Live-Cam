@@ -3,18 +3,18 @@ from modules.utilities import has_image_extension
 
 def analyze_target(start, root):
     import modules.globals
-    from modules.ui import (
-        POPUP,
-        update_status,
-        create_source_target_popup,
-        select_output_path,
-    )
-    from modules.utilities import is_image, is_video
     from modules.face_analyser import (
         get_unique_faces_from_target_image,
         get_unique_faces_from_target_video,
     )
     from modules.mapping_list import MAPPING_LIST
+    from modules.ui import (
+        POPUP,
+        create_source_target_popup,
+        select_output_path,
+        update_status,
+    )
+    from modules.utilities import is_image, is_video
 
     if POPUP is not None and POPUP.winfo_exists():
         update_status("Please complete pop-up or close it.")
@@ -22,6 +22,7 @@ def analyze_target(start, root):
 
     if MAPPING_LIST.effective_map_faces():
         from modules.face_map_store import STORE as _MAP_STORE
+
         _MAP_STORE.clear()
 
         if is_image(modules.globals.target_path):
@@ -45,7 +46,8 @@ def check_and_ignore_nsfw(target, destroy=None):
     TODO: Consider to make blur the target.
     """
     from numpy import ndarray
-    from modules.predicter import predict_image, predict_video, predict_frame
+
+    from modules.predicter import predict_frame, predict_image, predict_video
     from modules.ui import update_status
 
     check_nsfw = None
@@ -55,9 +57,7 @@ def check_and_ignore_nsfw(target, destroy=None):
         check_nsfw = predict_frame
     if check_nsfw and check_nsfw(target):
         if destroy:
-            destroy(
-                to_quit=False
-            )  # Do not need to destroy the window frame if the target is NSFW
+            destroy(to_quit=False)  # Do not need to destroy the window frame if the target is NSFW
         update_status("Processing ignored!")
         return True
     else:

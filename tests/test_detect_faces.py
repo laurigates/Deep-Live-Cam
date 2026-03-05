@@ -1,6 +1,7 @@
 """Tests for detect_faces in modules/face_analyser.py (Phase 5)."""
 
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
+
 import numpy as np
 
 

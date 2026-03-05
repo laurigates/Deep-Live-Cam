@@ -8,10 +8,11 @@ Verifies that:
 3. _swap_process_fn in ui_webcam builds config once and passes it, avoiding
    5-9 build_config_from_globals calls per frame at 30 FPS
 """
+
 import inspect
+from unittest.mock import MagicMock, patch
+
 import numpy as np
-import pytest
-from unittest.mock import patch, MagicMock, call
 
 from modules.processing_config import ProcessingConfig
 
@@ -21,28 +22,33 @@ class TestConfigParameterSignatures:
 
     def test_swap_face_accepts_config(self):
         from modules.processors.frame.face_swapper import swap_face
+
         sig = inspect.signature(swap_face)
-        assert 'config' in sig.parameters
+        assert "config" in sig.parameters
 
     def test_paste_back_accepts_config(self):
         from modules.processors.frame.face_swapper import _paste_back
+
         sig = inspect.signature(_paste_back)
-        assert 'config' in sig.parameters
+        assert "config" in sig.parameters
 
     def test_apply_mouth_mask_accepts_config(self):
         from modules.processors.frame.face_swapper import _apply_mouth_mask
+
         sig = inspect.signature(_apply_mouth_mask)
-        assert 'config' in sig.parameters
+        assert "config" in sig.parameters
 
     def test_apply_poisson_blend_accepts_config(self):
         from modules.processors.frame.face_swapper import _apply_poisson_blend
+
         sig = inspect.signature(_apply_poisson_blend)
-        assert 'config' in sig.parameters
+        assert "config" in sig.parameters
 
     def test_apply_post_processing_accepts_config(self):
         from modules.processors.frame.face_swapper import apply_post_processing
+
         sig = inspect.signature(apply_post_processing)
-        assert 'config' in sig.parameters
+        assert "config" in sig.parameters
 
 
 class TestBuildConfigNotCalledWhenConfigProvided:
@@ -64,9 +70,7 @@ class TestBuildConfigNotCalledWhenConfigProvided:
         M = np.array([[0.5, 0, 32], [0, 0.5, 32]], dtype=np.float32)
         target_img = np.zeros((128, 128, 3), dtype=np.uint8)
 
-        with patch(
-            'modules.processors.frame.face_swapper.build_config_from_globals'
-        ) as mock_build:
+        with patch("modules.processors.frame.face_swapper.build_config_from_globals") as mock_build:
             _paste_back(bgr_fake, aimg, M, target_img, config=config)
             mock_build.assert_not_called()
 
@@ -79,9 +83,7 @@ class TestBuildConfigNotCalledWhenConfigProvided:
         original = np.zeros((100, 100, 3), dtype=np.uint8)
         mock_face = MagicMock()
 
-        with patch(
-            'modules.processors.frame.face_swapper.build_config_from_globals'
-        ) as mock_build:
+        with patch("modules.processors.frame.face_swapper.build_config_from_globals") as mock_build:
             result = _apply_mouth_mask(swapped, mock_face, original, config=config)
             mock_build.assert_not_called()
 
@@ -97,9 +99,7 @@ class TestBuildConfigNotCalledWhenConfigProvided:
         pre_swap = np.zeros((100, 100, 3), dtype=np.uint8)
         mock_face = MagicMock()
 
-        with patch(
-            'modules.processors.frame.face_swapper.build_config_from_globals'
-        ) as mock_build:
+        with patch("modules.processors.frame.face_swapper.build_config_from_globals") as mock_build:
             result = _apply_poisson_blend(swapped, mock_face, original, pre_swap, config=config)
             mock_build.assert_not_called()
 
@@ -112,9 +112,7 @@ class TestBuildConfigNotCalledWhenConfigProvided:
         config = ProcessingConfig(sharpness=0.0, enable_interpolation=False)
         frame = np.zeros((100, 100, 3), dtype=np.uint8)
 
-        with patch(
-            'modules.processors.frame.face_swapper.build_config_from_globals'
-        ) as mock_build:
+        with patch("modules.processors.frame.face_swapper.build_config_from_globals") as mock_build:
             result = apply_post_processing(frame, [], config=config)
             mock_build.assert_not_called()
 
@@ -153,11 +151,10 @@ class TestSwapFacePassesConfigToSubCalls:
         mock_swapper.get.return_value = (bgr_fake, M)
         mock_swapper.input_size = (128, 128)
 
-        with patch.object(face_swapper, 'get_face_swapper', return_value=mock_swapper), \
-             patch(
-                 'modules.processors.frame.face_swapper.build_config_from_globals'
-             ) as mock_build:
-
+        with (
+            patch.object(face_swapper, "get_face_swapper", return_value=mock_swapper),
+            patch("modules.processors.frame.face_swapper.build_config_from_globals") as mock_build,
+        ):
             face_swapper.swap_face(mock_source, mock_target, frame, config=config)
 
             # build_config_from_globals must NOT be called at all when config is provided
@@ -194,12 +191,13 @@ class TestSwapFacePassesConfigToSubCalls:
             enable_interpolation=False,
         )
 
-        with patch.object(face_swapper, 'get_face_swapper', return_value=mock_swapper), \
-             patch(
-                 'modules.processors.frame.face_swapper.build_config_from_globals',
-                 return_value=built_config,
-             ) as mock_build:
-
+        with (
+            patch.object(face_swapper, "get_face_swapper", return_value=mock_swapper),
+            patch(
+                "modules.processors.frame.face_swapper.build_config_from_globals",
+                return_value=built_config,
+            ) as mock_build,
+        ):
             face_swapper.swap_face(mock_source, mock_target, frame)
 
             # build_config_from_globals should be called exactly once at the top of swap_face
@@ -236,19 +234,17 @@ class TestSwapProcessFnBuildsConfigOnce:
         config = ProcessingConfig(opacity=1.0)
 
         inp = {
-            'frame': frame,
-            'source_face': mock_source,
-            'target_face': mock_target,
-            'many_faces': None,
-            'processor': processor,
-            'map_faces': False,
-            'seq': 1,
-            'config': config,
+            "frame": frame,
+            "source_face": mock_source,
+            "target_face": mock_target,
+            "many_faces": None,
+            "processor": processor,
+            "map_faces": False,
+            "seq": 1,
+            "config": config,
         }
 
-        with patch(
-            'modules.ui_webcam.build_config_from_globals'
-        ) as mock_build:
+        with patch("modules.ui_webcam.build_config_from_globals") as mock_build:
             mock_build.return_value = ProcessingConfig()
             _swap_process_fn(inp)
 
@@ -257,9 +253,7 @@ class TestSwapProcessFnBuildsConfigOnce:
         call_args = processor.swap_face.call_args
         assert call_args is not None
         # The config keyword arg should be the one from inp, not a freshly built one
-        passed_config = call_args.kwargs.get('config') or (
-            call_args.args[3] if len(call_args.args) > 3 else None
-        )
+        passed_config = call_args.kwargs.get("config") or (call_args.args[3] if len(call_args.args) > 3 else None)
         assert passed_config is config
 
     def test_swap_process_fn_passes_config_to_apply_post_processing(self):
@@ -275,23 +269,21 @@ class TestSwapProcessFnBuildsConfigOnce:
         config = ProcessingConfig(opacity=1.0)
 
         inp = {
-            'frame': frame,
-            'source_face': mock_source,
-            'target_face': mock_target,
-            'many_faces': None,
-            'processor': processor,
-            'map_faces': False,
-            'seq': 1,
-            'config': config,
+            "frame": frame,
+            "source_face": mock_source,
+            "target_face": mock_target,
+            "many_faces": None,
+            "processor": processor,
+            "map_faces": False,
+            "seq": 1,
+            "config": config,
         }
 
         _swap_process_fn(inp)
 
         call_args = processor.apply_post_processing.call_args
         assert call_args is not None
-        passed_config = call_args.kwargs.get('config') or (
-            call_args.args[2] if len(call_args.args) > 2 else None
-        )
+        passed_config = call_args.kwargs.get("config") or (call_args.args[2] if len(call_args.args) > 2 else None)
         assert passed_config is config
 
     def test_swap_process_fn_builds_config_once_when_not_in_inp(self):
@@ -307,18 +299,18 @@ class TestSwapProcessFnBuildsConfigOnce:
         built_config = ProcessingConfig(opacity=1.0)
 
         inp = {
-            'frame': frame,
-            'source_face': mock_source,
-            'target_face': mock_target,
-            'many_faces': None,
-            'processor': processor,
-            'map_faces': False,
-            'seq': 1,
+            "frame": frame,
+            "source_face": mock_source,
+            "target_face": mock_target,
+            "many_faces": None,
+            "processor": processor,
+            "map_faces": False,
+            "seq": 1,
             # No 'config' key — should trigger single build_config_from_globals call
         }
 
         with patch(
-            'modules.ui_webcam.build_config_from_globals',
+            "modules.ui_webcam.build_config_from_globals",
             return_value=built_config,
         ) as mock_build:
             _swap_process_fn(inp)
@@ -334,13 +326,13 @@ class TestConfigValuesPropagateCorrectly:
 
     def test_mouth_mask_config_reaches_apply_mouth_mask(self):
         """mouth_mask=True in config should reach _apply_mouth_mask (not re-read from globals)."""
-        from modules.processors.frame import face_swapper
         import modules.globals
+        from modules.processors.frame import face_swapper
 
         frame = np.zeros((200, 200, 3), dtype=np.uint8)
         config = ProcessingConfig(
             opacity=1.0,
-            mouth_mask=True,   # Enable mouth mask via config
+            mouth_mask=True,  # Enable mouth mask via config
             poisson_blend=False,
             sharpness=0.0,
             enable_interpolation=False,
@@ -369,9 +361,10 @@ class TestConfigValuesPropagateCorrectly:
         modules.globals.mouth_mask = False  # globals says disabled
 
         try:
-            with patch.object(face_swapper, 'get_face_swapper', return_value=mock_swapper), \
-                 patch.object(face_swapper, '_apply_mouth_mask', side_effect=capture_mouth_mask):
-
+            with (
+                patch.object(face_swapper, "get_face_swapper", return_value=mock_swapper),
+                patch.object(face_swapper, "_apply_mouth_mask", side_effect=capture_mouth_mask),
+            ):
                 face_swapper.swap_face(mock_source, mock_target, frame, config=config)
 
             # _apply_mouth_mask should have been called with the config that has mouth_mask=True

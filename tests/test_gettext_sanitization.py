@@ -5,6 +5,7 @@ any filesystem path is constructed.
 """
 
 import pytest
+
 from modules.gettext import LanguageManager
 
 

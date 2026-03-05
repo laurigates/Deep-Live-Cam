@@ -4,16 +4,16 @@ Renders a scrollable list of source→pin mapping entries.  Single-mapping
 mode shows 120x120 thumbnails (matching current UI).  Multi-mapping mode
 uses 80x80 thumbnails with row labels.
 """
+
 from __future__ import annotations
 
-from typing import Callable
+from collections.abc import Callable
 
-import cv2
 import customtkinter as ctk
+import cv2
 from PIL import Image, ImageOps
 
 from modules.mapping_list import MappingList
-
 
 # Thumbnail sizes
 _SINGLE_THUMB = (120, 120)
@@ -81,7 +81,11 @@ class MappingListWidget:
             height=28,
         )
         add_btn.grid(
-            row=len(entries), column=0, pady=(5, 0), sticky="ew", padx=5,
+            row=len(entries),
+            column=0,
+            pady=(5, 0),
+            sticky="ew",
+            padx=5,
         )
 
     def _build_entry_row(
@@ -102,10 +106,17 @@ class MappingListWidget:
             header.grid(row=0, column=0, sticky="ew")
             header.columnconfigure(0, weight=1)
             ctk.CTkLabel(header, text=f"Mapping {entry.id + 1}", anchor="w").grid(
-                row=0, column=0, sticky="w", padx=5,
+                row=0,
+                column=0,
+                sticky="w",
+                padx=5,
             )
             remove_btn = ctk.CTkButton(
-                header, text="\u00d7", width=24, height=24, cursor="hand2",
+                header,
+                text="\u00d7",
+                width=24,
+                height=24,
+                cursor="hand2",
                 command=lambda eid=entry.id: self._on_remove(eid),
             )
             remove_btn.grid(row=0, column=1, padx=2)
@@ -118,7 +129,9 @@ class MappingListWidget:
 
         # Select face button
         select_btn = ctk.CTkButton(
-            row_frame, text="Select a face", cursor="hand2",
+            row_frame,
+            text="Select a face",
+            cursor="hand2",
             command=lambda eid=entry.id: self._on_select_source(eid),
         )
         select_btn.grid(row=2, column=0, sticky="ew", padx=5, pady=(0, 2))
@@ -130,7 +143,10 @@ class MappingListWidget:
             self._set_thumbnail(pin_label, entry.pin_cv2, thumb)
 
         pin_btn = ctk.CTkButton(
-            row_frame, text="Pin to face", cursor="hand2", height=24,
+            row_frame,
+            text="Pin to face",
+            cursor="hand2",
+            height=24,
             command=lambda eid=entry.id: self._on_select_pin(eid),
         )
         pin_btn.grid(row=4, column=0, sticky="ew", padx=5, pady=(0, 2))
@@ -142,7 +158,9 @@ class MappingListWidget:
 
     @staticmethod
     def _set_thumbnail(
-        label: ctk.CTkLabel, cv2_img, size: tuple[int, int],
+        label: ctk.CTkLabel,
+        cv2_img,
+        size: tuple[int, int],
     ) -> None:
         """Set a CTkImage on a label from a BGR cv2 image."""
         rgb = cv2.cvtColor(cv2_img, cv2.COLOR_BGR2RGB)
@@ -181,7 +199,7 @@ class MappingListWidget:
             return
         # Crop face region for thumbnail
         x_min, y_min, x_max, y_max = face["bbox"]
-        cropped = img[int(y_min):int(y_max), int(x_min):int(x_max)]
+        cropped = img[int(y_min) : int(y_max), int(x_min) : int(x_max)]
         self._mapping_list.set_source(entry_id, path, cropped, face)
 
     def _on_select_pin(self, entry_id: int) -> None:
@@ -201,5 +219,5 @@ class MappingListWidget:
         if face is None:
             return
         x_min, y_min, x_max, y_max = face["bbox"]
-        cropped = img[int(y_min):int(y_max), int(x_min):int(x_max)]
+        cropped = img[int(y_min) : int(y_max), int(x_min) : int(x_max)]
         self._mapping_list.set_pin(entry_id, path, cropped, face)

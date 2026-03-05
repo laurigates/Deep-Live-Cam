@@ -12,10 +12,12 @@ Usage::
     MAPPING_LIST.add_entry()
     MAPPING_LIST.sync_to_store(STORE)
 """
+
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any
 
 import numpy as np
 
@@ -23,6 +25,7 @@ import numpy as np
 @dataclass
 class MappingEntry:
     """A single source→target(pin) mapping."""
+
     id: int
     source_path: str | None = None
     source_face: Any | None = None
@@ -152,16 +155,16 @@ class MappingList:
             if entry.source_face is None:
                 continue
             store_entry: dict[str, Any] = {
-                'id': entry.id,
-                'source': {
-                    'cv2': entry.source_cv2,
-                    'face': entry.source_face,
+                "id": entry.id,
+                "source": {
+                    "cv2": entry.source_cv2,
+                    "face": entry.source_face,
                 },
             }
             if entry.pin_face is not None:
-                store_entry['target'] = {
-                    'cv2': entry.pin_cv2,
-                    'face': entry.pin_face,
+                store_entry["target"] = {
+                    "cv2": entry.pin_cv2,
+                    "face": entry.pin_face,
                 }
                 has_pins = True
             store_entries.append(store_entry)
@@ -178,9 +181,9 @@ class MappingList:
         result = []
         for entry in self._entries:
             d: dict[str, str | None] = {
-                'id': entry.id,
-                'source_path': entry.source_path,
-                'pin_path': entry.pin_path,
+                "id": entry.id,
+                "source_path": entry.source_path,
+                "pin_path": entry.pin_path,
             }
             result.append(d)
         return result
@@ -190,11 +193,11 @@ class MappingList:
         self._entries.clear()
         max_id = -1
         for d in data:
-            entry_id = d.get('id', 0)
+            entry_id = d.get("id", 0)
             entry = MappingEntry(
                 id=entry_id,
-                source_path=d.get('source_path'),
-                pin_path=d.get('pin_path'),
+                source_path=d.get("source_path"),
+                pin_path=d.get("pin_path"),
             )
             self._entries.append(entry)
             if entry_id > max_id:

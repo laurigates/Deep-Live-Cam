@@ -1,8 +1,9 @@
-import cv2
-import numpy as np
-from typing import Optional, Tuple, Callable
 import platform
 import threading
+from collections.abc import Callable
+
+import cv2
+import numpy as np
 
 
 class VideoCapturer:
@@ -43,12 +44,12 @@ class VideoCapturer:
             return True
 
         except Exception as e:
-            print(f"Failed to start capture: {str(e)}")
+            print(f"Failed to start capture: {e!s}")
             if self.cap:
                 self.cap.release()
             return False
 
-    def read(self) -> Tuple[bool, Optional[np.ndarray]]:
+    def read(self) -> tuple[bool, np.ndarray | None]:
         """Read a frame from the camera"""
         if not self.is_running or self.cap is None:
             return False, None

@@ -5,17 +5,16 @@ Covers:
 - color_correction_mode field on ProcessingConfig
 - Backward-compat: swap_color_transfer=True still selects lab mode
 """
-import cv2
+
 import numpy as np
-import pytest
 
-from modules.processors.frame.face_masking import apply_histogram_matching, apply_color_transfer
 from modules.processing_config import ProcessingConfig
-
+from modules.processors.frame.face_masking import apply_color_transfer, apply_histogram_matching
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_image(h: int, w: int, bgr: tuple, noise: int = 0, seed: int = 0) -> np.ndarray:
     """Return a flat-colour BGR uint8 image optionally jittered with noise."""
@@ -30,8 +29,8 @@ def _make_image(h: int, w: int, bgr: tuple, noise: int = 0, seed: int = 0) -> np
 # apply_histogram_matching — guard clauses
 # ---------------------------------------------------------------------------
 
-class TestHistogramMatchingGuards:
 
+class TestHistogramMatchingGuards:
     def test_none_source_returns_none(self):
         target = _make_image(64, 64, (100, 150, 200))
         assert apply_histogram_matching(None, target) is None
@@ -58,8 +57,8 @@ class TestHistogramMatchingGuards:
 # apply_histogram_matching — output properties
 # ---------------------------------------------------------------------------
 
-class TestHistogramMatchingOutputProperties:
 
+class TestHistogramMatchingOutputProperties:
     def test_output_shape_matches_source(self):
         source = _make_image(128, 128, (200, 100, 100), noise=10, seed=1)
         target = _make_image(128, 128, (100, 150, 200), noise=10, seed=2)
@@ -91,6 +90,7 @@ class TestHistogramMatchingOutputProperties:
 # apply_histogram_matching — histogram-level correctness
 # ---------------------------------------------------------------------------
 
+
 class TestHistogramMatchingCorrectness:
     """Verify that the output histogram is closer to the target than the source."""
 
@@ -108,9 +108,9 @@ class TestHistogramMatchingCorrectness:
         rng = np.random.RandomState(42)
         # Source: predominantly reddish (high B channel value in BGR = blue, so use high R)
         source = rng.randint(150, 200, (128, 128, 3), dtype=np.uint8)
-        source[:, :, 0] = rng.randint(50, 80, (128, 128))   # low B
+        source[:, :, 0] = rng.randint(50, 80, (128, 128))  # low B
         source[:, :, 1] = rng.randint(80, 120, (128, 128))  # mid G
-        source[:, :, 2] = rng.randint(160, 200, (128, 128)) # high R
+        source[:, :, 2] = rng.randint(160, 200, (128, 128))  # high R
 
         # Target: predominantly darker skin tone
         target = rng.randint(80, 130, (128, 128, 3), dtype=np.uint8)
@@ -120,8 +120,7 @@ class TestHistogramMatchingCorrectness:
         dist_before = self._hist_distance(source, target)
         dist_after = self._hist_distance(result, target)
         assert dist_after < dist_before, (
-            f"Expected histogram distance to decrease after matching; "
-            f"before={dist_before:.2f}, after={dist_after:.2f}"
+            f"Expected histogram distance to decrease after matching; before={dist_before:.2f}, after={dist_after:.2f}"
         )
 
     def test_identity_when_source_equals_target(self):
@@ -137,19 +136,19 @@ class TestHistogramMatchingCorrectness:
 # ProcessingConfig — color_correction_mode field
 # ---------------------------------------------------------------------------
 
-class TestColorCorrectionModeConfig:
 
+class TestColorCorrectionModeConfig:
     def test_default_mode_is_none(self):
         config = ProcessingConfig()
-        assert config.color_correction_mode == 'none'
+        assert config.color_correction_mode == "none"
 
     def test_can_set_lab_mode(self):
-        config = ProcessingConfig(color_correction_mode='lab')
-        assert config.color_correction_mode == 'lab'
+        config = ProcessingConfig(color_correction_mode="lab")
+        assert config.color_correction_mode == "lab"
 
     def test_can_set_histogram_mode(self):
-        config = ProcessingConfig(color_correction_mode='histogram')
-        assert config.color_correction_mode == 'histogram'
+        config = ProcessingConfig(color_correction_mode="histogram")
+        assert config.color_correction_mode == "histogram"
 
     def test_swap_color_transfer_still_exists_for_backward_compat(self):
         config = ProcessingConfig(swap_color_transfer=True)
@@ -164,8 +163,8 @@ class TestColorCorrectionModeConfig:
 # Integration: both correction functions modify the crop
 # ---------------------------------------------------------------------------
 
-class TestColorCorrectionIntegration:
 
+class TestColorCorrectionIntegration:
     def _get_distinct_pair(self):
         rng = np.random.RandomState(0)
         source = rng.randint(150, 200, (128, 128, 3), dtype=np.uint8)
@@ -189,6 +188,5 @@ class TestColorCorrectionIntegration:
         hist_result = apply_histogram_matching(source, target)
         # Allow small differences — the two methods are distinct by design
         assert not np.array_equal(lab_result, hist_result), (
-            "LAB transfer and histogram matching produced identical output — "
-            "one may have been applied incorrectly."
+            "LAB transfer and histogram matching produced identical output — one may have been applied incorrectly."
         )

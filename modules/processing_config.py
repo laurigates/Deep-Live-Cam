@@ -19,9 +19,9 @@ This enables:
 - Thread-safe configuration without mutable shared state
 - Clearer module dependencies (config is explicit parameter, not hidden global read)
 """
-from dataclasses import dataclass, field
-from typing import List, Dict, Any, Optional
+
 import threading
+from dataclasses import dataclass, field
 
 
 @dataclass
@@ -33,13 +33,13 @@ class ProcessingConfig:
     """
 
     # ======================== Execution Configuration ========================
-    execution_providers: List[str] = field(default_factory=list)
+    execution_providers: list[str] = field(default_factory=list)
     """ONNX Runtime providers, e.g., ['CUDAExecutionProvider', 'CPUExecutionProvider']"""
 
-    execution_threads: Optional[int] = None
+    execution_threads: int | None = None
     """Number of threads for parallel frame processing"""
 
-    max_memory: Optional[int] = None
+    max_memory: int | None = None
     """Memory limit in GB (optional)"""
 
     headless: bool = False
@@ -52,17 +52,17 @@ class ProcessingConfig:
     """CoreML compute units for Apple Silicon: 'ALL' (ANE+GPU+CPU), 'CPUAndGPU', 'CPUOnly'"""
 
     # ======================== Input/Output Paths ========================
-    source_path: Optional[str] = None
+    source_path: str | None = None
     """Path to source image or video for face swapping"""
 
-    target_path: Optional[str] = None
+    target_path: str | None = None
     """Path to target image or video for face detection"""
 
-    output_path: Optional[str] = None
+    output_path: str | None = None
     """Path where the processed output will be saved"""
 
     # ======================== Frame Processor Pipeline ========================
-    frame_processors: List[str] = field(default_factory=list)
+    frame_processors: list[str] = field(default_factory=list)
     """List of enabled frame processors: ['face_swapper', 'face_enhancer', ...]"""
 
     # ======================== Face Detection ========================
@@ -101,7 +101,7 @@ class ProcessingConfig:
     face_swapper_enabled: bool = True
     """General toggle for the face swapper processor"""
 
-    face_swap_model: str = 'inswapper'
+    face_swap_model: str = "inswapper"
     """Face swap model variant: 'inswapper' | 'ghost_256_v1' | 'ghost_256_v2' | 'ghost_256_v3' | 'hyperswap_256_1a' | 'hyperswap_256_1b' | 'hyperswap_256_1c'"""
 
     opacity: float = 1.0
@@ -113,10 +113,13 @@ class ProcessingConfig:
     prepaste_upscale: bool = True
     """Upscale swap crop before paste-back to reduce stretch artifact"""
 
+    prepaste_upscale_max: float = 4.0
+    """Maximum Lanczos upscale factor for pre-paste crop (1.0-8.0)"""
+
     color_correction: bool = False
     """Enable color correction for swapped face"""
 
-    color_correction_mode: str = 'none'
+    color_correction_mode: str = "none"
     """Color correction mode for swapped face crop: 'none', 'lab', or 'histogram'.
     'lab' applies LAB mean/std transfer; 'histogram' applies per-channel CDF matching."""
 
@@ -223,6 +226,12 @@ class ProcessingConfig:
     landmark_smoothing_alpha: float = 0.7
     """EMA weight for the current frame (0.0=full history, 1.0=no smoothing)"""
 
+    scale_smoothing: bool = False
+    """EMA-smooth the affine scale to prevent expression-driven face resizing"""
+
+    scale_smoothing_alpha: float = 0.3
+    """EMA weight for scale smoothing (lower = more stable, 0.1-0.5 recommended)"""
+
     webcam_preview_running: bool = False
     """Indicates if live webcam preview is active"""
 
@@ -242,10 +251,10 @@ class ProcessingConfig:
     """Output to virtual camera device"""
 
     # ======================== Video Output Options ========================
-    video_encoder: Optional[str] = None
+    video_encoder: str | None = None
     """Video encoder (codec) for output"""
 
-    video_quality: Optional[int] = None
+    video_quality: int | None = None
     """Video quality parameter (CRF or bitrate)"""
 
     # ======================== NSFW Filter ========================
@@ -254,12 +263,14 @@ class ProcessingConfig:
 
     # ======================== UI Toggle State ========================
     # Face processor UI toggles (which enhancers are enabled in UI)
-    fp_ui: Dict[str, bool] = field(default_factory=lambda: {
-        "face_enhancer": False,
-        "face_enhancer_gpen256": False,
-        "face_enhancer_gpen512": False,
-        "face_enhancer_codeformer": False,
-    })
+    fp_ui: dict[str, bool] = field(
+        default_factory=lambda: {
+            "face_enhancer": False,
+            "face_enhancer_gpen256": False,
+            "face_enhancer_gpen512": False,
+            "face_enhancer_codeformer": False,
+        }
+    )
     """UI toggle state for frame processors"""
 
     # ======================== Threading / Synchronization ========================

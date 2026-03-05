@@ -2,17 +2,16 @@ import glob
 import hashlib
 import mimetypes
 import os
-import platform
 import shutil
 import ssl
 import subprocess
 import urllib
 import urllib.request
 from pathlib import Path
-from typing import List, Any, Optional
+from typing import Any
+
 from tqdm import tqdm
 
-import modules.globals
 from modules.processing_config import ProcessingConfig
 from modules.processing_config_factory import build_config_from_globals
 
@@ -54,17 +53,21 @@ def _validate_path_for_subprocess(path: str) -> None:
         )
 
 
-def run_ffmpeg(args: List[str], config: Optional[ProcessingConfig] = None) -> bool:
+def run_ffmpeg(args: list[str], config: ProcessingConfig | None = None) -> bool:
     """Run ffmpeg with hardware acceleration and optimized settings."""
     if config is None:
         config = build_config_from_globals()
     commands = [
         "ffmpeg",
         "-hide_banner",
-        "-hwaccel", "auto",  # Auto-detect hardware acceleration
-        "-hwaccel_output_format", "auto",  # Use hardware format when possible
-        "-threads", str(config.execution_threads or 0),  # 0 = auto-detect optimal thread count
-        "-loglevel", config.log_level,
+        "-hwaccel",
+        "auto",  # Auto-detect hardware acceleration
+        "-hwaccel_output_format",
+        "auto",  # Use hardware format when possible
+        "-threads",
+        str(config.execution_threads or 0),  # 0 = auto-detect optimal thread count
+        "-loglevel",
+        config.log_level,
     ]
     commands.extend(args)
     try:
@@ -98,7 +101,7 @@ def detect_fps(target_path: str) -> float:
     return 30.0
 
 
-def extract_frames(target_path: str, config: Optional[ProcessingConfig] = None) -> None:
+def extract_frames(target_path: str, config: ProcessingConfig | None = None) -> None:
     """Extract frames with hardware acceleration and optimized settings."""
     _validate_path_for_subprocess(target_path)
     if config is None:
@@ -115,10 +118,14 @@ def extract_frames(target_path: str, config: Optional[ProcessingConfig] = None) 
     # Use hardware-accelerated decoding and optimized pixel format
     run_ffmpeg(
         [
-            "-i", target_path,
-            "-vf", "format=rgb24",  # Use video filter for format conversion (faster)
-            "-vsync", "0",  # Prevent frame duplication
-            "-frame_pts", "1",  # Preserve frame timing
+            "-i",
+            target_path,
+            "-vf",
+            "format=rgb24",  # Use video filter for format conversion (faster)
+            "-vsync",
+            "0",  # Prevent frame duplication
+            "-frame_pts",
+            "1",  # Preserve frame timing
             frame_pattern,
             *extra_args,
         ],
@@ -126,8 +133,8 @@ def extract_frames(target_path: str, config: Optional[ProcessingConfig] = None) 
     )
 
 
-_NVIDIA_ENCODERS = {'libx264': 'h264_nvenc', 'libx265': 'hevc_nvenc'}
-_AMD_ENCODERS = {'libx264': 'h264_amf', 'libx265': 'hevc_amf'}
+_NVIDIA_ENCODERS = {"libx264": "h264_nvenc", "libx265": "hevc_nvenc"}
+_AMD_ENCODERS = {"libx264": "h264_amf", "libx265": "hevc_amf"}
 _HW_ENCODERS = set(_NVIDIA_ENCODERS.values()) | set(_AMD_ENCODERS.values())
 
 
@@ -138,35 +145,45 @@ def _build_encoder_args(software_encoder: str, quality: int | None, providers: l
     """
     if quality is None:
         quality = 18
-    if 'CUDAExecutionProvider' in providers:
+    if "CUDAExecutionProvider" in providers:
         encoder = _NVIDIA_ENCODERS.get(software_encoder, software_encoder)
-        if encoder in ('h264_nvenc', 'hevc_nvenc'):
+        if encoder in ("h264_nvenc", "hevc_nvenc"):
             options = [
-                "-preset", "p7",
-                "-tune", "hq",
-                "-rc", "vbr",
-                "-cq", str(quality),
-                "-b:v", "0",
-                "-multipass", "fullres",
+                "-preset",
+                "p7",
+                "-tune",
+                "hq",
+                "-rc",
+                "vbr",
+                "-cq",
+                str(quality),
+                "-b:v",
+                "0",
+                "-multipass",
+                "fullres",
             ]
             return encoder, options
-    elif 'DmlExecutionProvider' in providers:
+    elif "DmlExecutionProvider" in providers:
         encoder = _AMD_ENCODERS.get(software_encoder, software_encoder)
-        if encoder in ('h264_amf', 'hevc_amf'):
+        if encoder in ("h264_amf", "hevc_amf"):
             options = [
-                "-quality", "quality",
-                "-rc", "vbr_latency",
-                "-qp_i", str(quality),
-                "-qp_p", str(quality),
+                "-quality",
+                "quality",
+                "-rc",
+                "vbr_latency",
+                "-qp_i",
+                str(quality),
+                "-qp_p",
+                str(quality),
             ]
             return encoder, options
 
     # CPU encoding
-    if software_encoder == 'libx264':
+    if software_encoder == "libx264":
         return software_encoder, ["-preset", "medium", "-crf", str(quality), "-tune", "film"]
-    if software_encoder == 'libx265':
+    if software_encoder == "libx265":
         return software_encoder, ["-preset", "medium", "-crf", str(quality), "-x265-params", "log-level=error"]
-    if software_encoder == 'libvpx-vp9':
+    if software_encoder == "libvpx-vp9":
         return software_encoder, ["-crf", str(quality), "-b:v", "0", "-cpu-used", "2"]
     return software_encoder, []
 
@@ -183,20 +200,25 @@ def _build_video_ffmpeg_args(
     Pure function — no side effects.
     """
     return [
-        "-r", str(fps),
-        "-i", input_pattern,
-        "-c:v", encoder,
+        "-r",
+        str(fps),
+        "-i",
+        input_pattern,
+        "-c:v",
+        encoder,
         *encoder_options,
-        "-pix_fmt", "yuv420p",
-        "-movflags", "+faststart",
-        "-vf", "colorspace=bt709:iall=bt601-6-625:fast=1",
+        "-pix_fmt",
+        "yuv420p",
+        "-movflags",
+        "+faststart",
+        "-vf",
+        "colorspace=bt709:iall=bt601-6-625:fast=1",
         "-y",
         output_path,
     ]
 
 
-def create_video(target_path: str, fps: float = 30.0,
-                 config: Optional[ProcessingConfig] = None) -> None:
+def create_video(target_path: str, fps: float = 30.0, config: ProcessingConfig | None = None) -> None:
     """Create video with hardware-accelerated encoding and optimized settings."""
     _validate_path_for_subprocess(target_path)
     if config is None:
@@ -217,9 +239,11 @@ def create_video(target_path: str, fps: float = 30.0,
 
     if not success and encoder in _HW_ENCODERS:
         print(f"Hardware encoding with {encoder} failed, falling back to software encoding...")
-        fallback_encoder = 'libx264' if 'h264' in encoder else 'libx265'
+        fallback_encoder = "libx264" if "h264" in encoder else "libx265"
         _, fallback_options = _build_encoder_args(fallback_encoder, config.video_quality, [])
-        fallback_args = _build_video_ffmpeg_args(fps, input_pattern, fallback_encoder, fallback_options, temp_output_path)
+        fallback_args = _build_video_ffmpeg_args(
+            fps, input_pattern, fallback_encoder, fallback_options, temp_output_path
+        )
         run_ffmpeg(fallback_args, config=config)
 
 
@@ -247,8 +271,7 @@ def restore_audio(target_path: str, output_path: str) -> None:
         move_temp(target_path, output_path)
 
 
-def get_temp_frame_paths(target_path: str,
-                         config: Optional[ProcessingConfig] = None) -> List[str]:
+def get_temp_frame_paths(target_path: str, config: ProcessingConfig | None = None) -> list[str]:
     if config is None:
         config = build_config_from_globals()
     temp_directory_path = get_temp_directory_path(target_path)
@@ -276,9 +299,7 @@ def normalize_output_path(source_path: str, target_path: str, output_path: str) 
         source_name, _ = os.path.splitext(os.path.basename(source_path))
         target_name, target_extension = os.path.splitext(os.path.basename(target_path))
         if output_path and os.path.isdir(output_path):
-            return os.path.join(
-                output_path, source_name + "-" + target_name + target_extension
-            )
+            return os.path.join(output_path, source_name + "-" + target_name + target_extension)
     return output_path
 
 
@@ -295,7 +316,7 @@ def move_temp(target_path: str, output_path: str) -> None:
         shutil.move(temp_output_path, output_path)
 
 
-def clean_temp(target_path: str, config: Optional[ProcessingConfig] = None) -> None:
+def clean_temp(target_path: str, config: ProcessingConfig | None = None) -> None:
     if config is None:
         config = build_config_from_globals()
     temp_directory_path = get_temp_directory_path(target_path)
@@ -324,7 +345,7 @@ def is_video(video_path: str) -> bool:
     return False
 
 
-def conditional_download(download_directory_path: str, urls: List[str], expected_checksums: dict | None = None) -> None:
+def conditional_download(download_directory_path: str, urls: list[str], expected_checksums: dict | None = None) -> None:
     if not os.path.exists(download_directory_path):
         os.makedirs(download_directory_path)
     for url in urls:
@@ -386,6 +407,7 @@ def download_model_if_needed(
     """
     if models_dir is None:
         from modules.paths import MODELS_DIR
+
         models_dir = MODELS_DIR
     model_path = os.path.join(models_dir, model_file)
 
@@ -394,6 +416,7 @@ def download_model_if_needed(
             on_status(msg, processor_name)
         else:
             from modules.core import update_status
+
             update_status(msg, processor_name)
 
     if not os.path.exists(model_path):

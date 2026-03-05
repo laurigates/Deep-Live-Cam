@@ -2,7 +2,7 @@
 
 import threading
 import time
-from typing import Callable
+from collections.abc import Callable
 
 
 def single_slot_worker_loop(
@@ -33,7 +33,7 @@ def single_slot_worker_loop(
             time.sleep(idle_sleep)
             continue
 
-        seq = inp['seq']
+        seq = inp["seq"]
         if seq == last_processed_seq:
             time.sleep(idle_sleep)
             continue

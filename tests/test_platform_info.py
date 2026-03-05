@@ -4,7 +4,7 @@ from unittest.mock import patch
 
 
 def test_constants_are_bools():
-    from modules.platform_info import IS_APPLE_SILICON, IS_WINDOWS, IS_LINUX
+    from modules.platform_info import IS_APPLE_SILICON, IS_LINUX, IS_WINDOWS
 
     assert isinstance(IS_APPLE_SILICON, bool)
     assert isinstance(IS_WINDOWS, bool)
@@ -44,6 +44,6 @@ def test_linux_detection(mock_sys):
 
 def test_mutual_exclusivity():
     """At most one of IS_WINDOWS and IS_LINUX can be True at any time."""
-    from modules.platform_info import IS_WINDOWS, IS_LINUX
+    from modules.platform_info import IS_LINUX, IS_WINDOWS
 
     assert not (IS_WINDOWS and IS_LINUX)

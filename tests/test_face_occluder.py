@@ -3,30 +3,31 @@
 Verifies the face_occluder module: singleton loader, preprocessing, mask output,
 fallback behavior, config integration, and pipeline integration.
 """
+
 import inspect
 import threading
+from unittest.mock import MagicMock, patch
 
 import numpy as np
-import pytest
-from unittest.mock import patch, MagicMock
-
 
 # ---------------------------------------------------------------------------
 # Singleton loader
 # ---------------------------------------------------------------------------
 
+
 class TestFaceOccluderSingleton:
     def test_get_face_occluder_accepts_providers_parameter(self):
         """get_face_occluder() must accept an optional providers keyword argument."""
         from modules.face_occluder import get_face_occluder
+
         sig = inspect.signature(get_face_occluder)
-        assert 'providers' in sig.parameters
+        assert "providers" in sig.parameters
 
     def test_get_face_occluder_uses_injected_providers(self):
         """When providers is passed, it is forwarded to build_providers_config."""
         from modules import face_occluder
 
-        injected = ['CPUExecutionProvider']
+        injected = ["CPUExecutionProvider"]
         captured_providers = []
 
         def fake_build_providers_config(providers):
@@ -38,11 +39,11 @@ class TestFaceOccluderSingleton:
         original = face_occluder.FACE_OCCLUDER
         face_occluder.FACE_OCCLUDER = None
         try:
-            with patch('modules.face_occluder.build_providers_config',
-                       side_effect=fake_build_providers_config), \
-                 patch('modules.face_occluder.onnxruntime.InferenceSession',
-                       return_value=fake_session), \
-                 patch('modules.face_occluder.os.path.exists', return_value=True):
+            with (
+                patch("modules.face_occluder.build_providers_config", side_effect=fake_build_providers_config),
+                patch("modules.face_occluder.onnxruntime.InferenceSession", return_value=fake_session),
+                patch("modules.face_occluder.os.path.exists", return_value=True),
+            ):
                 face_occluder.get_face_occluder(providers=injected)
         finally:
             face_occluder.FACE_OCCLUDER = original
@@ -51,10 +52,10 @@ class TestFaceOccluderSingleton:
 
     def test_get_face_occluder_falls_back_to_globals(self):
         """When no providers passed, modules.globals.execution_providers is used."""
-        from modules import face_occluder
         import modules.globals
+        from modules import face_occluder
 
-        modules.globals.execution_providers = ['CPUExecutionProvider']
+        modules.globals.execution_providers = ["CPUExecutionProvider"]
         captured_providers = []
 
         def fake_build_providers_config(providers):
@@ -66,16 +67,16 @@ class TestFaceOccluderSingleton:
         original = face_occluder.FACE_OCCLUDER
         face_occluder.FACE_OCCLUDER = None
         try:
-            with patch('modules.face_occluder.build_providers_config',
-                       side_effect=fake_build_providers_config), \
-                 patch('modules.face_occluder.onnxruntime.InferenceSession',
-                       return_value=fake_session), \
-                 patch('modules.face_occluder.os.path.exists', return_value=True):
+            with (
+                patch("modules.face_occluder.build_providers_config", side_effect=fake_build_providers_config),
+                patch("modules.face_occluder.onnxruntime.InferenceSession", return_value=fake_session),
+                patch("modules.face_occluder.os.path.exists", return_value=True),
+            ):
                 face_occluder.get_face_occluder()
         finally:
             face_occluder.FACE_OCCLUDER = original
 
-        assert captured_providers == ['CPUExecutionProvider']
+        assert captured_providers == ["CPUExecutionProvider"]
 
     def test_get_face_occluder_thread_safe(self):
         """Concurrent calls to get_face_occluder() must not create multiple sessions."""
@@ -91,15 +92,15 @@ class TestFaceOccluderSingleton:
         original = face_occluder.FACE_OCCLUDER
         face_occluder.FACE_OCCLUDER = None
         try:
-            with patch('modules.face_occluder.build_providers_config',
-                       side_effect=lambda p: p), \
-                 patch('modules.face_occluder.onnxruntime.InferenceSession',
-                       side_effect=counting_session), \
-                 patch('modules.face_occluder.os.path.exists', return_value=True):
+            with (
+                patch("modules.face_occluder.build_providers_config", side_effect=lambda p: p),
+                patch("modules.face_occluder.onnxruntime.InferenceSession", side_effect=counting_session),
+                patch("modules.face_occluder.os.path.exists", return_value=True),
+            ):
                 threads = [
                     threading.Thread(
                         target=face_occluder.get_face_occluder,
-                        kwargs={'providers': ['CPUExecutionProvider']},
+                        kwargs={"providers": ["CPUExecutionProvider"]},
                     )
                     for _ in range(10)
                 ]
@@ -119,11 +120,11 @@ class TestFaceOccluderSingleton:
         original = face_occluder.FACE_OCCLUDER
         face_occluder.FACE_OCCLUDER = None
         try:
-            with patch('modules.face_occluder.os.path.exists', return_value=False), \
-                 patch('modules.face_occluder.pre_check', return_value=False):
-                result = face_occluder.get_face_occluder(
-                    providers=['CPUExecutionProvider']
-                )
+            with (
+                patch("modules.face_occluder.os.path.exists", return_value=False),
+                patch("modules.face_occluder.pre_check", return_value=False),
+            ):
+                result = face_occluder.get_face_occluder(providers=["CPUExecutionProvider"])
         finally:
             face_occluder.FACE_OCCLUDER = original
 
@@ -134,6 +135,7 @@ class TestFaceOccluderSingleton:
 # Preprocessing and mask output
 # ---------------------------------------------------------------------------
 
+
 class TestCreateOcclusionMask:
     def test_preprocessing_shape_and_dtype(self):
         """Input tensor to ONNX session must be (1, 256, 256, 3) float32 in [0, 1]."""
@@ -142,10 +144,10 @@ class TestCreateOcclusionMask:
         captured_inputs = {}
 
         fake_session = MagicMock()
-        fake_session.get_inputs.return_value = [MagicMock(name='input')]
-        fake_session.get_inputs.return_value[0].name = 'input'
-        fake_session.get_outputs.return_value = [MagicMock(name='output')]
-        fake_session.get_outputs.return_value[0].name = 'output'
+        fake_session.get_inputs.return_value = [MagicMock(name="input")]
+        fake_session.get_inputs.return_value[0].name = "input"
+        fake_session.get_outputs.return_value = [MagicMock(name="output")]
+        fake_session.get_outputs.return_value[0].name = "output"
 
         def capture_run(out_names, input_dict):
             captured_inputs.update(input_dict)
@@ -161,7 +163,7 @@ class TestCreateOcclusionMask:
         finally:
             face_occluder.FACE_OCCLUDER = original
 
-        tensor = captured_inputs['input']
+        tensor = captured_inputs["input"]
         assert tensor.shape == (1, 256, 256, 3)
         assert tensor.dtype == np.float32
         assert tensor.min() >= 0.0
@@ -172,13 +174,11 @@ class TestCreateOcclusionMask:
         from modules import face_occluder
 
         fake_session = MagicMock()
-        fake_session.get_inputs.return_value = [MagicMock(name='input')]
-        fake_session.get_inputs.return_value[0].name = 'input'
-        fake_session.get_outputs.return_value = [MagicMock(name='output')]
-        fake_session.get_outputs.return_value[0].name = 'output'
-        fake_session.run = lambda out_names, input_dict: [
-            np.ones((1, 256, 256, 1), dtype=np.float32)
-        ]
+        fake_session.get_inputs.return_value = [MagicMock(name="input")]
+        fake_session.get_inputs.return_value[0].name = "input"
+        fake_session.get_outputs.return_value = [MagicMock(name="output")]
+        fake_session.get_outputs.return_value[0].name = "output"
+        fake_session.run = lambda out_names, input_dict: [np.ones((1, 256, 256, 1), dtype=np.float32)]
 
         original = face_occluder.FACE_OCCLUDER
         face_occluder.FACE_OCCLUDER = fake_session
@@ -196,10 +196,10 @@ class TestCreateOcclusionMask:
         from modules import face_occluder
 
         fake_session = MagicMock()
-        fake_session.get_inputs.return_value = [MagicMock(name='input')]
-        fake_session.get_inputs.return_value[0].name = 'input'
-        fake_session.get_outputs.return_value = [MagicMock(name='output')]
-        fake_session.get_outputs.return_value[0].name = 'output'
+        fake_session.get_inputs.return_value = [MagicMock(name="input")]
+        fake_session.get_inputs.return_value[0].name = "input"
+        fake_session.get_outputs.return_value = [MagicMock(name="output")]
+        fake_session.get_outputs.return_value[0].name = "output"
         # Return values outside [0, 1] to test clipping
         raw_output = np.full((1, 256, 256, 1), -0.5, dtype=np.float32)
         raw_output[0, :128, :, :] = 1.5
@@ -223,7 +223,7 @@ class TestCreateOcclusionMask:
         original = face_occluder.FACE_OCCLUDER
         face_occluder.FACE_OCCLUDER = None
         try:
-            with patch.object(face_occluder, 'get_face_occluder', return_value=None):
+            with patch.object(face_occluder, "get_face_occluder", return_value=None):
                 crop = np.random.randint(0, 256, (100, 80, 3), dtype=np.uint8)
                 mask = face_occluder.create_occlusion_mask(crop)
         finally:
@@ -238,6 +238,7 @@ class TestCreateOcclusionMask:
 # Occlusion mask integration (pipeline blending)
 # ---------------------------------------------------------------------------
 
+
 class TestOcclusionMaskIntegration:
     def test_occluded_regions_preserve_target(self):
         """Where mask is 0 (occluded), target pixels should be preserved."""
@@ -245,15 +246,14 @@ class TestOcclusionMaskIntegration:
 
         # Create a mask that's all zeros (fully occluded)
         fake_session = MagicMock()
-        fake_session.get_inputs.return_value = [MagicMock(name='input')]
-        fake_session.get_inputs.return_value[0].name = 'input'
-        fake_session.get_outputs.return_value = [MagicMock(name='output')]
-        fake_session.get_outputs.return_value[0].name = 'output'
-        fake_session.run = lambda out_names, input_dict: [
-            np.zeros((1, 256, 256, 1), dtype=np.float32)
-        ]
+        fake_session.get_inputs.return_value = [MagicMock(name="input")]
+        fake_session.get_inputs.return_value[0].name = "input"
+        fake_session.get_outputs.return_value = [MagicMock(name="output")]
+        fake_session.get_outputs.return_value[0].name = "output"
+        fake_session.run = lambda out_names, input_dict: [np.zeros((1, 256, 256, 1), dtype=np.float32)]
 
         from modules import face_occluder
+
         original = face_occluder.FACE_OCCLUDER
         face_occluder.FACE_OCCLUDER = fake_session
         try:
@@ -276,15 +276,14 @@ class TestOcclusionMaskIntegration:
         from modules.face_occluder import create_occlusion_mask
 
         fake_session = MagicMock()
-        fake_session.get_inputs.return_value = [MagicMock(name='input')]
-        fake_session.get_inputs.return_value[0].name = 'input'
-        fake_session.get_outputs.return_value = [MagicMock(name='output')]
-        fake_session.get_outputs.return_value[0].name = 'output'
-        fake_session.run = lambda out_names, input_dict: [
-            np.ones((1, 256, 256, 1), dtype=np.float32)
-        ]
+        fake_session.get_inputs.return_value = [MagicMock(name="input")]
+        fake_session.get_inputs.return_value[0].name = "input"
+        fake_session.get_outputs.return_value = [MagicMock(name="output")]
+        fake_session.get_outputs.return_value[0].name = "output"
+        fake_session.run = lambda out_names, input_dict: [np.ones((1, 256, 256, 1), dtype=np.float32)]
 
         from modules import face_occluder
+
         original = face_occluder.FACE_OCCLUDER
         face_occluder.FACE_OCCLUDER = fake_session
         try:
@@ -305,18 +304,21 @@ class TestOcclusionMaskIntegration:
 # Config and globals integration
 # ---------------------------------------------------------------------------
 
+
 class TestOcclusionMaskConfig:
     def test_globals_has_occlusion_mask_flag(self):
         """modules.globals must have occlusion_mask attribute, default False."""
         import modules.globals
-        assert hasattr(modules.globals, 'occlusion_mask')
+
+        assert hasattr(modules.globals, "occlusion_mask")
         assert modules.globals.occlusion_mask is False
 
     def test_processing_config_has_occlusion_mask_field(self):
         """ProcessingConfig must have occlusion_mask field, default False."""
         from modules.processing_config import ProcessingConfig
+
         config = ProcessingConfig()
-        assert hasattr(config, 'occlusion_mask')
+        assert hasattr(config, "occlusion_mask")
         assert config.occlusion_mask is False
 
     def test_build_config_from_globals_maps_occlusion_mask(self):
@@ -341,19 +343,24 @@ class TestOcclusionMaskConfig:
 # Pre-check (model download)
 # ---------------------------------------------------------------------------
 
+
 class TestOccluderPreCheck:
     def test_pre_check_returns_true_when_model_exists(self):
         """pre_check returns True if model file already exists."""
         from modules.face_occluder import pre_check
 
-        with patch('modules.face_occluder.os.path.exists', return_value=True), \
-             patch('modules.face_occluder.conditional_download'):
+        with (
+            patch("modules.face_occluder.os.path.exists", return_value=True),
+            patch("modules.face_occluder.conditional_download"),
+        ):
             assert pre_check() is True
 
     def test_pre_check_returns_false_when_download_fails(self):
         """pre_check returns False if model not found after download attempt."""
         from modules.face_occluder import pre_check
 
-        with patch('modules.face_occluder.os.path.exists', return_value=False), \
-             patch('modules.face_occluder.conditional_download'):
+        with (
+            patch("modules.face_occluder.os.path.exists", return_value=False),
+            patch("modules.face_occluder.conditional_download"),
+        ):
             assert pre_check() is False

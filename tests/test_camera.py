@@ -1,6 +1,6 @@
 """Tests for modules/camera.py (Phase 8)."""
 
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 
 @patch("modules.camera.IS_APPLE_SILICON", True)

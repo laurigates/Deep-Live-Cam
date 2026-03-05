@@ -12,6 +12,7 @@ Usage::
     entries = STORE.get_entries()   # always a snapshot
     STORE.clear()
 """
+
 from __future__ import annotations
 
 import threading
@@ -45,9 +46,9 @@ class FaceMapStore:
     def add_blank(self) -> None:
         """Append a placeholder entry with no source or target face."""
         with self._lock:
-            existing_ids = [m['id'] for m in self._entries]
+            existing_ids = [m["id"] for m in self._entries]
             next_id = (max(existing_ids) + 1) if existing_ids else 0
-            self._entries.append({'id': next_id})
+            self._entries.append({"id": next_id})
 
     def set_entries(self, entries: list[dict[str, Any]]) -> None:
         """Replace all entries atomically."""
@@ -72,16 +73,13 @@ class FaceMapStore:
     def has_valid_map(self) -> bool:
         """Return ``True`` if any entry has both a source and target face."""
         with self._lock:
-            return any(
-                "source" in m and "target" in m
-                for m in self._entries
-            )
+            return any("source" in m and "target" in m for m in self._entries)
 
     def default_source_face(self) -> Any:
         """Return the first source face found, or ``None``."""
         with self._lock:
             return next(
-                (m['source']['face'] for m in self._entries if "source" in m),
+                (m["source"]["face"] for m in self._entries if "source" in m),
                 None,
             )
 
@@ -93,15 +91,10 @@ class FaceMapStore:
         :meth:`get_simple_map`.
         """
         with self._lock:
-            paired = [
-                m for m in self._entries
-                if "source" in m and "target" in m
-            ]
+            paired = [m for m in self._entries if "source" in m and "target" in m]
             self._simple = {
-                'source_faces': [m['source']['face'] for m in paired],
-                'target_embeddings': [
-                    m['target']['face'].normed_embedding for m in paired
-                ],
+                "source_faces": [m["source"]["face"] for m in paired],
+                "target_embeddings": [m["target"]["face"].normed_embedding for m in paired],
             }
 
     # ------------------------------------------------------------------
@@ -116,8 +109,8 @@ class FaceMapStore:
         """Update the simplified map used for live/simple-mode swapping."""
         with self._lock:
             self._simple = {
-                'source_faces': source_faces,
-                'target_embeddings': target_embeddings,
+                "source_faces": source_faces,
+                "target_embeddings": target_embeddings,
             }
 
     def get_simple_map(self) -> dict[str, Any]:

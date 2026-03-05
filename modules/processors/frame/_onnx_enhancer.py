@@ -6,21 +6,21 @@ pre/post processing, and the core enhance-face-via-ONNX pipeline.
 
 import os
 import threading
-from typing import Any, Optional
+from typing import Any
 
 import cv2
 import numpy as np
 import onnxruntime
 
 import modules.globals
-from modules.onnx_providers import build_providers_config
 from modules.face_preprocessing import (
-    preprocess_enhancement_input,
     postprocess_enhancement_output,
+    preprocess_enhancement_input,
 )
+from modules.onnx_providers import build_providers_config
 from modules.paste_back import (
-    create_feathered_mask_1c,
     blend_with_mask,
+    create_feathered_mask_1c,
 )
 
 # Limit concurrent ONNX calls to avoid VRAM exhaustion on multi-face frames
@@ -85,13 +85,19 @@ def _get_face_affine(face: Any, input_size: int):
     """
     # Standard 5-point template for face restoration (FFHQ-aligned)
     # Scaled to input_size
-    template = np.array([
-        [0.31556875, 0.4615741],
-        [0.68262291, 0.4615741],
-        [0.50009375, 0.6405054],
-        [0.34947187, 0.8246919],
-        [0.65343645, 0.8246919],
-    ], dtype=np.float32) * input_size
+    template = (
+        np.array(
+            [
+                [0.31556875, 0.4615741],
+                [0.68262291, 0.4615741],
+                [0.50009375, 0.6405054],
+                [0.34947187, 0.8246919],
+                [0.65343645, 0.8246919],
+            ],
+            dtype=np.float32,
+        )
+        * input_size
+    )
 
     landmarks = None
     if hasattr(face, "kps") and face.kps is not None:
@@ -99,13 +105,16 @@ def _get_face_affine(face: Any, input_size: int):
     elif hasattr(face, "landmark_2d_106") and face.landmark_2d_106 is not None:
         # Extract 5 key points from 106 landmarks
         lm106 = face.landmark_2d_106
-        landmarks = np.array([
-            lm106[38],  # left eye
-            lm106[88],  # right eye
-            lm106[86],  # nose tip
-            lm106[52],  # left mouth
-            lm106[61],  # right mouth
-        ], dtype=np.float32)
+        landmarks = np.array(
+            [
+                lm106[38],  # left eye
+                lm106[88],  # right eye
+                lm106[86],  # nose tip
+                lm106[52],  # left mouth
+                lm106[61],  # right mouth
+            ],
+            dtype=np.float32,
+        )
 
     if landmarks is None or len(landmarks) < 5:
         return None, None
@@ -122,7 +131,7 @@ def enhance_face_onnx(
     face: Any,
     session: onnxruntime.InferenceSession,
     input_size: int,
-    extra_inputs: Optional[dict] = None,
+    extra_inputs: dict | None = None,
 ) -> np.ndarray:
     """Enhance a single face in the frame using an ONNX face restoration model.
 
@@ -136,8 +145,11 @@ def enhance_face_onnx(
 
     # Warp face out of the frame
     face_crop = cv2.warpAffine(
-        frame, M, (input_size, input_size),
-        flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE,
+        frame,
+        M,
+        (input_size, input_size),
+        flags=cv2.INTER_LINEAR,
+        borderMode=cv2.BORDER_REPLICATE,
     )
 
     # Preprocess and run inference
@@ -155,12 +167,18 @@ def enhance_face_onnx(
     # Warp enhanced face and mask back to original frame space
     h, w = frame.shape[:2]
     warped_enhanced = cv2.warpAffine(
-        enhanced, inv_M, (w, h),
-        flags=cv2.INTER_LINEAR, borderValue=(0, 0, 0),
+        enhanced,
+        inv_M,
+        (w, h),
+        flags=cv2.INTER_LINEAR,
+        borderValue=(0, 0, 0),
     )
     warped_mask = cv2.warpAffine(
-        mask, inv_M, (w, h),
-        flags=cv2.INTER_LINEAR, borderValue=0,
+        mask,
+        inv_M,
+        (w, h),
+        flags=cv2.INTER_LINEAR,
+        borderValue=0,
     )
 
     return blend_with_mask(warped_enhanced, frame, warped_mask)

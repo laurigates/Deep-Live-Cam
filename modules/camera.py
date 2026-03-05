@@ -24,6 +24,7 @@ def get_available_cameras():
 
 def _is_macos() -> bool:
     import sys
+
     return sys.platform == "darwin"
 
 
@@ -37,6 +38,7 @@ def _enumerate_windows():
     """
     try:
         from pygrabber.dshow_graph import FilterGraph
+
         graph = FilterGraph()
         devices = graph.get_input_devices()
         camera_indices = list(range(len(devices)))
@@ -56,7 +58,7 @@ def _enumerate_windows():
             return [], ["No cameras found"]
         return camera_indices, camera_names
     except Exception as e:
-        print(f"Error detecting cameras: {str(e)}")
+        print(f"Error detecting cameras: {e!s}")
         return [], ["No cameras found"]
 
 

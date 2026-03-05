@@ -1,16 +1,17 @@
 """Tests for the MappingList data model (Phase 1 — Unified Face Mapping UI)."""
+
 from __future__ import annotations
 
-import numpy as np
-import pytest
 from unittest.mock import MagicMock
 
-from modules.mapping_list import MappingEntry, MappingList
+import numpy as np
 
+from modules.mapping_list import MappingEntry, MappingList
 
 # ---------------------------------------------------------------------------
 # MappingEntry basics
 # ---------------------------------------------------------------------------
+
 
 class TestMappingEntry:
     def test_default_fields(self):
@@ -42,6 +43,7 @@ class TestMappingEntry:
 # ---------------------------------------------------------------------------
 # MappingList — add / remove / get
 # ---------------------------------------------------------------------------
+
 
 class TestMappingListBasics:
     def test_starts_with_one_entry(self):
@@ -99,6 +101,7 @@ class TestMappingListBasics:
 # MappingList — set_source / set_pin / clear_pin
 # ---------------------------------------------------------------------------
 
+
 class TestMappingListSourcePin:
     def test_set_source(self):
         ml = MappingList()
@@ -139,6 +142,7 @@ class TestMappingListSourcePin:
 # ---------------------------------------------------------------------------
 # Derived state
 # ---------------------------------------------------------------------------
+
 
 class TestDerivedState:
     def test_effective_map_faces_single_no_pin(self):
@@ -181,6 +185,7 @@ class TestDerivedState:
 # On-change callbacks
 # ---------------------------------------------------------------------------
 
+
 class TestOnChangeCallbacks:
     def test_add_triggers_callback(self):
         cb = MagicMock()
@@ -222,10 +227,12 @@ class TestOnChangeCallbacks:
 # Sync to FaceMapStore
 # ---------------------------------------------------------------------------
 
+
 class TestSyncToStore:
     def test_sync_single_source_no_pin(self):
         """Single source with no pin should set entries but not simplify."""
         from modules.face_map_store import FaceMapStore
+
         store = FaceMapStore()
         ml = MappingList()
         face = MagicMock()
@@ -234,12 +241,13 @@ class TestSyncToStore:
         ml.sync_to_store(store)
         entries = store.get_entries()
         assert len(entries) == 1
-        assert entries[0]['source']['face'] is face
-        assert entries[0]['source']['cv2'] is img
+        assert entries[0]["source"]["face"] is face
+        assert entries[0]["source"]["cv2"] is img
 
     def test_sync_with_pin_calls_simplify(self):
         """Entries with pins should have both source and target, and simplify is called."""
         from modules.face_map_store import FaceMapStore
+
         store = FaceMapStore()
         ml = MappingList()
         src_face = MagicMock()
@@ -253,14 +261,15 @@ class TestSyncToStore:
         ml.sync_to_store(store)
         entries = store.get_entries()
         assert len(entries) == 1
-        assert 'source' in entries[0]
-        assert 'target' in entries[0]
+        assert "source" in entries[0]
+        assert "target" in entries[0]
         # simplify should have been called — check simple map
         simple = store.get_simple_map()
-        assert len(simple.get('source_faces', [])) == 1
+        assert len(simple.get("source_faces", [])) == 1
 
     def test_sync_skips_entries_without_source(self):
         from modules.face_map_store import FaceMapStore
+
         store = FaceMapStore()
         ml = MappingList()
         ml.add_entry()  # entry 1 — no source
@@ -269,6 +278,7 @@ class TestSyncToStore:
 
     def test_sync_multiple_sources(self):
         from modules.face_map_store import FaceMapStore
+
         store = FaceMapStore()
         ml = MappingList()
         for i in range(2):
@@ -284,6 +294,7 @@ class TestSyncToStore:
 # ---------------------------------------------------------------------------
 # Persistence (to_dict / restore_from_dict)
 # ---------------------------------------------------------------------------
+
 
 class TestPersistence:
     def test_round_trip_empty(self):

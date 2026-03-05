@@ -1,17 +1,14 @@
+from typing import Any
+
 import numpy as np
 from sklearn.cluster import KMeans
-from sklearn.metrics import silhouette_score
-from typing import Any
 
 
 def find_cluster_centroids(embeddings, max_k=10) -> Any:
     if len(embeddings) <= 1:
         return embeddings
 
-    fitted = [
-        KMeans(n_clusters=k, random_state=0).fit(embeddings)
-        for k in range(1, max_k + 1)
-    ]
+    fitted = [KMeans(n_clusters=k, random_state=0).fit(embeddings) for k in range(1, max_k + 1)]
     inertia = [km.inertia_ for km in fitted]
     cluster_centroids = [km.cluster_centers_ for km in fitted]
 
@@ -19,6 +16,7 @@ def find_cluster_centroids(embeddings, max_k=10) -> Any:
     if not diffs:
         return cluster_centroids[0]
     return cluster_centroids[diffs.index(max(diffs)) + 1]
+
 
 def find_closest_centroid(centroids: list, normed_face_embedding) -> tuple:
     centroids = np.array(centroids)

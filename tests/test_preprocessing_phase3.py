@@ -3,7 +3,7 @@
 3A: Optional post-swap color transfer (swap_color_transfer config flag).
 3B: Expose paste-back tuning parameters in ProcessingConfig.
 """
-import cv2
+
 import numpy as np
 import pytest
 
@@ -122,7 +122,8 @@ class TestPasteBackWithConfig:
         result_without = _paste_back(bgr_fake, aimg, M, target)
 
         np.testing.assert_array_equal(
-            result_with_config, result_without,
+            result_with_config,
+            result_without,
             err_msg="Default config should produce identical output to no-config path",
         )
 
@@ -163,8 +164,8 @@ class TestEnhancerFeatherConfig:
 
     def test_default_fraction_matches_original(self):
         """Default 0.05 should match the original hardcoded behavior."""
-        from modules.processors.frame.face_enhancer import _get_feathered_mask
         from modules.paste_back import create_feathered_mask
+        from modules.processors.frame.face_enhancer import _get_feathered_mask
 
         size = 512
         cached = _get_feathered_mask(size, border_fraction=0.05)

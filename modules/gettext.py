@@ -3,7 +3,8 @@ import re
 from pathlib import Path
 
 # Allowlist: 1–10 chars, letters/digits/hyphens only (covers BCP-47 tags like pt-br)
-_LANGUAGE_CODE_RE = re.compile(r'^[a-zA-Z0-9-]{1,10}$')
+_LANGUAGE_CODE_RE = re.compile(r"^[a-zA-Z0-9-]{1,10}$")
+
 
 class LanguageManager:
     def __init__(self, default_language="en"):
@@ -24,7 +25,7 @@ class LanguageManager:
             print(f"Invalid language code: {language_code!r}")
             return False
         try:
-            with open(file_path, "r", encoding="utf-8") as file:
+            with open(file_path, encoding="utf-8") as file:
                 self.translations = json.load(file)
             self.current_language = language_code
             return True

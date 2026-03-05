@@ -9,16 +9,19 @@ Tests cover:
 - batch_swap_faces() fallback for HyperSwap
 - ProcessingConfig face_swap_model field
 """
+
+from unittest.mock import MagicMock, patch
+
 import numpy as np
 import pytest
-from unittest.mock import MagicMock, patch
+
 import modules.globals
 from modules.processing_config import ProcessingConfig
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture()
 def mock_onnx_session():
@@ -46,6 +49,7 @@ def mock_onnx_session():
 def hyperswapper(mock_onnx_session):
     """Return a HyperSwapper instance backed by a mock session."""
     from modules.processors.frame.face_swapper import HyperSwapper
+
     return HyperSwapper(mock_onnx_session, input_size=256)
 
 
@@ -54,13 +58,16 @@ def mock_face():
     """Return a mock InsightFace face with normed_embedding and kps."""
     face = MagicMock()
     face.normed_embedding = np.ones(512, dtype=np.float32) / np.sqrt(512)  # L2-normalized
-    face.kps = np.array([
-        [30.0, 40.0],
-        [70.0, 40.0],
-        [50.0, 65.0],
-        [35.0, 85.0],
-        [65.0, 85.0],
-    ], dtype=np.float32)
+    face.kps = np.array(
+        [
+            [30.0, 40.0],
+            [70.0, 40.0],
+            [50.0, 65.0],
+            [35.0, 85.0],
+            [65.0, 85.0],
+        ],
+        dtype=np.float32,
+    )
     return face
 
 
@@ -68,14 +75,17 @@ def mock_face():
 # HyperSwapper: instantiation
 # ---------------------------------------------------------------------------
 
+
 class TestHyperSwapperInit:
     def test_input_size_stored(self, mock_onnx_session):
         from modules.processors.frame.face_swapper import HyperSwapper
+
         hs = HyperSwapper(mock_onnx_session, input_size=256)
         assert hs.input_size == (256, 256)
 
     def test_session_stored(self, mock_onnx_session):
         from modules.processors.frame.face_swapper import HyperSwapper
+
         hs = HyperSwapper(mock_onnx_session, input_size=256)
         assert hs.session is mock_onnx_session
 
@@ -90,10 +100,11 @@ class TestHyperSwapperInit:
 # HyperSwapper: .get() interface
 # ---------------------------------------------------------------------------
 
+
 class TestHyperSwapperGet:
     def test_returns_tuple(self, hyperswapper, mock_face):
         frame = np.random.randint(0, 256, (480, 640, 3), dtype=np.uint8)
-        with patch('insightface.utils.face_align.norm_crop2') as mock_crop:
+        with patch("insightface.utils.face_align.norm_crop2") as mock_crop:
             mock_crop.return_value = (
                 np.zeros((256, 256, 3), dtype=np.uint8),
                 np.eye(2, 3, dtype=np.float32),
@@ -104,7 +115,7 @@ class TestHyperSwapperGet:
 
     def test_bgr_fake_shape(self, hyperswapper, mock_face):
         frame = np.random.randint(0, 256, (480, 640, 3), dtype=np.uint8)
-        with patch('insightface.utils.face_align.norm_crop2') as mock_crop:
+        with patch("insightface.utils.face_align.norm_crop2") as mock_crop:
             mock_crop.return_value = (
                 np.zeros((256, 256, 3), dtype=np.uint8),
                 np.eye(2, 3, dtype=np.float32),
@@ -115,7 +126,7 @@ class TestHyperSwapperGet:
     def test_bgr_fake_range(self, hyperswapper, mock_face):
         """Output must be clipped to [0, 255]."""
         frame = np.random.randint(0, 256, (480, 640, 3), dtype=np.uint8)
-        with patch('insightface.utils.face_align.norm_crop2') as mock_crop:
+        with patch("insightface.utils.face_align.norm_crop2") as mock_crop:
             mock_crop.return_value = (
                 np.zeros((256, 256, 3), dtype=np.uint8),
                 np.eye(2, 3, dtype=np.float32),
@@ -127,14 +138,14 @@ class TestHyperSwapperGet:
     def test_affine_matrix_returned(self, hyperswapper, mock_face):
         frame = np.random.randint(0, 256, (480, 640, 3), dtype=np.uint8)
         expected_M = np.array([[0.5, 0, 10], [0, 0.5, 20]], dtype=np.float32)
-        with patch('insightface.utils.face_align.norm_crop2') as mock_crop:
+        with patch("insightface.utils.face_align.norm_crop2") as mock_crop:
             mock_crop.return_value = (np.zeros((256, 256, 3), dtype=np.uint8), expected_M)
             _, M = hyperswapper.get(frame, mock_face, mock_face, paste_back=False)
         np.testing.assert_array_equal(M, expected_M)
 
     def test_session_called_with_correct_input_names(self, hyperswapper, mock_face):
         frame = np.random.randint(0, 256, (480, 640, 3), dtype=np.uint8)
-        with patch('insightface.utils.face_align.norm_crop2') as mock_crop:
+        with patch("insightface.utils.face_align.norm_crop2") as mock_crop:
             mock_crop.return_value = (
                 np.zeros((256, 256, 3), dtype=np.uint8),
                 np.eye(2, 3, dtype=np.float32),
@@ -148,7 +159,7 @@ class TestHyperSwapperGet:
     def test_target_blob_shape_and_range(self, hyperswapper, mock_face):
         """Blob fed to session must be [1, 3, 256, 256] in range [-1, 1]."""
         frame = np.random.randint(0, 256, (480, 640, 3), dtype=np.uint8)
-        with patch('insightface.utils.face_align.norm_crop2') as mock_crop:
+        with patch("insightface.utils.face_align.norm_crop2") as mock_crop:
             mock_crop.return_value = (
                 np.full((256, 256, 3), 128, dtype=np.uint8),  # gray crop
                 np.eye(2, 3, dtype=np.float32),
@@ -165,7 +176,7 @@ class TestHyperSwapperGet:
     def test_source_embedding_shape(self, hyperswapper, mock_face):
         """Source embedding must be [1, 512]."""
         frame = np.random.randint(0, 256, (480, 640, 3), dtype=np.uint8)
-        with patch('insightface.utils.face_align.norm_crop2') as mock_crop:
+        with patch("insightface.utils.face_align.norm_crop2") as mock_crop:
             mock_crop.return_value = (
                 np.zeros((256, 256, 3), dtype=np.uint8),
                 np.eye(2, 3, dtype=np.float32),
@@ -181,54 +192,60 @@ class TestHyperSwapperGet:
 # HyperSwap model registry
 # ---------------------------------------------------------------------------
 
+
 class TestHyperSwapModelRegistry:
     def test_all_variants_defined(self):
         from modules.processors.frame.face_swapper import _HYPERSWAP_MODELS
-        for variant in ('hyperswap_256_1a', 'hyperswap_256_1b', 'hyperswap_256_1c'):
+
+        for variant in ("hyperswap_256_1a", "hyperswap_256_1b", "hyperswap_256_1c"):
             assert variant in _HYPERSWAP_MODELS
 
     def test_all_variants_have_required_keys(self):
         from modules.processors.frame.face_swapper import _HYPERSWAP_MODELS
+
         for variant, info in _HYPERSWAP_MODELS.items():
-            assert 'url' in info, f"{variant} missing 'url'"
-            assert 'file' in info, f"{variant} missing 'file'"
-            assert 'size' in info, f"{variant} missing 'size'"
-            assert info['size'] == 256, f"{variant} size should be 256"
+            assert "url" in info, f"{variant} missing 'url'"
+            assert "file" in info, f"{variant} missing 'file'"
+            assert "size" in info, f"{variant} missing 'size'"
+            assert info["size"] == 256, f"{variant} size should be 256"
 
     def test_all_variants_have_onnx_extension(self):
         from modules.processors.frame.face_swapper import _HYPERSWAP_MODELS
+
         for variant, info in _HYPERSWAP_MODELS.items():
-            assert info['file'].endswith('.onnx'), f"{variant} file should have .onnx extension"
+            assert info["file"].endswith(".onnx"), f"{variant} file should have .onnx extension"
 
 
 # ---------------------------------------------------------------------------
 # ProcessingConfig: face_swap_model field
 # ---------------------------------------------------------------------------
 
+
 class TestProcessingConfigFaceSwapModel:
     def test_hyperswap_1a_accepted(self):
-        config = ProcessingConfig(face_swap_model='hyperswap_256_1a')
-        assert config.face_swap_model == 'hyperswap_256_1a'
+        config = ProcessingConfig(face_swap_model="hyperswap_256_1a")
+        assert config.face_swap_model == "hyperswap_256_1a"
 
     def test_hyperswap_1b_accepted(self):
-        config = ProcessingConfig(face_swap_model='hyperswap_256_1b')
-        assert config.face_swap_model == 'hyperswap_256_1b'
+        config = ProcessingConfig(face_swap_model="hyperswap_256_1b")
+        assert config.face_swap_model == "hyperswap_256_1b"
 
     def test_hyperswap_1c_accepted(self):
-        config = ProcessingConfig(face_swap_model='hyperswap_256_1c')
-        assert config.face_swap_model == 'hyperswap_256_1c'
+        config = ProcessingConfig(face_swap_model="hyperswap_256_1c")
+        assert config.face_swap_model == "hyperswap_256_1c"
 
 
 # ---------------------------------------------------------------------------
 # globals.face_swap_model
 # ---------------------------------------------------------------------------
 
+
 class TestGlobalsHyperSwap:
     def test_hyperswap_model_can_be_set(self):
         saved = modules.globals.face_swap_model
-        modules.globals.face_swap_model = 'hyperswap_256_1a'
+        modules.globals.face_swap_model = "hyperswap_256_1a"
         try:
-            assert modules.globals.face_swap_model == 'hyperswap_256_1a'
+            assert modules.globals.face_swap_model == "hyperswap_256_1a"
         finally:
             modules.globals.face_swap_model = saved
 
@@ -237,14 +254,16 @@ class TestGlobalsHyperSwap:
 # build_config_from_globals: face_swap_model propagated
 # ---------------------------------------------------------------------------
 
+
 class TestConfigFactory:
     def test_face_swap_model_in_config(self):
         from modules.processing_config_factory import build_config_from_globals
+
         saved = modules.globals.face_swap_model
-        modules.globals.face_swap_model = 'hyperswap_256_1b'
+        modules.globals.face_swap_model = "hyperswap_256_1b"
         try:
             config = build_config_from_globals()
-            assert config.face_swap_model == 'hyperswap_256_1b'
+            assert config.face_swap_model == "hyperswap_256_1b"
         finally:
             modules.globals.face_swap_model = saved
 
@@ -253,15 +272,16 @@ class TestConfigFactory:
 # pre_check(): model selection
 # ---------------------------------------------------------------------------
 
+
 class TestPreCheckModelSelection:
     def test_hyperswap_1a_triggers_hyperswap_download(self, tmp_path):
         """pre_check downloads HyperSwap model file when hyperswap_256_1a selected."""
-        from modules.processors.frame.face_swapper import _HYPERSWAP_MODELS
         import modules.processors.frame.face_swapper as fsmod
+        from modules.processors.frame.face_swapper import _HYPERSWAP_MODELS
 
         saved_model = modules.globals.face_swap_model
         saved_models_dir = fsmod.models_dir
-        modules.globals.face_swap_model = 'hyperswap_256_1a'
+        modules.globals.face_swap_model = "hyperswap_256_1a"
         fsmod.models_dir = str(tmp_path)
 
         downloaded_urls = []
@@ -269,20 +289,22 @@ class TestPreCheckModelSelection:
         def fake_conditional_download(directory, urls, expected_checksums=None):
             downloaded_urls.extend(urls)
             for url in urls:
-                fname = url.split('/')[-1]
+                fname = url.split("/")[-1]
                 (tmp_path / fname).touch()
 
         try:
-            with patch('modules.processors.frame.face_swapper.conditional_download', side_effect=fake_conditional_download):
+            with patch(
+                "modules.processors.frame.face_swapper.conditional_download", side_effect=fake_conditional_download
+            ):
                 result = fsmod.pre_check()
         finally:
             modules.globals.face_swap_model = saved_model
             fsmod.models_dir = saved_models_dir
 
         assert result is True
-        assert _HYPERSWAP_MODELS['hyperswap_256_1a']['url'] in downloaded_urls
+        assert _HYPERSWAP_MODELS["hyperswap_256_1a"]["url"] in downloaded_urls
         # inswapper URL must NOT be downloaded
-        assert 'inswapper_128_fp16.onnx' not in ''.join(downloaded_urls)
+        assert "inswapper_128_fp16.onnx" not in "".join(downloaded_urls)
 
     def test_inswapper_not_triggered_for_hyperswap(self, tmp_path):
         """pre_check does not download inswapper when hyperswap is selected."""
@@ -290,7 +312,7 @@ class TestPreCheckModelSelection:
 
         saved_model = modules.globals.face_swap_model
         saved_models_dir = fsmod.models_dir
-        modules.globals.face_swap_model = 'hyperswap_256_1c'
+        modules.globals.face_swap_model = "hyperswap_256_1c"
         fsmod.models_dir = str(tmp_path)
 
         downloaded_urls = []
@@ -298,38 +320,41 @@ class TestPreCheckModelSelection:
         def fake_conditional_download(directory, urls, expected_checksums=None):
             downloaded_urls.extend(urls)
             for url in urls:
-                fname = url.split('/')[-1]
+                fname = url.split("/")[-1]
                 (tmp_path / fname).touch()
 
         try:
-            with patch('modules.processors.frame.face_swapper.conditional_download', side_effect=fake_conditional_download):
+            with patch(
+                "modules.processors.frame.face_swapper.conditional_download", side_effect=fake_conditional_download
+            ):
                 fsmod.pre_check()
         finally:
             modules.globals.face_swap_model = saved_model
             fsmod.models_dir = saved_models_dir
 
-        assert not any('inswapper' in url for url in downloaded_urls)
+        assert not any("inswapper" in url for url in downloaded_urls)
 
 
 # ---------------------------------------------------------------------------
 # get_face_swapper(): HyperSwap model loading
 # ---------------------------------------------------------------------------
 
+
 class TestGetFaceSwapperHyperSwap:
     def test_hyperswap_model_returns_hyperswapper(self, tmp_path):
         """get_face_swapper() returns a HyperSwapper when hyperswap_256_1a is selected."""
-        from modules.processors.frame.face_swapper import HyperSwapper, _HYPERSWAP_MODELS
         import modules.processors.frame.face_swapper as fsmod
+        from modules.processors.frame.face_swapper import _HYPERSWAP_MODELS, HyperSwapper
 
         saved_model = modules.globals.face_swap_model
         saved_models_dir = fsmod.models_dir
         saved_swapper = fsmod.FACE_SWAPPER
-        modules.globals.face_swap_model = 'hyperswap_256_1a'
+        modules.globals.face_swap_model = "hyperswap_256_1a"
         fsmod.models_dir = str(tmp_path)
         fsmod.FACE_SWAPPER = None
 
         # Create a dummy hyperswap model file
-        hyperswap_file = _HYPERSWAP_MODELS['hyperswap_256_1a']['file']
+        hyperswap_file = _HYPERSWAP_MODELS["hyperswap_256_1a"]["file"]
         (tmp_path / hyperswap_file).touch()
 
         mock_session = MagicMock()
@@ -345,8 +370,8 @@ class TestGetFaceSwapperHyperSwap:
         mock_session.get_outputs.return_value = [mock_out]
 
         try:
-            with patch('modules.processors.frame.face_swapper.onnxruntime.InferenceSession', return_value=mock_session):
-                swapper = fsmod.get_face_swapper(providers=['CPUExecutionProvider'])
+            with patch("modules.processors.frame.face_swapper.onnxruntime.InferenceSession", return_value=mock_session):
+                swapper = fsmod.get_face_swapper(providers=["CPUExecutionProvider"])
             assert isinstance(swapper, HyperSwapper)
         finally:
             modules.globals.face_swap_model = saved_model
@@ -358,18 +383,24 @@ class TestGetFaceSwapperHyperSwap:
 # batch_swap_faces(): HyperSwap fallback to sequential
 # ---------------------------------------------------------------------------
 
+
 class TestBatchSwapFacesHyperSwapFallback:
     def test_hyperswap_falls_back_to_sequential(self):
         """batch_swap_faces() falls back to sequential swap_face() for HyperSwap models."""
-        from modules.processors.frame.face_swapper import HyperSwapper
         import modules.processors.frame.face_swapper as fsmod
+        from modules.processors.frame.face_swapper import HyperSwapper
 
         saved_swapper = fsmod.FACE_SWAPPER
 
         mock_session = MagicMock()
-        mock_inp = MagicMock(); mock_inp.name = "target"; mock_inp.shape = [1, 3, 256, 256]
-        mock_inp2 = MagicMock(); mock_inp2.name = "source"; mock_inp2.shape = [1, 512]
-        mock_out = MagicMock(); mock_out.name = "output"
+        mock_inp = MagicMock()
+        mock_inp.name = "target"
+        mock_inp.shape = [1, 3, 256, 256]
+        mock_inp2 = MagicMock()
+        mock_inp2.name = "source"
+        mock_inp2.shape = [1, 512]
+        mock_out = MagicMock()
+        mock_out.name = "output"
         mock_session.get_inputs.return_value = [mock_inp, mock_inp2]
         mock_session.get_outputs.return_value = [mock_out]
         hyperswap = HyperSwapper(mock_session, input_size=256)
@@ -377,8 +408,9 @@ class TestBatchSwapFacesHyperSwapFallback:
 
         frame = np.zeros((200, 200, 3), dtype=np.uint8)
         try:
-            with patch('modules.processors.frame.face_swapper.swap_face', return_value=frame) as mock_swap:
+            with patch("modules.processors.frame.face_swapper.swap_face", return_value=frame) as mock_swap:
                 from modules.processors.frame.face_swapper import batch_swap_faces
+
                 result = batch_swap_faces(
                     [MagicMock(), MagicMock()],
                     [MagicMock(), MagicMock()],

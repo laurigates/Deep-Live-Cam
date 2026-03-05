@@ -3,21 +3,13 @@
 Run with: uv run pytest tests/benchmarks/ -m benchmark -v --no-header -rN
 Save baseline: uv run pytest tests/benchmarks/ -m benchmark --save-baseline
 """
-import json
-import sys
-import time
-from pathlib import Path
 
-import cv2
 import numpy as np
 import pytest
 
 from tests.benchmarks.conftest import (
-    Timer,
-    detect_providers,
-    requires_swap_model,
-    MODELS_DIR,
     _make_face,
+    requires_swap_model,
 )
 
 pytestmark = [pytest.mark.benchmark, pytest.mark.integration]
@@ -61,7 +53,9 @@ def _get_face_swapper(providers: list[str]):
 class TestFaceSwapInference:
     """Benchmark raw face swap inference (no post-processing)."""
 
-    def test_single_face_swap_latency(self, execution_providers, timer, synthetic_frame, synthetic_face, baseline_manager):
+    def test_single_face_swap_latency(
+        self, execution_providers, timer, synthetic_frame, synthetic_face, baseline_manager
+    ):
         """Measure per-frame latency for single-face swap."""
         _setup_globals(execution_providers)
 
@@ -88,7 +82,7 @@ class TestFaceSwapInference:
         }
 
         # Print results
-        print(f"\n--- Single Face Swap ---")
+        print("\n--- Single Face Swap ---")
         print(f"  Providers: {execution_providers}")
         print(f"  Mean: {stats['mean_ms']:.2f} ms")
         print(f"  Median: {stats['median_ms']:.2f} ms")
@@ -100,14 +94,19 @@ class TestFaceSwapInference:
         comparison = baseline_manager.compare("single_face_swap", results)
         if comparison.get("regressions"):
             for r in comparison["regressions"]:
-                print(f"  REGRESSION: {r['metric']}: {r['baseline']:.2f} -> {r['current']:.2f} ({r['change_pct']:+.1f}%)")
+                print(
+                    f"  REGRESSION: {r['metric']}: {r['baseline']:.2f} -> {r['current']:.2f} ({r['change_pct']:+.1f}%)"
+                )
 
         assert stats["mean_ms"] > 0
 
-    def test_multi_face_swap_latency(self, execution_providers, timer, synthetic_frame, synthetic_faces, baseline_manager):
+    def test_multi_face_swap_latency(
+        self, execution_providers, timer, synthetic_frame, synthetic_faces, baseline_manager
+    ):
         """Measure per-frame latency for 3-face batch swap."""
         _setup_globals(execution_providers)
         import modules.globals
+
         modules.globals.many_faces = True
 
         from modules.processors.frame.face_swapper import swap_face
@@ -134,14 +133,16 @@ class TestFaceSwapInference:
             "multi_face_swap_3": stats,
         }
 
-        print(f"\n--- Multi-Face Swap (3 faces) ---")
+        print("\n--- Multi-Face Swap (3 faces) ---")
         print(f"  Mean: {stats['mean_ms']:.2f} ms")
         print(f"  FPS: {stats['fps']:.1f}")
 
         comparison = baseline_manager.compare("multi_face_swap_3", results)
         if comparison.get("regressions"):
             for r in comparison["regressions"]:
-                print(f"  REGRESSION: {r['metric']}: {r['baseline']:.2f} -> {r['current']:.2f} ({r['change_pct']:+.1f}%)")
+                print(
+                    f"  REGRESSION: {r['metric']}: {r['baseline']:.2f} -> {r['current']:.2f} ({r['change_pct']:+.1f}%)"
+                )
 
         assert stats["mean_ms"] > 0
 
@@ -165,10 +166,13 @@ class TestSwapWithPostProcessing:
         ],
         ids=lambda x: x if isinstance(x, str) else "",
     )
-    def test_swap_with_toggle(self, execution_providers, timer, synthetic_frame, synthetic_face, toggle_name, toggle_attr, toggle_value):
+    def test_swap_with_toggle(
+        self, execution_providers, timer, synthetic_frame, synthetic_face, toggle_name, toggle_attr, toggle_value
+    ):
         """Measure swap latency with a single post-processing toggle on."""
         _setup_globals(execution_providers)
         import modules.globals
+
         setattr(modules.globals, toggle_attr, toggle_value)
 
         from modules.processors.frame.face_swapper import swap_face
@@ -214,7 +218,7 @@ class TestSwapWithPostProcessing:
                 swap_face(source_face, synthetic_face, frame.copy())
 
         stats = timer.stats
-        print(f"\n--- Swap (ALL toggles ON) ---")
+        print("\n--- Swap (ALL toggles ON) ---")
         print(f"  Mean: {stats['mean_ms']:.2f} ms  |  FPS: {stats['fps']:.1f}")
         print(f"  P95: {stats['p95_ms']:.2f} ms  |  P99: {stats['p99_ms']:.2f} ms")
 

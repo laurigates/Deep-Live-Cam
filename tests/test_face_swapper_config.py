@@ -3,10 +3,10 @@
 Verifies that face_swapper processor methods accept ProcessingConfig and
 read values from config rather than modules.globals when config is provided.
 """
+
 import inspect
+
 import numpy as np
-import pytest
-from unittest.mock import patch, MagicMock
 
 from modules.processing_config import ProcessingConfig
 
@@ -16,28 +16,33 @@ class TestFaceSwapperConfigSignatures:
 
     def test_process_frame_accepts_config(self):
         from modules.processors.frame.face_swapper import process_frame
+
         sig = inspect.signature(process_frame)
-        assert 'config' in sig.parameters
+        assert "config" in sig.parameters
 
     def test_process_frame_v2_accepts_config(self):
         from modules.processors.frame.face_swapper import process_frame_v2
+
         sig = inspect.signature(process_frame_v2)
-        assert 'config' in sig.parameters
+        assert "config" in sig.parameters
 
     def test_process_frames_accepts_config(self):
         from modules.processors.frame.face_swapper import process_frames
+
         sig = inspect.signature(process_frames)
-        assert 'config' in sig.parameters
+        assert "config" in sig.parameters
 
     def test_process_image_accepts_config(self):
         from modules.processors.frame.face_swapper import process_image
+
         sig = inspect.signature(process_image)
-        assert 'config' in sig.parameters
+        assert "config" in sig.parameters
 
     def test_process_video_accepts_config(self):
         from modules.processors.frame.face_swapper import process_video
+
         sig = inspect.signature(process_video)
-        assert 'config' in sig.parameters
+        assert "config" in sig.parameters
 
 
 class TestFaceSwapperConfigBehavior:
@@ -45,8 +50,8 @@ class TestFaceSwapperConfigBehavior:
 
     def test_process_frame_v2_uses_config_opacity_zero(self):
         """When config.opacity=0, process_frame_v2 returns frame unchanged without processing."""
-        from modules.processors.frame.face_swapper import process_frame_v2
         import modules.globals
+        from modules.processors.frame.face_swapper import process_frame_v2
 
         frame = np.zeros((100, 100, 3), dtype=np.uint8)
         original_opacity = modules.globals.opacity
@@ -61,8 +66,8 @@ class TestFaceSwapperConfigBehavior:
 
     def test_process_frame_uses_config_opacity_zero(self):
         """When config.opacity=0, process_frame returns frame unchanged without processing."""
-        from modules.processors.frame.face_swapper import process_frame
         import modules.globals
+        from modules.processors.frame.face_swapper import process_frame
 
         frame = np.zeros((100, 100, 3), dtype=np.uint8)
         original_opacity = modules.globals.opacity
@@ -77,8 +82,8 @@ class TestFaceSwapperConfigBehavior:
 
     def test_process_frames_uses_config_map_faces(self):
         """process_frames reads map_faces from config, not globals."""
-        from modules.processors.frame.face_swapper import process_frames
         import modules.globals
+        from modules.processors.frame.face_swapper import process_frames
 
         original = modules.globals.map_faces
         modules.globals.map_faces = False  # globals says simple mode
@@ -87,7 +92,7 @@ class TestFaceSwapperConfigBehavior:
         # The important thing is that the function is called with map_faces from config.
         config = ProcessingConfig(map_faces=True)
         try:
-            process_frames('source.jpg', [], config=config)
+            process_frames("source.jpg", [], config=config)
         except Exception:
             pass  # empty frame list may trigger benign errors
         finally:

@@ -3,15 +3,16 @@
 RED → GREEN workflow: these tests define the expected behaviour of the
 LandmarkSmoother class added to modules/face_analyser.py.
 """
+
 import numpy as np
 import pytest
 
 from modules.face_analyser import LandmarkSmoother
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_face(bbox, kps=None, embedding=None):
     """Minimal InsightFace-like face object (dict subclass)."""
@@ -41,13 +42,14 @@ def _make_face(bbox, kps=None, embedding=None):
 _BBOX_A = [10.0, 20.0, 110.0, 120.0]
 _BBOX_B = [200.0, 200.0, 300.0, 300.0]  # far from A
 _KPS_A = [[30.0, 40.0], [70.0, 40.0], [50.0, 60.0], [35.0, 80.0], [65.0, 80.0]]
-_EMB_A = [1.0, 0.0, 0.0]   # unit vector along x
-_EMB_B = [0.0, 1.0, 0.0]   # orthogonal — different identity
+_EMB_A = [1.0, 0.0, 0.0]  # unit vector along x
+_EMB_B = [0.0, 1.0, 0.0]  # orthogonal — different identity
 
 
 # ---------------------------------------------------------------------------
 # Initialisation
 # ---------------------------------------------------------------------------
+
 
 class TestLandmarkSmootherInit:
     def test_default_alpha(self):
@@ -75,6 +77,7 @@ class TestLandmarkSmootherInit:
 # alpha property setter
 # ---------------------------------------------------------------------------
 
+
 class TestAlphaSetter:
     def test_setter_updates_alpha(self):
         s = LandmarkSmoother(alpha=0.7)
@@ -96,6 +99,7 @@ class TestAlphaSetter:
 # smooth() — empty / None input
 # ---------------------------------------------------------------------------
 
+
 class TestSmoothEmpty:
     def test_empty_list_returns_empty(self):
         s = LandmarkSmoother()
@@ -105,8 +109,8 @@ class TestSmoothEmpty:
     def test_empty_list_clears_state(self):
         s = LandmarkSmoother()
         face = _make_face(_BBOX_A, embedding=_EMB_A)
-        s.smooth([face])          # populate state
-        s.smooth([])              # now clear it
+        s.smooth([face])  # populate state
+        s.smooth([])  # now clear it
         assert s._state == []
 
     def test_returns_same_list_object(self):
@@ -119,6 +123,7 @@ class TestSmoothEmpty:
 # ---------------------------------------------------------------------------
 # smooth() — first frame (no previous state)
 # ---------------------------------------------------------------------------
+
 
 class TestSmoothFirstFrame:
     def test_bbox_unchanged_on_first_frame(self):
@@ -140,12 +145,13 @@ class TestSmoothFirstFrame:
         face = _make_face(_BBOX_A, embedding=_EMB_A)
         s.smooth([face])
         assert len(s._state) == 1
-        np.testing.assert_array_almost_equal(s._state[0]['bbox'], _BBOX_A)
+        np.testing.assert_array_almost_equal(s._state[0]["bbox"], _BBOX_A)
 
 
 # ---------------------------------------------------------------------------
 # smooth() — EMA blending on second frame (same identity)
 # ---------------------------------------------------------------------------
+
 
 class TestSmoothEmaBlending:
     def _run_two_frames(self, alpha, bbox1, bbox2, emb):
@@ -197,6 +203,7 @@ class TestSmoothEmaBlending:
 # smooth() — identity mismatch → no blending (new face)
 # ---------------------------------------------------------------------------
 
+
 class TestIdentityReset:
     def test_different_identity_no_blending(self):
         """When cosine similarity < IDENTITY_THRESHOLD, bbox should not be blended."""
@@ -223,12 +230,13 @@ class TestIdentityReset:
 
         # State should now reflect face2 (B)
         assert len(s._state) == 1
-        np.testing.assert_array_almost_equal(s._state[0]['bbox'], _BBOX_B)
+        np.testing.assert_array_almost_equal(s._state[0]["bbox"], _BBOX_B)
 
 
 # ---------------------------------------------------------------------------
 # smooth() — face with no embedding
 # ---------------------------------------------------------------------------
+
 
 class TestNoEmbedding:
     def test_no_embedding_first_frame_bbox_unchanged(self):
@@ -256,23 +264,25 @@ class TestNoEmbedding:
 # smooth() — None bbox / kps handling
 # ---------------------------------------------------------------------------
 
+
 class TestNullCoordinates:
     def test_none_bbox_does_not_crash(self):
         s = LandmarkSmoother()
         face1 = _make_face(None, embedding=_EMB_A)
-        s.smooth([face1])   # should not raise
+        s.smooth([face1])  # should not raise
 
     def test_none_kps_does_not_crash(self):
         s = LandmarkSmoother()
         face1 = _make_face(_BBOX_A, kps=None, embedding=_EMB_A)
         face2 = _make_face(_BBOX_A, kps=None, embedding=_EMB_A)
         s.smooth([face1])
-        s.smooth([face2])   # should not raise
+        s.smooth([face2])  # should not raise
 
 
 # ---------------------------------------------------------------------------
 # smooth() — multiple faces
 # ---------------------------------------------------------------------------
+
 
 class TestMultipleFaces:
     def test_two_faces_independently_smoothed(self):
@@ -306,7 +316,7 @@ class TestMultipleFaces:
 
         # Only face_a in next frame
         face_a2 = _make_face(_BBOX_A, embedding=_EMB_A)
-        s.smooth([face_a2])   # should not raise
+        s.smooth([face_a2])  # should not raise
         assert len(s._state) == 1
 
     def test_new_face_appears(self):
@@ -328,6 +338,7 @@ class TestMultipleFaces:
 # ---------------------------------------------------------------------------
 # reset()
 # ---------------------------------------------------------------------------
+
 
 class TestReset:
     def test_reset_clears_state(self):
@@ -357,6 +368,7 @@ class TestReset:
 # ---------------------------------------------------------------------------
 # Accumulation across many frames
 # ---------------------------------------------------------------------------
+
 
 class TestAccumulation:
     def test_repeated_smoothing_converges(self):

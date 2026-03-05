@@ -6,6 +6,7 @@ avoiding per-frame GPU malloc overhead (~5-10ms savings on CUDA).
 Only benefits CUDAExecutionProvider. CoreML and CPU providers are unsupported
 and gracefully return None from create_iobinding_context().
 """
+
 import logging
 from typing import Any
 
@@ -51,9 +52,7 @@ class IOBindingContext:
         for output_info in session.get_outputs():
             self._output_names.append(output_info.name)
             dtype = _ONNX_TYPE_MAP.get(output_info.type, np.float32)
-            ort_value = onnxruntime.OrtValue.ortvalue_from_shape_and_type(
-                output_info.shape, dtype, "cuda", 0
-            )
+            ort_value = onnxruntime.OrtValue.ortvalue_from_shape_and_type(output_info.shape, dtype, "cuda", 0)
             self._output_ort_values.append(ort_value)
 
     def run(self, inputs: dict[str, np.ndarray]) -> list[np.ndarray]:

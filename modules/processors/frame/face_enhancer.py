@@ -1,34 +1,33 @@
 # --- START OF FILE face_enhancer.py ---
 # Uses ONNX Runtime for GFPGAN face enhancement (no torch/gfpgan dependency)
 
-from typing import Any, List
-import cv2
-import threading
-import numpy as np
 import os
+import threading
+from typing import Any
 
+import cv2
+import numpy as np
 import onnxruntime
 
 import modules.globals
 import modules.processors.frame.core
 from modules.core import update_status
+from modules.face_analyser import get_many_faces
+from modules.face_preprocessing import (
+    postprocess_enhancement_output,
+    preprocess_enhancement_input,
+)
 from modules.iobinding import create_iobinding_context
 from modules.onnx_providers import build_providers_config
-from modules.face_analyser import get_many_faces
+from modules.paste_back import inverse_affine_warp
 from modules.paths import MODELS_DIR
-from modules.typing import Frame, Face
+from modules.processing_config_factory import build_config_from_globals
+from modules.typing import Face, Frame
 from modules.utilities import (
     conditional_download,
     is_image,
     is_video,
 )
-from modules.processing_config import ProcessingConfig
-from modules.processing_config_factory import build_config_from_globals
-from modules.face_preprocessing import (
-    preprocess_enhancement_input,
-    postprocess_enhancement_output,
-)
-from modules.paste_back import inverse_affine_warp
 
 # Allow up to min(cpu_count, 8) concurrent GFPGAN calls to better utilise multi-core hardware.
 _SEMAPHORE_COUNT = min(max(1, (os.cpu_count() or 1)), 8)
@@ -85,17 +84,14 @@ def pre_check() -> bool:
         # Verify with: sha256sum models/gfpgan-1024.onnx
         conditional_download(
             MODELS_DIR,
-            [
-                "https://huggingface.co/hacksider/deep-live-cam/resolve/main/gfpgan-1024.onnx"
-            ],
+            ["https://huggingface.co/hacksider/deep-live-cam/resolve/main/gfpgan-1024.onnx"],
             expected_checksums={
-                'gfpgan-1024.onnx': 'ee8dd6415e388b3a410689d5d9395a2bf50b5973b588421ebfa57bc266f19e24',
+                "gfpgan-1024.onnx": "ee8dd6415e388b3a410689d5d9395a2bf50b5973b588421ebfa57bc266f19e24",
             },
         )
     if not os.path.exists(model_path):
         update_status(
-            f"GFPGAN ONNX model not found at {model_path}. "
-            "Please place gfpgan-1024.onnx in the models folder.",
+            f"GFPGAN ONNX model not found at {model_path}. Please place gfpgan-1024.onnx in the models folder.",
             NAME,
         )
         return False
@@ -136,12 +132,12 @@ def get_face_enhancer(providers: list | None = None) -> onnxruntime.InferenceSes
 
             try:
                 _providers = providers if providers is not None else modules.globals.execution_providers
-                providers_config = build_providers_config(_providers, coreml_compute_units=getattr(modules.globals, 'coreml_compute_units', None))
+                providers_config = build_providers_config(
+                    _providers, coreml_compute_units=getattr(modules.globals, "coreml_compute_units", None)
+                )
 
                 session_options = onnxruntime.SessionOptions()
-                session_options.graph_optimization_level = (
-                    onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
-                )
+                session_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
 
                 FACE_ENHANCER = onnxruntime.InferenceSession(
                     model_path,
@@ -152,37 +148,23 @@ def get_face_enhancer(providers: list | None = None) -> onnxruntime.InferenceSes
                 input_info = FACE_ENHANCER.get_inputs()[0]
                 output_info = FACE_ENHANCER.get_outputs()[0]
                 active_providers = FACE_ENHANCER.get_providers()
-                print(
-                    f"{NAME}: GFPGAN ONNX model loaded successfully."
-                )
-                print(
-                    f"{NAME}: Input: {input_info.name}, "
-                    f"shape: {input_info.shape}, type: {input_info.type}"
-                )
-                print(
-                    f"{NAME}: Output: {output_info.name}, "
-                    f"shape: {output_info.shape}, type: {output_info.type}"
-                )
+                print(f"{NAME}: GFPGAN ONNX model loaded successfully.")
+                print(f"{NAME}: Input: {input_info.name}, shape: {input_info.shape}, type: {input_info.type}")
+                print(f"{NAME}: Output: {output_info.name}, shape: {output_info.shape}, type: {output_info.type}")
                 print(f"{NAME}: Active providers: {active_providers}")
 
             except Exception as e:
                 print(f"{NAME}: Error loading GFPGAN ONNX model: {e}")
                 FACE_ENHANCER = None
-                raise RuntimeError(
-                    f"{NAME}: Failed to load GFPGAN ONNX model: {e}"
-                )
+                raise RuntimeError(f"{NAME}: Failed to load GFPGAN ONNX model: {e}")
 
     if FACE_ENHANCER is None:
-        raise RuntimeError(
-            f"{NAME}: Failed to initialize GFPGAN ONNX session. Check logs."
-        )
+        raise RuntimeError(f"{NAME}: Failed to initialize GFPGAN ONNX session. Check logs.")
 
     return FACE_ENHANCER
 
 
-def _align_face(
-    frame: Frame, landmarks_5: np.ndarray, output_size: int
-) -> tuple:
+def _align_face(frame: Frame, landmarks_5: np.ndarray, output_size: int) -> tuple:
     """
     Align and crop a face from the frame using 5-point landmarks and the
     standard FFHQ template.
@@ -195,9 +177,7 @@ def _align_face(
     template = FFHQ_TEMPLATE_512 * scale
 
     # Estimate a similarity transform (4 DOF: rotation, scale, tx, ty)
-    affine_matrix, _ = cv2.estimateAffinePartial2D(
-        landmarks_5, template, method=cv2.LMEDS
-    )
+    affine_matrix, _ = cv2.estimateAffinePartial2D(landmarks_5, template, method=cv2.LMEDS)
     if affine_matrix is None:
         return None, None
 
@@ -227,6 +207,7 @@ def _get_feathered_mask(output_size: int, border_fraction: float = 0.05) -> np.n
             return mask
 
         from modules.paste_back import create_feathered_mask
+
         mask = create_feathered_mask(output_size, border_fraction)
         # Make immutable to prevent accidental modification
         mask.flags.writeable = False
@@ -250,14 +231,18 @@ def _paste_back(
     target_size = (w, h)
 
     inv_restored = inverse_affine_warp(
-        enhanced_face, affine_matrix, target_size,
+        enhanced_face,
+        affine_matrix,
+        target_size,
         border_value=(0, 0, 0),
     )
 
     face_mask_3c = _get_feathered_mask(output_size, config.enhance_feather_fraction)
 
     inv_mask = inverse_affine_warp(
-        face_mask_3c, affine_matrix, target_size,
+        face_mask_3c,
+        affine_matrix,
+        target_size,
         border_value=(0, 0, 0),
     )
     inv_mask = np.clip(inv_mask, 0.0, 1.0)
@@ -282,7 +267,8 @@ def _paste_back(
     result[y1:y2, x1:x2] = np.clip(
         result[y1:y2, x1:x2].astype(np.float32) * (1.0 - roi_mask)
         + inv_restored[y1:y2, x1:x2].astype(np.float32) * roi_mask,
-        0, 255,
+        0,
+        255,
     ).astype(np.uint8)
     return result
 
@@ -356,9 +342,7 @@ def enhance_face(temp_frame: Frame, faces=None, live_mode: bool = False, config=
             continue
 
         # Align / crop the face at paste_size (smaller in live mode)
-        aligned_face, affine_matrix = _align_face(
-            temp_frame, landmarks_5, output_size=paste_size
-        )
+        aligned_face, affine_matrix = _align_face(temp_frame, landmarks_5, output_size=paste_size)
         if aligned_face is None or affine_matrix is None:
             continue
 
@@ -396,8 +380,11 @@ def enhance_face(temp_frame: Frame, faces=None, live_mode: bool = False, config=
 
             # Paste enhanced face back onto the frame
             result_frame = _paste_back(
-                result_frame, enhanced_bgr, affine_matrix,
-                output_size=paste_size, config=config,
+                result_frame,
+                enhanced_bgr,
+                affine_matrix,
+                output_size=paste_size,
+                config=config,
             )
         except Exception as e:
             print(f"{NAME}: Error enhancing a face: {e}")
@@ -426,9 +413,7 @@ def process_frame(
     return enhance_face(temp_frame, faces=faces, live_mode=live_mode, config=config)
 
 
-def process_frames(
-    source_path: str | None, temp_frame_paths: List[str], progress: Any = None, config=None
-) -> None:
+def process_frames(source_path: str | None, temp_frame_paths: list[str], progress: Any = None, config=None) -> None:
     """Processes multiple frames from file paths."""
     modules.processors.frame.core.process_frames_io(
         temp_frame_paths,
@@ -437,9 +422,7 @@ def process_frames(
     )
 
 
-def process_image(
-    source_path: str | None, target_path: str, output_path: str, config=None
-) -> None:
+def process_image(source_path: str | None, target_path: str, output_path: str, config=None) -> None:
     """Processes a single image file."""
     target_frame = cv2.imread(target_path)
     if target_frame is None:
@@ -450,13 +433,13 @@ def process_image(
     print(f"{NAME}: Enhanced image saved to {output_path}")
 
 
-def process_video(
-    source_path: str | None, temp_frame_paths: List[str], config=None
-) -> None:
+def process_video(source_path: str | None, temp_frame_paths: list[str], config=None) -> None:
     """Processes video frames using the frame processor core."""
     modules.processors.frame.core.process_video(source_path, temp_frame_paths, process_frames)
 
+
 def process_frame_v2(temp_frame: Frame, faces=None, live_mode: bool = False, config=None) -> Frame:
     return enhance_face(temp_frame, faces=faces, live_mode=live_mode, config=config)
+
 
 # --- END OF FILE face_enhancer.py ---

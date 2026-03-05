@@ -109,6 +109,7 @@ class TestOnnxEnhancerShared:
 
     def test_preprocess_face_shape(self):
         from modules.processors.frame._onnx_enhancer import preprocess_face
+
         face_img = np.random.randint(0, 255, (128, 128, 3), dtype=np.uint8)
         blob = preprocess_face(face_img, 256)
         assert blob.shape == (1, 3, 256, 256)
@@ -116,6 +117,7 @@ class TestOnnxEnhancerShared:
 
     def test_postprocess_face_shape(self):
         from modules.processors.frame._onnx_enhancer import postprocess_face
+
         output = np.random.randn(1, 3, 256, 256).astype(np.float32)
         img = postprocess_face(output)
         assert img.shape == (256, 256, 3)
@@ -142,11 +144,13 @@ class TestOnnxEnhancerDelegation:
         mod = importlib.import_module("modules.processors.frame.face_enhancer_gpen256")
         # The module should use enhance_face_onnx from _onnx_enhancer
         from modules.processors.frame import _onnx_enhancer
+
         assert hasattr(_onnx_enhancer, "enhance_face_onnx")
 
     def test_gpen512_delegates_enhance_face(self):
         mod = importlib.import_module("modules.processors.frame.face_enhancer_gpen512")
         from modules.processors.frame import _onnx_enhancer
+
         assert hasattr(_onnx_enhancer, "enhance_face_onnx")
 
 

@@ -3,14 +3,16 @@
 Both the module-level and class-based get_many_faces must always return a list,
 never None, so callers can safely iterate without a None guard.
 """
-import numpy as np
-import pytest
+
 from unittest.mock import MagicMock, patch
 
+import numpy as np
+import pytest
 
 # ---------------------------------------------------------------------------
 # Module-level get_many_faces
 # ---------------------------------------------------------------------------
+
 
 class TestModuleLevelGetManyFaces:
     """Module-level face_analyser.get_many_faces always returns list."""
@@ -19,7 +21,7 @@ class TestModuleLevelGetManyFaces:
         """IndexError from _detect_all_faces must produce [] not None."""
         import modules.face_analyser as fa
 
-        with patch.object(fa, '_detect_all_faces', side_effect=IndexError):
+        with patch.object(fa, "_detect_all_faces", side_effect=IndexError):
             result = fa.get_many_faces(np.zeros((100, 100, 3), dtype=np.uint8))
 
         assert result == [], f"Expected [], got {result!r}"
@@ -27,20 +29,17 @@ class TestModuleLevelGetManyFaces:
 
     def test_returns_list_type_annotation(self):
         """Return type annotation must be list, not Any."""
-        import inspect
         import modules.face_analyser as fa
 
         hints = fa.get_many_faces.__annotations__
-        assert hints.get('return') is list, (
-            f"Expected return annotation 'list', got {hints.get('return')!r}"
-        )
+        assert hints.get("return") is list, f"Expected return annotation 'list', got {hints.get('return')!r}"
 
     def test_returns_faces_list_on_success(self):
         """Successful detection returns the faces list unchanged."""
         import modules.face_analyser as fa
 
         fake_faces = [MagicMock(), MagicMock()]
-        with patch.object(fa, '_detect_all_faces', return_value=fake_faces):
+        with patch.object(fa, "_detect_all_faces", return_value=fake_faces):
             result = fa.get_many_faces(np.zeros((100, 100, 3), dtype=np.uint8))
 
         assert result is fake_faces
@@ -50,17 +49,20 @@ class TestModuleLevelGetManyFaces:
 # Class-based FaceAnalyser.get_many_faces
 # ---------------------------------------------------------------------------
 
+
 class TestClassBasedGetManyFaces:
     """FaceAnalyser.get_many_faces always returns list and propagates real errors."""
 
     def _make_analyser(self, inner_mock):
         """Build a FaceAnalyser with a pre-set _inner mock, bypassing __init__."""
         from modules.face_analyser import FaceAnalyser, FaceAnalyserConfig
-        cfg = FaceAnalyserConfig(providers=['CPUExecutionProvider'])
+
+        cfg = FaceAnalyserConfig(providers=["CPUExecutionProvider"])
         analyser = object.__new__(FaceAnalyser)
         analyser._config = cfg
         analyser._det_size = cfg.det_size
         import threading
+
         analyser._lock = threading.Lock()
         analyser._inner = inner_mock
         return analyser

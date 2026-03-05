@@ -3,24 +3,25 @@
 These tests verify the widget logic without requiring a live Tkinter display.
 We mock CTk widgets so tests run in CI without a GUI.
 """
+
 from __future__ import annotations
 
-import numpy as np
 from unittest.mock import MagicMock, patch
 
-from modules.mapping_list import MappingList, MappingEntry
-
+from modules.mapping_list import MappingList
 
 # ---------------------------------------------------------------------------
 # We cannot import the widget module at module level because it imports CTk.
 # Instead, we patch customtkinter before importing.
 # ---------------------------------------------------------------------------
 
+
 def _import_widget_module():
     """Import ui_mapping_list with CTk mocked out for headless testing."""
     # The module imports customtkinter at the top level; we need it available
     # but don't need a real Tk instance.
     import modules.ui_mapping_list as mod
+
     return mod
 
 

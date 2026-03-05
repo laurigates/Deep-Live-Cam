@@ -3,20 +3,20 @@
 Verifies that float32 blending, vectorized hull padding, and corrected LAB
 color transfer produce results equivalent to the original float64 paths.
 """
-import numpy as np
-import cv2
-import pytest
 
+import numpy as np
 
 # ---------------------------------------------------------------------------
 # apply_color_transfer (face_masking.py version)
 # ---------------------------------------------------------------------------
+
 
 class TestApplyColorTransferMasking:
     """Tests for face_masking.apply_color_transfer."""
 
     def _get_fn(self):
         from modules.processors.frame.face_masking import apply_color_transfer
+
         return apply_color_transfer
 
     def test_output_dtype_is_uint8(self):
@@ -54,11 +54,13 @@ class TestApplyColorTransferMasking:
 # apply_color_transfer (face_swapper.py version)
 # ---------------------------------------------------------------------------
 
+
 class TestApplyColorTransferSwapper:
     """Tests for face_swapper.apply_color_transfer."""
 
     def _get_fn(self):
         from modules.processors.frame.face_swapper import apply_color_transfer
+
         return apply_color_transfer
 
     def test_output_dtype_is_uint8(self):
@@ -79,6 +81,7 @@ class TestApplyColorTransferSwapper:
 # create_face_mask (face_masking.py — vectorized hull padding)
 # ---------------------------------------------------------------------------
 
+
 class TestCreateFaceMaskMasking:
     """Tests for face_masking.create_face_mask vectorized hull padding."""
 
@@ -89,6 +92,7 @@ class TestCreateFaceMaskMasking:
         # Create a mock face with valid 106 landmarks
         class MockFace:
             pass
+
         face = MockFace()
         # Place landmarks in a rough face shape
         landmarks = np.zeros((106, 2), dtype=np.float32)
@@ -113,13 +117,14 @@ class TestCreateFaceMaskMasking:
 # apply_mouth_area blending precision
 # ---------------------------------------------------------------------------
 
+
 class TestApplyMouthAreaBlending:
     """Verify float32 blending produces acceptable quality."""
 
     def test_float32_blending_output_valid(self):
         """Ensure the float32 blend path produces valid uint8 output."""
-        from modules.processors.frame.face_swapper import apply_mouth_area
         import modules.globals
+        from modules.processors.frame.face_swapper import apply_mouth_area
 
         # Set required globals
         modules.globals.mask_feather_ratio = 12
@@ -134,9 +139,7 @@ class TestApplyMouthAreaBlending:
         face_mask[70:130, 40:160] = 255
 
         # Create a simple polygon
-        polygon = np.array([
-            [55, 85], [105, 85], [105, 115], [55, 115]
-        ], dtype=np.int32)
+        polygon = np.array([[55, 85], [105, 85], [105, 115], [55, 115]], dtype=np.int32)
 
         result = apply_mouth_area(frame, mouth_cutout, mouth_box, face_mask, polygon)
 
@@ -150,12 +153,13 @@ class TestApplyMouthAreaBlending:
 # apply_mask_area float32 blending (face_masking.py)
 # ---------------------------------------------------------------------------
 
+
 class TestApplyMaskAreaBlending:
     """Verify float32 blending in apply_mask_area."""
 
     def test_output_is_valid_uint8(self):
-        from modules.processors.frame.face_masking import apply_mask_area
         import modules.globals
+        from modules.processors.frame.face_masking import apply_mask_area
 
         modules.globals.MOUTH_FEATHER_RADIUS = 10
         modules.globals.mask_feather_ratio = 12
@@ -165,9 +169,7 @@ class TestApplyMaskAreaBlending:
         box = (50, 80, 110, 120)
         face_mask = np.zeros((200, 200), dtype=np.uint8)
         face_mask[70:130, 40:160] = 255
-        polygon = np.array([
-            [55, 85], [105, 85], [105, 115], [55, 115]
-        ], dtype=np.int32)
+        polygon = np.array([[55, 85], [105, 85], [105, 115], [55, 115]], dtype=np.int32)
 
         result = apply_mask_area(frame, cutout, box, face_mask, polygon)
         assert result.dtype == np.uint8
