@@ -52,7 +52,9 @@ def test_on_status_called_when_downloading(mock_exists, mock_download):
 
     mock_exists.side_effect = [False, True]  # missing → found after download
     status_calls = []
-    on_status = lambda msg, name: status_calls.append((msg, name))
+
+    def on_status(msg, name):
+        status_calls.append((msg, name))
 
     result = download_model_if_needed(
         "model.onnx",
@@ -74,7 +76,9 @@ def test_on_status_called_on_download_failure(mock_exists, mock_download):
 
     mock_exists.return_value = False
     status_calls = []
-    on_status = lambda msg, name: status_calls.append((msg, name))
+
+    def on_status(msg, name):
+        status_calls.append((msg, name))
 
     result = download_model_if_needed(
         "model.onnx",

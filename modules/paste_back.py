@@ -124,10 +124,7 @@ def blend_with_mask(
     fg = foreground.astype(np.float32)
     bg = background.astype(np.float32)
 
-    if mask.ndim == 2:
-        m = mask[:, :, np.newaxis]
-    else:
-        m = mask
+    m = mask[:, :, np.newaxis] if mask.ndim == 2 else mask
 
     result = fg * m + bg * (1.0 - m)
     return np.clip(result, 0, 255).astype(np.uint8)

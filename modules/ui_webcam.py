@@ -204,10 +204,7 @@ def _enhancement_process_fn(inp):
     faces = inp["faces"]
     map_faces = inp["map_faces"]
 
-    if map_faces:
-        enhanced = processor.process_frame_v2(frame)
-    else:
-        enhanced = processor.process_frame(None, frame, faces=faces)
+    enhanced = processor.process_frame_v2(frame) if map_faces else processor.process_frame(None, frame, faces=faces)
 
     return {"frame": enhanced, "seq": inp["seq"]}
 
