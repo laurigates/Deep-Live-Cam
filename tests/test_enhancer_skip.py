@@ -101,10 +101,7 @@ class TestFrameHoldOnSkip:
         current_frame = self._make_frame(100)
 
         skip_enhancer = True
-        if skip_enhancer and prev_enhanced is not None:
-            result = prev_enhanced
-        else:
-            result = current_frame
+        result = prev_enhanced if (skip_enhancer and prev_enhanced is not None) else current_frame
 
         assert np.array_equal(result, prev_enhanced)
         assert not np.array_equal(result, current_frame)
@@ -115,10 +112,8 @@ class TestFrameHoldOnSkip:
         current_frame = self._make_frame(100)
 
         skip_enhancer = True  # would skip, but no cache available
-        if skip_enhancer and prev_enhanced is not None:
-            result = prev_enhanced
-        else:
-            result = current_frame  # falls through to actual enhancement
+        # falls through to actual enhancement when prev_enhanced is None
+        result = prev_enhanced if (skip_enhancer and prev_enhanced is not None) else current_frame
 
         assert np.array_equal(result, current_frame)
 
@@ -127,7 +122,6 @@ class TestFrameHoldOnSkip:
         enhanced_result = self._make_frame(75)
         prev_enhanced = None
 
-        skip_enhancer = False
         # Simulate: enhancer runs and produces enhanced_result
         result = enhanced_result
         prev_enhanced = result.copy()
@@ -157,14 +151,12 @@ class TestEnhancerSkipIndependentOfHalfRate:
         """Half-rate and enhancer skip use separate counters and don't interfere."""
         keyframe_interval = 2
         enhancer_interval = 3
-        frame_counter = 0
         enhancer_counter = 0
 
         half_rate_skips = []
         enhancer_skips = []
 
-        for _ in range(9):
-            frame_counter += 1
+        for frame_counter in range(1, 10):
             hr_skip = self._half_rate_skip(frame_counter, keyframe_interval)
             half_rate_skips.append(hr_skip)
 

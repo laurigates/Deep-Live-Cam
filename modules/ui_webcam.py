@@ -204,10 +204,7 @@ def _enhancement_process_fn(inp):
     faces = inp["faces"]
     map_faces = inp["map_faces"]
 
-    if map_faces:
-        enhanced = processor.process_frame_v2(frame)
-    else:
-        enhanced = processor.process_frame(None, frame, faces=faces)
+    enhanced = processor.process_frame_v2(frame) if map_faces else processor.process_frame(None, frame, faces=faces)
 
     return {"frame": enhanced, "seq": inp["seq"]}
 
@@ -354,7 +351,6 @@ def _processing_thread_func(
     tick_update_interval = 0.5
     prev_processed_frame = None
     rife_warned = False
-    half_rate_warned = False
     frame_counter = 0
     enhancer_frame_counter = 0
     prev_enhanced_faces = None  # faces from the last submitted enhancement frame
@@ -534,10 +530,7 @@ def _processing_thread_func(
                 # In half-rate mode, generate exactly keyframe_interval-1 intermediates so
                 # every skip slot between consecutive keyframes gets a smooth interpolated
                 # frame. Outside half-rate mode, honour the user's rife_multiplier setting.
-                if half_rate_enabled:
-                    multiplier = keyframe_interval
-                else:
-                    multiplier = snap_rife_multiplier
+                multiplier = keyframe_interval if half_rate_enabled else snap_rife_multiplier
                 intermediates = interpolate_frame_pair(
                     prev_processed_frame,
                     temp_frame,
@@ -562,10 +555,7 @@ def _processing_thread_func(
 
         # Update prev_processed_frame on keyframes; keep unchanged on skip frames
         if not skip_face_processing:
-            if rife_enabled or half_rate_enabled:
-                prev_processed_frame = temp_frame.copy()
-            else:
-                prev_processed_frame = None
+            prev_processed_frame = temp_frame.copy() if rife_enabled or half_rate_enabled else None
         # else (skip frame): prev_processed_frame stays set to the last keyframe output
 
         # Track processing tick rate (written to shared holder; read by display loop)
@@ -654,9 +644,8 @@ def create_webcam_preview(camera_index: int, config: ProcessingConfig | None = N
         PREVIEW.deiconify()
 
     # Start virtual camera if enabled
-    if config.virtual_cam:
-        if not virtual_cam.start(PREVIEW_DEFAULT_WIDTH, PREVIEW_DEFAULT_HEIGHT):
-            update_status("Virtual camera failed to start — check logs")
+    if config.virtual_cam and not virtual_cam.start(PREVIEW_DEFAULT_WIDTH, PREVIEW_DEFAULT_HEIGHT):
+        update_status("Virtual camera failed to start — check logs")
 
     # Queues for decoupling capture from processing and processing from display.
     # Small maxsize ensures we always work on recent frames and drop stale ones.

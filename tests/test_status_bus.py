@@ -32,7 +32,10 @@ class TestStatusBusBasics:
 
         bus = StatusBus()
         received = []
-        cb = lambda m, c: received.append(m)
+
+        def cb(m, c):
+            received.append(m)
+
         bus.subscribe(cb)
         bus.unsubscribe(cb)
         bus.publish("should not arrive", "test")
@@ -118,7 +121,10 @@ class TestCoreUsesStatusBus:
         from modules.status_bus import BUS
 
         received = []
-        cb = lambda msg, caller: received.append((msg, caller))
+
+        def cb(msg, caller):
+            received.append((msg, caller))
+
         BUS.subscribe(cb)
         try:
             modules.globals.headless = True  # avoid UI calls
@@ -143,7 +149,7 @@ class TestCoreUsesStatusBus:
         top_level_ui_imports = [
             node
             for node in ast.walk(tree)
-            if isinstance(node, (ast.Import, ast.ImportFrom))
+            if isinstance(node, ast.Import | ast.ImportFrom)
             and (
                 (
                     isinstance(node, ast.Import)

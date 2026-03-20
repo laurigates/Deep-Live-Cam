@@ -123,7 +123,11 @@ RECENT_DIRECTORY_SOURCE = None
 RECENT_DIRECTORY_TARGET = None
 RECENT_DIRECTORY_OUTPUT = None
 
-_ = lambda x: x  # replaced by LanguageManager in init()
+
+def _(x):
+    return x  # replaced by LanguageManager in init()
+
+
 preview_label = None
 preview_slider = None
 source_label = None
@@ -170,10 +174,11 @@ def init(start: Callable[[], None], destroy: Callable[[], None], lang: str) -> c
 def _state_file_path() -> str:
     import platform as _platform
 
-    if _platform.system() == "Windows":
-        base = os.environ.get("APPDATA", os.path.expanduser("~"))
-    else:
-        base = os.path.join(os.path.expanduser("~"), ".config")
+    base = (
+        os.environ.get("APPDATA", os.path.expanduser("~"))
+        if _platform.system() == "Windows"
+        else os.path.join(os.path.expanduser("~"), ".config")
+    )
     config_dir = os.path.join(base, "deep-live-cam")
     os.makedirs(config_dir, exist_ok=True)
     return os.path.join(config_dir, "switch_states.json")
@@ -564,15 +569,16 @@ def _create_switch(
 
     if attr.startswith("fp_ui:"):
         key = attr[len("fp_ui:") :]
-        command = lambda: (
-            update_tumbler(key, value_var.get()),
-            save_switch_states(),
-        )
+
+        def command():
+            update_tumbler(key, value_var.get())
+            save_switch_states()
+
     else:
-        command = lambda: (
-            setattr(modules.globals, attr, value_var.get()),
-            save_switch_states(),
-        )
+
+        def command():
+            setattr(modules.globals, attr, value_var.get())
+            save_switch_states()
 
     switch = ctk.CTkSwitch(
         parent,
@@ -1396,10 +1402,11 @@ def swap_faces_paths() -> None:
 
 def capture_target_from_camera() -> None:
     """Open a live camera preview window with a Capture button."""
-    if platform.system() == "Windows":
-        cap = cv2.VideoCapture(_selected_camera_index, cv2.CAP_MSMF)
-    else:
-        cap = cv2.VideoCapture(_selected_camera_index)
+    cap = (
+        cv2.VideoCapture(_selected_camera_index, cv2.CAP_MSMF)
+        if platform.system() == "Windows"
+        else cv2.VideoCapture(_selected_camera_index)
+    )
     if not cap.isOpened():
         update_status("Failed to open camera.")
         return
