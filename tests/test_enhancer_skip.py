@@ -122,7 +122,6 @@ class TestFrameHoldOnSkip:
         enhanced_result = self._make_frame(75)
         prev_enhanced = None
 
-        skip_enhancer = False
         # Simulate: enhancer runs and produces enhanced_result
         result = enhanced_result
         prev_enhanced = result.copy()
@@ -152,14 +151,12 @@ class TestEnhancerSkipIndependentOfHalfRate:
         """Half-rate and enhancer skip use separate counters and don't interfere."""
         keyframe_interval = 2
         enhancer_interval = 3
-        frame_counter = 0
         enhancer_counter = 0
 
         half_rate_skips = []
         enhancer_skips = []
 
-        for _ in range(9):
-            frame_counter += 1
+        for frame_counter in range(1, 10):
             hr_skip = self._half_rate_skip(frame_counter, keyframe_interval)
             half_rate_skips.append(hr_skip)
 

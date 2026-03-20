@@ -149,7 +149,7 @@ class TestCoreUsesStatusBus:
         top_level_ui_imports = [
             node
             for node in ast.walk(tree)
-            if isinstance(node, (ast.Import, ast.ImportFrom))
+            if isinstance(node, ast.Import | ast.ImportFrom)
             and (
                 (
                     isinstance(node, ast.Import)
