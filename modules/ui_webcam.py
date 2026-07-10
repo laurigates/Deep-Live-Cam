@@ -746,6 +746,9 @@ def create_webcam_preview(camera_index: int, config: ProcessingConfig | None = N
         # responsive.  Blocking operations (join/release/det-size reset) run
         # on a daemon thread so the main thread is never stalled.
         stop_event.set()
+        # Runs on the main thread (called from the ROOT.after display loop) —
+        # safe to touch the widget here, but never from _background_cleanup.
+        _ui.set_live_button_running(False)
         if not _ui._preview_embedded:
             PREVIEW.protocol("WM_DELETE_WINDOW", toggle_preview)
             PREVIEW.withdraw()
@@ -826,6 +829,11 @@ def create_webcam_preview(camera_index: int, config: ProcessingConfig | None = N
 
     # Kick off the non-blocking display loop
     ROOT.after(max(1, 1000 // modules.globals.live_max_fps), _display_next_frame)
+
+    # Session is live — flip the Live button into its Stop state.  Placed
+    # after the failed-camera and deferred-retry early returns so a failed
+    # start never leaves a Stop button with no session.  Main thread only.
+    _ui.set_live_button_running(True)
 
 
 def webcam_preview(root: ctk.CTk, camera_index: int, config: ProcessingConfig | None = None):

@@ -40,6 +40,7 @@ class TestDestroyErrorLogging:
 
     def test_ui_quit_failure_is_logged(self, caplog, no_target_path):
         """A raising ui.ROOT.quit() must be logged, and shutdown must proceed."""
+        import modules as modules_pkg
         import modules.core as core
 
         fake_ui = MagicMock()
@@ -48,6 +49,10 @@ class TestDestroyErrorLogging:
         with (
             patch("modules.ui_webcam.stop_active_session"),
             patch.dict(sys.modules, {"modules.ui": fake_ui}),
+            # "import modules.ui as ui" binds via the parent package attribute
+            # when the real module was imported earlier in the session, so the
+            # sys.modules patch alone is not enough (bpo-30024 semantics).
+            patch.object(modules_pkg, "ui", fake_ui, create=True),
             caplog.at_level(logging.ERROR, logger="modules.core"),
         ):
             with pytest.raises(SystemExit):

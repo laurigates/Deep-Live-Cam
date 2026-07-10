@@ -104,6 +104,7 @@ from modules.ui_webcam import (  # noqa: F401
     _capture_thread_func,
     _processing_thread_func,
     create_webcam_preview,
+    stop_active_session,
     webcam_preview,
 )
 
@@ -151,13 +152,18 @@ _preview_embedded = True  # True = embedded, False = pop-out window
 _embedded_preview_frame: "ctk.CTkFrame | None" = None  # the collapsible frame widget
 _mapping_widget: "MappingListWidget | None" = None  # MappingListWidget instance
 
-# Mode toggle state
-_current_mode: str = "Live Cam"
+# Mode toggle state — canonical (untranslated) mode names.  Only these two
+# values are ever persisted; translation happens at display time.
+MODE_LIVE = "Live Cam"
+MODE_FILE = "File Processing"
+_current_mode: str = MODE_LIVE
 _swap_button_widget: "ctk.CTkButton | None" = None
 _target_frame_widget: "ctk.CTkFrame | None" = None
 _start_button_widget: "ctk.CTkButton | None" = None
 _live_button_widget: "ctk.CTkButton | None" = None
 _settings_tabview_ref: "ctk.CTkTabView | None" = None
+_live_controls_frame: "ctk.CTkFrame | None" = None  # camera dropdown row (live-only)
+_live_start_command: "Callable[[], None] | None" = None  # Live button start action
 
 
 def init(start: Callable[[], None], destroy: Callable[[], None], lang: str) -> ctk.CTk:
@@ -278,7 +284,11 @@ def load_switch_states():
         # are included even if they weren't in the CLI --frame-processor list.
         _sync_enhancer_frame_processors()
         global _current_mode
-        _current_mode = switch_states.get("ui_mode", "Live Cam")
+        _current_mode = switch_states.get("ui_mode", MODE_LIVE)
+        if _current_mode not in (MODE_LIVE, MODE_FILE):
+            # Stale or translated value from an older state file — reject it
+            # so CTkSegmentedButton.set() cannot raise at startup.
+            _current_mode = MODE_LIVE
     except FileNotFoundError:
         pass
 
@@ -592,7 +602,7 @@ def _create_switch(
     return switch
 
 
-def _add_settings_tabview(root: ctk.CTk, live_button: ctk.CTkButton) -> None:
+def _add_settings_tabview(root: ctk.CTk) -> None:
     global _settings_tabview_ref
     tabview = ctk.CTkTabview(root)
     tabview.grid(row=2, column=0, sticky="nsew", padx=5, pady=5)
@@ -622,9 +632,9 @@ def _add_settings_tabview(root: ctk.CTk, live_button: ctk.CTkButton) -> None:
     # RIFE controls occupy +4 and +5; keyframe interval at +6
     _add_keyframe_interval_to_tab(enhancement_tab, n_enh, row_offset=6)
 
-    # Live Mode tab: add camera dropdown and FPS cap
+    # Live Mode tab: FPS cap (camera selection lives in the live controls
+    # area next to the Live button — see _add_camera_controls)
     live_tab = tabview.tab("Live Mode")
-    _add_camera_to_tab(live_tab, root, len(switch_defs["Live Mode"]), live_button)
     _add_fps_cap_to_tab(live_tab, len(switch_defs["Live Mode"]))
 
 
@@ -836,39 +846,6 @@ def _add_rife_controls_to_tab(tab: ctk.CTkFrame, num_switches: int, row_offset: 
     ToolTip(multiplier_optionmenu, _("Frame rate multiplication factor"))
 
 
-def _add_color_correction_to_processing_tab(tab: ctk.CTkFrame, num_switches: int) -> None:
-    """Add color correction mode dropdown below existing Processing tab switches."""
-    start_row = num_switches
-
-    label = ctk.CTkLabel(tab, text=_("Color Correction:"))
-    label.grid(row=start_row, column=0, sticky="w", padx=8, pady=(10, 2))
-
-    mode_values = ["none", "lab", "histogram"]
-    current_mode = getattr(modules.globals, "color_correction_mode", "none")
-    if current_mode not in mode_values:
-        current_mode = "none"
-    mode_variable = ctk.StringVar(value=current_mode)
-
-    def on_mode_change(choice: str) -> None:
-        modules.globals.color_correction_mode = choice
-        save_switch_states()
-        update_status(f"Color correction mode: {choice}")
-
-    mode_optionmenu = ctk.CTkOptionMenu(
-        tab,
-        variable=mode_variable,
-        values=mode_values,
-        command=on_mode_change,
-    )
-    mode_optionmenu.grid(row=start_row, column=1, sticky="ew", padx=(0, 8), pady=(10, 2))
-    ToolTip(
-        mode_optionmenu,
-        _(
-            "none = off  |  lab = LAB mean/std transfer  |  histogram = per-channel CDF matching (stronger correction for cross-skin-tone swaps)"
-        ),
-    )
-
-
 def _add_keyframe_interval_to_tab(tab: ctk.CTkFrame, num_switches: int, row_offset: int = 1) -> None:
     """Add keyframe interval dropdown to a tab (used in Enhancement alongside RIFE)."""
     start_row = num_switches + row_offset
@@ -908,7 +885,7 @@ def _add_keyframe_interval_to_tab(tab: ctk.CTkFrame, num_switches: int, row_offs
 
 def _add_fps_cap_to_tab(tab: ctk.CTkFrame, num_switches: int) -> None:
     """Add Max Preview FPS dropdown to the Live Mode tab."""
-    start_row = num_switches + 2
+    start_row = num_switches + 1
 
     fps_label = ctk.CTkLabel(tab, text=_("Max Preview FPS:"))
     fps_label.grid(row=start_row, column=0, sticky="w", padx=8, pady=(8, 2))
@@ -940,30 +917,33 @@ def _add_fps_cap_to_tab(tab: ctk.CTkFrame, num_switches: int) -> None:
     ToolTip(fps_optionmenu, _("Cap the preview frame rate — lower values reduce CPU/GPU heat (30 FPS recommended)"))
 
 
-def _add_camera_to_tab(
-    tab: ctk.CTkFrame,
+def _add_camera_controls(
+    parent: ctk.CTkFrame,
     root: ctk.CTk,
-    num_switches: int,
     live_button: ctk.CTkButton,
 ) -> None:
-    start_row = num_switches + 1
+    """Add the camera selection row (label + dropdown) to *parent*.
 
-    camera_label = ctk.CTkLabel(tab, text=_("Select Camera:"))
-    camera_label.grid(row=start_row, column=0, sticky="w", padx=8, pady=(15, 5))
+    Lives in the live-only controls frame next to the Live button so it is
+    hidden in File Processing mode (the camera is the implicit live target).
+    Also wires up the Live button's start command once cameras are probed.
+    """
+    camera_label = ctk.CTkLabel(parent, text=_("Select Camera:"))
+    camera_label.grid(row=0, column=0, sticky="w", padx=8, pady=(5, 5))
 
     camera_variable = ctk.StringVar(value=_("Detecting cameras..."))
     camera_optionmenu = ctk.CTkOptionMenu(
-        tab,
+        parent,
         variable=camera_variable,
         values=[_("Detecting cameras...")],
         state="disabled",
     )
     camera_optionmenu.grid(
-        row=start_row,
+        row=0,
         column=1,
         sticky="ew",
         padx=(0, 8),
-        pady=(15, 5),
+        pady=(5, 5),
     )
     ToolTip(camera_optionmenu, _("Select which camera to use for live mode"))
 
@@ -975,7 +955,7 @@ def _add_camera_to_tab(
         if camera_names and choice in camera_names:
             _selected_camera_index = camera_indices[camera_names.index(choice)]
 
-    # Wire up the live button command to use the camera selection from this tab.
+    # Wire up the live button command to use the camera selection.
     # Config snapshot is taken at click time so UI changes before clicking are captured.
     def _start_webcam():
         from modules.processing_config_factory import build_config_from_globals as _bcfg
@@ -987,6 +967,8 @@ def _add_camera_to_tab(
         )
         webcam_preview(root, camera_index, config=_bcfg())
 
+    global _live_start_command
+    _live_start_command = _start_webcam
     live_button.configure(command=_start_webcam)
     camera_optionmenu.configure(command=_on_camera_selected)
 
@@ -1035,34 +1017,41 @@ def _add_camera_to_tab(
 
 def _add_action_buttons(root: ctk.CTk, start: Callable, destroy: Callable) -> ctk.CTkButton:
     """Create action bar with Start/Live, Destroy, Preview buttons. Returns the Live button."""
-    global _start_button_widget, _live_button_widget
+    global _start_button_widget, _live_button_widget, _live_controls_frame
 
     action_frame = ctk.CTkFrame(root, fg_color="transparent")
     action_frame.grid(row=3, column=0, sticky="ew", padx=5, pady=5)
     action_frame.columnconfigure(0, weight=1)
     action_frame.columnconfigure(1, weight=1)
 
-    # Start and Live share the same grid cell (row=0, col=0); mode toggle shows one at a time
+    # Live-only controls (camera selection) — hidden in File Processing mode
+    live_frame = ctk.CTkFrame(action_frame, fg_color="transparent")
+    live_frame.grid(row=0, column=0, columnspan=2, sticky="ew")
+    live_frame.columnconfigure(0, weight=0)
+    live_frame.columnconfigure(1, weight=1)
+    _live_controls_frame = live_frame
+
+    # Start and Live share the same grid cell (row=1, col=0); mode toggle shows one at a time
     start_button = ctk.CTkButton(
         action_frame,
         text=_("Start"),
         cursor="hand2",
         command=lambda: analyze_target(start, root),
     )
-    start_button.grid(row=0, column=0, sticky="ew", padx=3)
+    start_button.grid(row=1, column=0, sticky="ew", padx=3)
     ToolTip(start_button, _("Begin processing the target image/video with selected face"))
     start_button.grid_remove()  # hidden by default; shown in File Processing mode
     _start_button_widget = start_button
 
-    # Live button — command and state wired up by _add_camera_to_tab after detection
+    # Live button — command and state wired up by _add_camera_controls after detection
     live_button = ctk.CTkButton(
         action_frame,
         text=_("Live"),
         cursor="hand2",
         state="disabled",
     )
-    live_button.grid(row=0, column=0, sticky="ew", padx=3)  # same cell as start_button
-    ToolTip(live_button, _("Start real-time face swap using webcam"))
+    live_button.grid(row=1, column=0, sticky="ew", padx=3)  # same cell as start_button
+    ToolTip(live_button, _("Start or stop real-time face swap using webcam"))
     _live_button_widget = live_button
 
     stop_button = ctk.CTkButton(
@@ -1071,7 +1060,7 @@ def _add_action_buttons(root: ctk.CTk, start: Callable, destroy: Callable) -> ct
         cursor="hand2",
         command=lambda: destroy(),
     )
-    stop_button.grid(row=0, column=1, sticky="ew", padx=3)
+    stop_button.grid(row=1, column=1, sticky="ew", padx=3)
     ToolTip(stop_button, _("Stop processing and close the application"))
 
     preview_button = ctk.CTkButton(
@@ -1080,10 +1069,34 @@ def _add_action_buttons(root: ctk.CTk, start: Callable, destroy: Callable) -> ct
         cursor="hand2",
         command=lambda: toggle_preview(),
     )
-    preview_button.grid(row=1, column=0, columnspan=2, sticky="ew", padx=3, pady=(3, 0))
+    preview_button.grid(row=2, column=0, columnspan=2, sticky="ew", padx=3, pady=(3, 0))
     ToolTip(preview_button, _("Show/hide a preview of the processed output"))
 
+    # Camera selection row inside the live-only frame; also wires the Live
+    # button's start command (stored in _live_start_command).
+    _add_camera_controls(live_frame, root, live_button)
+
     return live_button
+
+
+def _stop_live() -> None:
+    """Stop the running webcam session (Live button's command while running)."""
+    stop_active_session()
+
+
+def set_live_button_running(running: bool) -> None:
+    """Toggle the Live button between its Live (start) and Stop states.
+
+    Main-thread only: this configures a tkinter widget, so it must be called
+    from the Tk main thread (button commands, ROOT.after callbacks) — never
+    from background threads (.claude/rules/cross-platform.md).
+    """
+    if _live_button_widget is None:
+        return
+    if running:
+        _live_button_widget.configure(text=_("Stop"), command=_stop_live)
+    else:
+        _live_button_widget.configure(text=_("Live"), command=_live_start_command)
 
 
 def _add_status_bar(root: ctk.CTk) -> None:
@@ -1120,17 +1133,23 @@ def _add_mode_toggle(root: ctk.CTk) -> None:
     frame.columnconfigure(0, weight=1)
     btn = ctk.CTkSegmentedButton(
         frame,
-        values=[_("Live Cam"), _("File Processing")],
+        values=[_(MODE_LIVE), _(MODE_FILE)],
         command=_on_mode_change,
     )
-    btn.set(_current_mode)
+    btn.set(_(_current_mode))
     btn.grid(row=0, column=0, sticky="ew", padx=5, pady=5)
 
 
 def _on_mode_change(mode: str) -> None:
+    """Switch between Live Cam and File Processing views.
+
+    *mode* may be a translated label (from CTkSegmentedButton) or a canonical
+    constant (from create_root at startup); the persisted value is always
+    canonical so switching UI language cannot corrupt the saved state.
+    """
     global _current_mode
-    _current_mode = mode
-    is_live = mode == _("Live Cam")
+    is_live = mode in (MODE_LIVE, _(MODE_LIVE))
+    _current_mode = MODE_LIVE if is_live else MODE_FILE
 
     if _target_frame_widget:
         if is_live:
@@ -1156,6 +1175,18 @@ def _on_mode_change(mode: str) -> None:
         else:
             _live_button_widget.grid_remove()
 
+    if _live_controls_frame:
+        if is_live:
+            _live_controls_frame.grid()
+        else:
+            _live_controls_frame.grid_remove()
+
+    if not is_live:
+        # Leaving Live Cam mode: cleanly end any running webcam session and
+        # restore the Live button so it starts (not stops) next time.
+        stop_active_session()
+        set_live_button_running(False)
+
     if _settings_tabview_ref:
         _settings_tabview_ref.set("Live Mode" if is_live else "Export")
 
@@ -1168,8 +1199,8 @@ def create_root(start: Callable[[], None], destroy: Callable[[], None]) -> ctk.C
     _add_mode_toggle(root)
     _add_top_frame(root)
     _add_embedded_preview(root)
-    live_button = _add_action_buttons(root, start, destroy)
-    _add_settings_tabview(root, live_button)
+    _add_action_buttons(root, start, destroy)
+    _add_settings_tabview(root)
     _add_status_bar(root)
     _restore_recent_paths()
     _on_mode_change(_current_mode)
