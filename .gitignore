@@ -38,3 +38,8 @@ docs/blueprint/work-orders/
 .claude/settings.local.json
 .claude/worktrees/
 .cache/
+
+# Coverage reports
+.coverage
+.coverage.*
+htmlcov/

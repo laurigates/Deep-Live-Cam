@@ -45,7 +45,7 @@ jobs:
         run: uv sync --group dev
 
       - name: Run unit tests
-        run: uv run pytest tests/ -x --tb=short -q
+        run: uv run pytest tests/ -x --tb=short -q --cov=modules --cov-report=term-missing
 
   typecheck:
     name: Type Check
