@@ -106,6 +106,18 @@ known-first-party = ["modules"]
 [tool.ruff.format]
 quote-style = "double"
 
+[tool.bandit]
+# Baseline exclusions, triaged 2026-07:
+# - B101: runtime-invariant asserts in modules/ui.py; the app is never run under
+#   "python -O", so the asserts always execute.
+# - B404/B603: subprocess is used only to invoke ffmpeg/rife with list arguments
+#   and shell=False (modules/utilities.py, modules/rife_interpolation.py) — the
+#   safe pattern; no shell interpolation of user input.
+# B310 (urlopen audit) is intentionally NOT skipped repo-wide; the two known-safe
+# call sites in conditional_download carry inline "# nosec B310" annotations
+# (hardcoded https model URLs with sha256 verification).
+skips = ["B101", "B404", "B603"]
+
 [tool.ty.rules]
 # Baseline (2026-07): ~223 pre-existing error-level diagnostics across these 9 rules.
 # Downgraded to "warn" so the CI typecheck job (and the pre-commit ty hook) pass on the

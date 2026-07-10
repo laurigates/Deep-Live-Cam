@@ -353,7 +353,7 @@ def conditional_download(download_directory_path: str, urls: list[str], expected
         download_file_path = os.path.join(download_directory_path, filename)
         if not os.path.exists(download_file_path):
             ssl_context = ssl.create_default_context()
-            request = urllib.request.urlopen(url, context=ssl_context)  # type: ignore[attr-defined]
+            request = urllib.request.urlopen(url, context=ssl_context)  # type: ignore[attr-defined]  # nosec B310 - hardcoded https model URLs, sha256-verified
             total = int(request.headers.get("Content-Length", 0))
             downloaded = [0]  # mutable for closure access
 
@@ -373,7 +373,7 @@ def conditional_download(download_directory_path: str, urls: list[str], expected
                 unit_scale=True,
                 unit_divisor=1024,
             ) as progress:
-                urllib.request.urlretrieve(url, download_file_path, reporthook=_reporthook)  # type: ignore[attr-defined]
+                urllib.request.urlretrieve(url, download_file_path, reporthook=_reporthook)  # type: ignore[attr-defined]  # nosec B310 - hardcoded https model URLs, sha256-verified
 
             if _download_progress_callback:
                 _download_progress_callback(filename, total, total)
