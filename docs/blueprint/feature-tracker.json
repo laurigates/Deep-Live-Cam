@@ -194,6 +194,32 @@
       ],
       "version_introduced": "1.x (Jan 2025)",
       "notes": "8 languages added Jan-May 2025; community-driven contributions"
+    },
+    {
+      "id": "FR-011",
+      "title": "OSDFace One-Step Diffusion Face Enhancement (Offline)",
+      "description": "Opt-in OSDFace (CVPR 2025) diffusion-based face restoration for offline image/video processing only; PyTorch inference, installed via optional 'osdface' extra",
+      "scope": "optional",
+      "status": "not_started",
+      "source_files": [
+        "modules/processors/frame/face_enhancer_osdface.py",
+        "pyproject.toml",
+        "modules/utilities.py",
+        "modules/globals.py",
+        "modules/core.py",
+        "modules/ui_webcam.py"
+      ],
+      "acceptance_criteria": [
+        "Selectable for image/video processing via --frame-processor face_enhancer_osdface",
+        "Blocked in live webcam mode with a clear status-bus message",
+        "Optional extra group (uv sync --extra osdface) leaves base install untouched",
+        "Works on CUDA (NVIDIA) and MPS (Apple Silicon)",
+        "Graceful actionable error when the extra is not installed",
+        "Model weights downloaded on first use with fallback URL and checksums",
+        "Unit and integration tests cover interface, ImportError path, and live-mode guard"
+      ],
+      "version_introduced": "planned",
+      "notes": "Issue #74; design in ADR 0015, PRD osdface-offline-face-enhancement.md, PRP implement-osdface-enhancer.md. Quality surpasses GFPGAN/CodeFormer/DiffBIR; ~978M params, 4-6GB VRAM, ~100ms/face on A6000."
     }
   ],
   "sync_config": {
@@ -202,10 +228,10 @@
     "source_document": "docs/prds/deep-live-cam-overview.md"
   },
   "stats": {
-    "total_features": 10,
+    "total_features": 11,
     "completed": 10,
     "in_progress": 0,
     "blocked": 0,
-    "not_started": 0
+    "not_started": 1
   }
 }
