@@ -134,7 +134,7 @@ class TestSwapperRouting:
         processor = MagicMock()
         processor.NAME = "DLC.FACE-SWAPPER"
 
-        result = _call_helper(
+        _call_helper(
             processor,
             frame,
             map_faces=False,
@@ -157,7 +157,7 @@ class TestSwapperRouting:
         processor = MagicMock()
         processor.NAME = "DLC.FACE-SWAPPER"
 
-        result = _call_helper(
+        _call_helper(
             processor,
             frame,
             map_faces=True,
@@ -221,7 +221,7 @@ class TestEnhancerRouting:
         original_fp_ui = modules.globals.fp_ui.copy()
         modules.globals.fp_ui["face_enhancer"] = True
         try:
-            result = _call_helper(
+            _call_helper(
                 processor,
                 frame,
                 map_faces=False,
@@ -249,7 +249,7 @@ class TestEnhancerRouting:
         original_fp_ui = modules.globals.fp_ui.copy()
         modules.globals.fp_ui["face_enhancer"] = True
         try:
-            result = _call_helper(
+            _call_helper(
                 processor,
                 frame,
                 map_faces=False,
@@ -279,7 +279,7 @@ class TestEnhancerRouting:
         original_fp_ui = modules.globals.fp_ui.copy()
         modules.globals.fp_ui["face_enhancer"] = True
         try:
-            result = _call_helper(
+            _call_helper(
                 processor,
                 frame,
                 map_faces=True,

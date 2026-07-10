@@ -63,6 +63,28 @@ class TestStatusBusBasics:
 
         assert isinstance(BUS, StatusBus)
 
+    def test_failing_subscriber_is_logged_and_others_still_receive(self, caplog):
+        """A raising subscriber must be logged and must not disrupt others (issue #104)."""
+        import logging
+
+        from modules.status_bus import StatusBus
+
+        bus = StatusBus()
+        received = []
+
+        def bad_subscriber(msg, caller):
+            raise RuntimeError("subscriber exploded")
+
+        bus.subscribe(bad_subscriber)
+        bus.subscribe(lambda msg, caller: received.append(msg))
+
+        with caplog.at_level(logging.ERROR, logger="modules.status_bus"):
+            bus.publish("msg", "test")
+
+        assert received == ["msg"]
+        assert any(r.levelname == "ERROR" for r in caplog.records)
+        assert "subscriber" in caplog.text
+
 
 class TestStatusBusThreadSafety:
     def test_concurrent_publishes_deliver_to_all_subscribers(self):

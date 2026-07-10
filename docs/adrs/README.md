@@ -16,6 +16,7 @@ This directory contains Architecture Decision Records for Deep-Live-Cam. ADRs do
 | [0008](0008-threadpoolexecutor-for-parallel-frame-processing.md) | ThreadPoolExecutor for Parallel Frame Processing | Accepted | 2024 | Performance |
 | [0009](0009-nsfw-content-filtering-optional-safeguard.md) | NSFW Content Filtering (Optional Safeguard) | Accepted | Aug 2024 | Safety |
 | [0010](0010-continuous-gpu-acceleration-optimization.md) | Continuous GPU Acceleration Optimization Strategy | Accepted | 2024-2026 | Performance |
+| [0015](0015-osdface-one-step-diffusion-face-enhancement.md) | OSDFace One-Step Diffusion Face Enhancement (Offline-Only) | Proposed | Jul 2026 | Enhancement |
 
 ## ADR Status Definitions
 

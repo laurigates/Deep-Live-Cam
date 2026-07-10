@@ -382,13 +382,9 @@ def pre_start() -> bool:
         BUS.publish(f"Model not found: {model_path}. Please download it.", NAME)
         return False
 
-    # Try to get the face swapper to ensure it loads correctly
-    if get_face_swapper() is None:
-        # Error message already printed within get_face_swapper
-        return False
-
-    # Add other essential checks if needed, e.g., target/source path validity
-    return True
+    # Try to get the face swapper to ensure it loads correctly.
+    # On failure the error message is already printed within get_face_swapper.
+    return get_face_swapper() is not None
 
 
 def get_face_swapper(providers: list | None = None) -> Any:
@@ -713,7 +709,7 @@ def batch_swap_faces(
         return temp_frame
 
     # Ghost/HyperSwap models don't support batched inference — fall back to sequential swap
-    if isinstance(face_swapper, (GhostSwapper, HyperSwapper)):
+    if isinstance(face_swapper, GhostSwapper | HyperSwapper):
         config = config or build_config_from_globals()
         result = temp_frame.copy()
         for source_face, target_face in zip(source_faces, target_faces):
@@ -923,7 +919,8 @@ def swap_face(source_face: Face, target_face: Face, temp_frame: Frame, config=No
         if swapped_frame_raw.shape != temp_frame.shape:
             try:
                 swapped_frame_raw = gpu_resize(swapped_frame_raw, (temp_frame.shape[1], temp_frame.shape[0]))
-            except Exception:
+            except cv2.error as exc:  # resize failure — the outer handler catches anything else
+                logger.warning("Resize of swapped frame failed (%s); returning original frame", exc)
                 return original_frame
 
         swapped_frame = np.clip(swapped_frame_raw, 0, 255).astype(np.uint8)

@@ -157,6 +157,7 @@ class TestSkipFrameHold:
             if prev_processed is not None:
                 temp_frame = prev_processed
             # RIFE is NOT called here
+            assert temp_frame is prev_processed
 
         mock_interp.assert_not_called()
 
@@ -178,9 +179,8 @@ class TestPrevFrameLifecycle:
         half_rate_enabled = True
         temp_frame = keyframe_result.copy()
 
-        if not skip_face_processing:
-            if rife_enabled or half_rate_enabled:
-                prev_processed_frame = temp_frame.copy()
+        if not skip_face_processing and (rife_enabled or half_rate_enabled):
+            prev_processed_frame = temp_frame.copy()
 
         assert prev_processed_frame is not None
         assert np.array_equal(prev_processed_frame, keyframe_result)
@@ -189,9 +189,7 @@ class TestPrevFrameLifecycle:
         original = np.ones((480, 640, 3), dtype=np.uint8) * 128
         prev_processed_frame = original.copy()
 
-        skip_face_processing = True  # skip frame
-        rife_enabled = True
-        half_rate_enabled = True
+        skip_face_processing = True  # skip frame (rife/half-rate enabled)
 
         if not skip_face_processing:
             # This branch would overwrite prev_processed_frame
@@ -206,10 +204,7 @@ class TestPrevFrameLifecycle:
         half_rate_enabled = False
 
         if not skip_face_processing:
-            if rife_enabled or half_rate_enabled:
-                prev_processed_frame = prev_processed_frame.copy()
-            else:
-                prev_processed_frame = None
+            prev_processed_frame = prev_processed_frame.copy() if rife_enabled or half_rate_enabled else None
 
         assert prev_processed_frame is None
 
@@ -256,13 +251,11 @@ class TestToggleMidStream:
     def test_frame_counter_logic_survives_toggle(self):
         """Frame counter correctly classifies frames before and after toggle."""
         keyframe_interval = 2
-        frame_counter = 0
         skip_results = []
 
-        for i in range(1, 11):
-            frame_counter += 1
+        for frame_counter in range(1, 11):
             # Toggle half-rate on after frame 5
-            half_rate_enabled = i > 5
+            half_rate_enabled = frame_counter > 5
             is_keyframe = (frame_counter % keyframe_interval) == 1
             skip_face_processing = half_rate_enabled and not is_keyframe
             skip_results.append(skip_face_processing)

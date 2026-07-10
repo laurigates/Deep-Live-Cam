@@ -257,10 +257,8 @@ class TestAsyncEnhancementIntegration:
 
     def test_submit_increments_seq(self):
         """Each submission gets an incremented seq number."""
-        enhancement_seq = 0
         seqs = []
-        for _ in range(5):
-            enhancement_seq += 1
+        for enhancement_seq in range(1, 6):
             seqs.append(enhancement_seq)
         assert seqs == [1, 2, 3, 4, 5]
 
@@ -312,13 +310,11 @@ class TestAsyncEnhancementIntegration:
     def test_skip_frame_still_reads_output(self):
         """On skip frames, no submission but latest result is still consumed."""
         lock = threading.Lock()
-        enhancement_input = [None]
         enhancement_output = [{"frame": _make_frame(200), "seq": 5}]
         last_consumed_enh_seq = -1
         latest_enhanced_frame = None
 
-        skip_enhancer = True
-        # Skip submission (no write to enhancement_input)
+        # skip_enhancer is True: skip submission (no write to enhancement_input)
 
         # But still read
         with lock:

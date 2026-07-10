@@ -7,13 +7,16 @@ uses 80x80 thumbnails with row labels.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from typing import TYPE_CHECKING
 
 import customtkinter as ctk
 import cv2
 from PIL import Image, ImageOps
 
-from modules.mapping_list import MappingList
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from modules.mapping_list import MappingList
 
 # Thumbnail sizes
 _SINGLE_THUMB = (120, 120)

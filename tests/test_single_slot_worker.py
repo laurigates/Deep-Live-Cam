@@ -144,7 +144,6 @@ def test_concurrent_reads_and_writes():
     output_holder = [None]
     lock = threading.Lock()
     stop_event = threading.Event()
-    max_seq = [0]
 
     def process_fn(inp):
         return {"value": inp["seq"] * 2, "seq": inp["seq"]}

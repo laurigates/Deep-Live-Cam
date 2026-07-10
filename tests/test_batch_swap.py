@@ -308,7 +308,7 @@ class TestProcessFrameV2Routing:
         frame = np.random.randint(0, 256, (480, 640, 3), dtype=np.uint8)
         mock_build.return_value = []
 
-        result = process_frame_v2(frame)
+        process_frame_v2(frame)
 
         mock_swap.assert_not_called()
         mock_batch.assert_not_called()

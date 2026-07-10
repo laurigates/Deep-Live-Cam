@@ -19,7 +19,7 @@ class TestJPEGIntermediateFrames:
             utilities.extract_frames("/fake/video.mp4")
             args = mock_ffmpeg.call_args[0][0]
             # Find the output path argument (last positional arg to ffmpeg)
-            output_pattern = [a for a in args if "%04d" in a][0]
+            output_pattern = next(a for a in args if "%04d" in a)
             assert output_pattern.endswith(".jpg"), f"Expected .jpg output, got {output_pattern}"
             # Verify JPEG quality flag is present
             assert "-qscale:v" in args, "Missing -qscale:v flag for JPEG quality"
@@ -54,7 +54,7 @@ class TestJPEGIntermediateFrames:
         ):
             utilities.create_video("/fake/video.mp4", fps=30.0)
             args = mock_ffmpeg.call_args[0][0]
-            input_pattern = [a for a in args if isinstance(a, str) and "%04d" in a][0]
+            input_pattern = next(a for a in args if isinstance(a, str) and "%04d" in a)
             assert input_pattern.endswith(".jpg"), f"Expected .jpg input, got {input_pattern}"
 
     def test_face_swapper_writes_jpeg_quality(self):

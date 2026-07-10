@@ -1,5 +1,6 @@
 """Tests for the RIFE frame interpolation module."""
 
+import logging
 import sys
 from unittest.mock import MagicMock, patch
 
@@ -7,6 +8,7 @@ import numpy as np
 import pytest
 
 import modules.globals
+import modules.rife_interpolation as rife_interpolation
 from modules.rife_interpolation import (
     _binary_name,
     _build_command,
@@ -376,3 +378,44 @@ class TestInterpolateFramePair:
             result = interpolate_frame_pair(frame0, frame1, multiplier=2)
 
         assert result == []
+
+    def test_rife_exception_logs_warning_only_once(self, caplog):
+        """Repeated live-interpolation failures log exactly one warning (issue #104)."""
+        frame0 = self._make_frame()
+        frame1 = self._make_frame()
+
+        mock_rife = MagicMock()
+        mock_rife.process_cv2.side_effect = RuntimeError("GPU error")
+
+        original_flag = rife_interpolation._live_interp_warned
+        rife_interpolation._live_interp_warned = False
+        try:
+            with (
+                patch("modules.rife_interpolation.has_native_binding", return_value=True),
+                patch("modules.rife_interpolation._get_native_rife", return_value=mock_rife),
+                caplog.at_level(logging.WARNING, logger="modules.rife_interpolation"),
+            ):
+                assert interpolate_frame_pair(frame0, frame1, multiplier=2) == []
+                assert interpolate_frame_pair(frame0, frame1, multiplier=2) == []
+
+            warnings = [r for r in caplog.records if "Live RIFE interpolation failed" in r.message]
+            assert len(warnings) == 1
+        finally:
+            rife_interpolation._live_interp_warned = original_flag
+
+
+# ---------------------------------------------------------------------------
+# _update_status error path
+# ---------------------------------------------------------------------------
+
+
+class TestUpdateStatusErrorPath:
+    def test_update_status_logs_warning_when_core_unavailable(self, caplog):
+        """ImportError of modules.core must be logged, not silently swallowed (issue #104)."""
+        with (
+            patch.dict(sys.modules, {"modules.core": None}),
+            caplog.at_level(logging.WARNING, logger="modules.rife_interpolation"),
+        ):
+            rife_interpolation._update_status("hello")  # must not raise
+
+        assert "Could not forward status to UI" in caplog.text

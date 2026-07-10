@@ -158,7 +158,7 @@ class TestFaceMaskComputedOnce:
                 with patch(
                     "modules.processors.frame.face_swapper.create_face_mask",
                     side_effect=counting_create_face_mask,
-                ) as mock_cfm:
+                ):
                     # Call the two helper functions the way the caller would
                     # after the refactor: both receive the pre-computed face_mask
                     _apply_mouth_mask(frame.copy(), face, frame, config=config, face_mask=sentinel_mask)

@@ -3,6 +3,8 @@
 Run with: uv run pytest tests/benchmarks/test_bench_pipeline.py -m benchmark -v
 """
 
+from typing import ClassVar
+
 import psutil
 import pytest
 
@@ -81,7 +83,7 @@ class TestFullPipeline:
         for _ in range(BENCH_ITERS):
             with timer:
                 swapped = swap_face(source_face, synthetic_face, frame.copy())
-                enhanced = enhance_face(synthetic_face, swapped)
+                enhance_face(synthetic_face, swapped)
 
         mem_after = _measure_memory()
         stats = timer.stats
@@ -132,7 +134,7 @@ class TestFullPipeline:
         for _ in range(BENCH_ITERS):
             with timer:
                 swapped = swap_face(source_face, synthetic_face, frame.copy())
-                enhanced = enhance_face(synthetic_face, swapped)
+                enhance_face(synthetic_face, swapped)
 
         stats = timer.stats
         print("\n--- Swap + Enhance + Mouth Mask ---")
@@ -146,7 +148,7 @@ class TestFullPipeline:
 class TestToggleIncrementalCost:
     """Measure the incremental cost of each processing toggle."""
 
-    TOGGLE_CONFIGS = [
+    TOGGLE_CONFIGS: ClassVar[list[tuple[str, dict]]] = [
         ("baseline", {}),
         ("mouth_mask", {"mouth_mask": True}),
         ("poisson_blend", {"poisson_blend": True}),
@@ -215,7 +217,7 @@ class TestMemoryStability:
 
         mem_start = _measure_memory()
 
-        for i in range(300):
+        for _ in range(300):
             swap_face(source_face, synthetic_face, frame.copy())
 
         mem_end = _measure_memory()

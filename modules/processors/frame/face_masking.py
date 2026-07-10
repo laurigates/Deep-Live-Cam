@@ -1,3 +1,5 @@
+import logging
+
 import cv2
 import numpy as np
 
@@ -5,6 +7,8 @@ import modules.globals
 from modules.gpu_processing import gpu_gaussian_blur, gpu_resize
 from modules.processing_config_factory import build_config_from_globals
 from modules.typing import Face, Frame
+
+logger = logging.getLogger(__name__)
 
 
 def apply_color_transfer(source, target):
@@ -372,8 +376,10 @@ def create_eyebrows_mask(face: Face, frame: Frame, config=None) -> tuple:
                 right_shape + origin,
             ]
         ).astype(np.int32)
-    except Exception:
-        # Fallback to simple polygons if curve fitting fails
+    except (ValueError, np.linalg.LinAlgError, cv2.error):
+        # Fallback to simple polygons if curve fitting fails (degenerate landmarks).
+        # Debug level: the fallback is by-design and this runs per frame.
+        logger.debug("Eyebrow curve fitting failed; using simple polygon fallback")
         left_local = (left_eyebrow - origin).astype(np.int32)
         right_local = (right_eyebrow - origin).astype(np.int32)
         cv2.fillPoly(mask_roi, [left_local], 255)
@@ -489,8 +495,9 @@ def draw_mask_visualization(frame: Frame, mask_data: tuple, label: str, draw_met
                 # Draw the ellipses
                 cv2.ellipse(vis_frame, left_ellipse, (0, 255, 0), 2)
                 cv2.ellipse(vis_frame, right_ellipse, (0, 255, 0), 2)
-        except Exception:
+        except (cv2.error, ValueError):
             # If ellipse fitting fails, draw simple rectangles as fallback
+            logger.debug("Ellipse fitting failed; drawing rectangles instead")
             left_rect = cv2.boundingRect(left_points)
             right_rect = cv2.boundingRect(right_points)
             cv2.rectangle(
@@ -567,8 +574,8 @@ def draw_mouth_mask_visualization(frame: Frame, face: Face, mouth_mask_data: tup
         cv2.putText(
             vis_frame, "Mouth Mask", (min_x, label_pos_y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1, cv2.LINE_AA
         )
-    except Exception:
-        pass
+    except cv2.error:
+        pass  # label is cosmetic — never fail the visualization frame over text rendering
 
     return vis_frame
 
@@ -627,8 +634,8 @@ def apply_mouth_area(
                 and roi.shape[2] == 3
             ):
                 color_corrected_mouth = apply_color_transfer(resized_mouth_cutout, roi)
-        except Exception:
-            pass
+        except (cv2.error, ValueError):
+            pass  # color transfer is cosmetic — fall back to the uncorrected mouth cutout
 
         polygon_mask_roi = np.zeros(roi.shape[:2], dtype=np.uint8)
         adjusted_polygon = mouth_polygon - [min_x, min_y]

@@ -116,9 +116,8 @@ def _collect_globals_reads_after_snapshot(while_node: ast.While) -> set[str]:
                 and isinstance(node.value.value, ast.Name)
                 and node.value.value.id == "modules"
                 and node.value.attr == "globals"
-            ):
-                if not isinstance(node.ctx, ast.Store):
-                    reads.add(node.attr)
+            ) and not isinstance(node.ctx, ast.Store):
+                reads.add(node.attr)
     return reads
 
 

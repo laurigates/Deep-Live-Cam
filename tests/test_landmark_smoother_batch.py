@@ -22,8 +22,8 @@ def _make_face(embedding=None):
         def __getattr__(self, name):
             try:
                 return self[name]
-            except KeyError:
-                raise AttributeError(name)
+            except KeyError as exc:
+                raise AttributeError(name) from exc
 
         def __setattr__(self, name, value):
             self[name] = value
@@ -65,7 +65,6 @@ class TestFindMatchEmptyState:
     def test_returns_none_for_face_without_embedding(self):
         s = LandmarkSmoother()
         # Populate state with a real entry so we reach the embedding-check path
-        face_with = _make_face(_EMB_X)
         s._state = [{"embedding": _unit(_EMB_X), "bbox": None, "kps": None}]
         face_without = _make_face(None)
         assert s._find_match(face_without) is None

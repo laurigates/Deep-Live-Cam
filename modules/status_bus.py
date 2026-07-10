@@ -19,10 +19,13 @@ Usage::
 
 from __future__ import annotations
 
+import logging
 import threading
 from collections.abc import Callable
 
 StatusCallback = Callable[[str, str], None]
+
+logger = logging.getLogger(__name__)
 
 
 class StatusBus:
@@ -57,8 +60,8 @@ class StatusBus:
         for sub in snapshot:
             try:
                 sub(message, caller)
-            except Exception:
-                pass  # a misbehaving subscriber must not disrupt others
+            except Exception:  # intentionally broad — a misbehaving subscriber must not disrupt others
+                logger.exception("StatusBus subscriber %r raised; continuing", sub)
 
     def clear(self) -> None:
         """Remove all subscribers."""

@@ -33,7 +33,8 @@ def test_face_analyser_accepts_injected_config():
     - No global reads are necessary
     """
     try:
-        from modules import face_analyser
+        # face_analyser import doubles as an availability probe for the skip below
+        from modules import face_analyser  # noqa: F401
         from modules.processing_config import ProcessingConfig
     except ImportError:
         pytest.skip("ProcessingConfig not yet implemented")
