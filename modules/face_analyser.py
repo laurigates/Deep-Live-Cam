@@ -517,10 +517,10 @@ def _face_pair_similar(
         and hasattr(prev_face, "normed_embedding")
         and prev_face.normed_embedding is not None
     )
-    if both_have_embedding:
-        if compute_embedding_cosine(face.normed_embedding, prev_face.normed_embedding) < cosine_threshold:
-            return False
-    return True
+    return not (
+        both_have_embedding
+        and compute_embedding_cosine(face.normed_embedding, prev_face.normed_embedding) < cosine_threshold
+    )
 
 
 def faces_are_similar(

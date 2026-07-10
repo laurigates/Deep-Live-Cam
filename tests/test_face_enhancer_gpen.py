@@ -141,14 +141,14 @@ class TestOnnxEnhancerDelegation:
     """Verify GPEN modules delegate to _onnx_enhancer correctly."""
 
     def test_gpen256_delegates_enhance_face(self):
-        mod = importlib.import_module("modules.processors.frame.face_enhancer_gpen256")
+        importlib.import_module("modules.processors.frame.face_enhancer_gpen256")
         # The module should use enhance_face_onnx from _onnx_enhancer
         from modules.processors.frame import _onnx_enhancer
 
         assert hasattr(_onnx_enhancer, "enhance_face_onnx")
 
     def test_gpen512_delegates_enhance_face(self):
-        mod = importlib.import_module("modules.processors.frame.face_enhancer_gpen512")
+        importlib.import_module("modules.processors.frame.face_enhancer_gpen512")
         from modules.processors.frame import _onnx_enhancer
 
         assert hasattr(_onnx_enhancer, "enhance_face_onnx")

@@ -113,7 +113,7 @@ class TestBuildConfigNotCalledWhenConfigProvided:
         frame = np.zeros((100, 100, 3), dtype=np.uint8)
 
         with patch("modules.processors.frame.face_swapper.build_config_from_globals") as mock_build:
-            result = apply_post_processing(frame, [], config=config)
+            apply_post_processing(frame, [], config=config)
             mock_build.assert_not_called()
 
 

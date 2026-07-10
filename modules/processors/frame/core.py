@@ -60,7 +60,7 @@ def set_frame_processors_modules_from_ui(frame_processors: list[str], config=Non
         current_processor_names = [proc.__name__.split(".")[-1] for proc in FRAME_PROCESSORS_MODULES]
 
         for frame_processor, state in config.fp_ui.items():
-            if state == True and frame_processor not in current_processor_names:
+            if state and frame_processor not in current_processor_names:
                 try:
                     frame_processor_module = load_frame_processor_module(frame_processor)
                     FRAME_PROCESSORS_MODULES.append(frame_processor_module)
@@ -79,7 +79,7 @@ def set_frame_processors_modules_from_ui(frame_processors: list[str], config=Non
                 except Exception as e:
                     print(f"Warning: Error loading frame processor {frame_processor} requested by UI state: {e}")
 
-            elif state == False and frame_processor in current_processor_names:
+            elif not state and frame_processor in current_processor_names:
                 try:
                     module_to_remove = next(
                         (mod for mod in FRAME_PROCESSORS_MODULES if mod.__name__.endswith(f".{frame_processor}")), None

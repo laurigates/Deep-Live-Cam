@@ -423,7 +423,7 @@ class TestBatchSwapFacesGhostFallback:
             with patch("modules.processors.frame.face_swapper.swap_face", return_value=frame) as mock_swap:
                 from modules.processors.frame.face_swapper import batch_swap_faces
 
-                result = batch_swap_faces(
+                batch_swap_faces(
                     [MagicMock(), MagicMock()],
                     [MagicMock(), MagicMock()],
                     frame,

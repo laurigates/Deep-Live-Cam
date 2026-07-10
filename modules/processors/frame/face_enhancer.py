@@ -156,7 +156,7 @@ def get_face_enhancer(providers: list | None = None) -> onnxruntime.InferenceSes
             except Exception as e:
                 print(f"{NAME}: Error loading GFPGAN ONNX model: {e}")
                 FACE_ENHANCER = None
-                raise RuntimeError(f"{NAME}: Failed to load GFPGAN ONNX model: {e}")
+                raise RuntimeError(f"{NAME}: Failed to load GFPGAN ONNX model: {e}") from e
 
     if FACE_ENHANCER is None:
         raise RuntimeError(f"{NAME}: Failed to initialize GFPGAN ONNX session. Check logs.")
@@ -325,10 +325,7 @@ def enhance_face(temp_frame: Frame, faces=None, live_mode: bool = False, config=
     # In live mode use a smaller alignment/paste resolution to reduce warp costs.
     # The face is still run through the model at `align_size` (upscaled before
     # inference, downscaled after), so quality degrades only slightly.
-    if live_mode and config.live_enhance_size < align_size:
-        paste_size = config.live_enhance_size
-    else:
-        paste_size = align_size
+    paste_size = config.live_enhance_size if live_mode and config.live_enhance_size < align_size else align_size
 
     result_frame = temp_frame.copy()
 

@@ -21,8 +21,8 @@ def test_find_cluster_centroids_empty_raises_or_returns():
 
     embeddings = np.empty((0, 3))
     try:
-        result = find_cluster_centroids(embeddings)
-        # If it returns, result should be truthy or at least not crash
+        find_cluster_centroids(embeddings)
+        # Returning without crashing is acceptable
     except (ValueError, Exception):
         pass  # Acceptable to raise on empty input
 

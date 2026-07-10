@@ -48,7 +48,7 @@ def test_set_frame_processors_thread_safe():
             for _ in range(50):
                 snapshot = core._get_processors_snapshot()
                 # Iterate the snapshot (safe, immutable from this perspective)
-                for proc in snapshot:
+                for _proc in snapshot:
                     time.sleep(0.00001)
         except Exception as e:
             errors.append(f"Reader error: {e}")
@@ -58,7 +58,7 @@ def test_set_frame_processors_thread_safe():
         try:
             with patch.object(core.modules.globals, "fp_ui", {"face_swapper": False}):
                 with patch("modules.processors.frame.core.load_frame_processor_module"):
-                    for i in range(10):
+                    for _i in range(10):
                         core.set_frame_processors_modules_from_ui(["face_swapper"])
                         mutation_count[0] += 1
                         time.sleep(0.0001)

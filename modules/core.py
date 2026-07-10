@@ -422,9 +422,6 @@ def release_resources(config: ProcessingConfig | None = None) -> None:
 
 
 def pre_check() -> bool:
-    if sys.version_info < (3, 9):
-        update_status("Python version is not supported - please upgrade to 3.9 or higher.")
-        return False
     if not shutil.which("ffmpeg"):
         update_status("ffmpeg is not installed.")
         return False

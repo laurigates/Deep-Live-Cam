@@ -360,7 +360,8 @@ def conditional_download(download_directory_path: str, urls: list[str], expected
             if _download_progress_callback:
                 _download_progress_callback(filename, 0, total)
 
-            def _reporthook(count, block_size, total_size):
+            # Default-argument capture binds the current loop iteration's values
+            def _reporthook(count, block_size, total_size, filename=filename, downloaded=downloaded):
                 progress.update(block_size)
                 downloaded[0] += block_size
                 if _download_progress_callback:

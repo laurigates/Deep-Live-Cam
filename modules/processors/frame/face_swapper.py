@@ -382,13 +382,9 @@ def pre_start() -> bool:
         BUS.publish(f"Model not found: {model_path}. Please download it.", NAME)
         return False
 
-    # Try to get the face swapper to ensure it loads correctly
-    if get_face_swapper() is None:
-        # Error message already printed within get_face_swapper
-        return False
-
-    # Add other essential checks if needed, e.g., target/source path validity
-    return True
+    # Try to get the face swapper to ensure it loads correctly.
+    # On failure the error message is already printed within get_face_swapper.
+    return get_face_swapper() is not None
 
 
 def get_face_swapper(providers: list | None = None) -> Any:
@@ -713,7 +709,7 @@ def batch_swap_faces(
         return temp_frame
 
     # Ghost/HyperSwap models don't support batched inference — fall back to sequential swap
-    if isinstance(face_swapper, (GhostSwapper, HyperSwapper)):
+    if isinstance(face_swapper, GhostSwapper | HyperSwapper):
         config = config or build_config_from_globals()
         result = temp_frame.copy()
         for source_face, target_face in zip(source_faces, target_faces):

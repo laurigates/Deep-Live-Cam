@@ -1,11 +1,10 @@
 """Build ONNX Runtime provider configuration lists."""
 
 import os
-from typing import Union
 
 from modules.platform_info import IS_APPLE_SILICON
 
-ProviderConfig = Union[str, tuple[str, dict]]
+ProviderConfig = str | tuple[str, dict]
 
 _COREML_CACHE_DIR = os.path.join(os.path.expanduser("~"), ".cache", "deep-live-cam", "coreml")
 

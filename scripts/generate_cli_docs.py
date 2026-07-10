@@ -45,10 +45,9 @@ def _resolve_constant(node: ast.expr) -> str:
     # Function calls like suggest_max_memory() → "(auto)"
     if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
         return "(auto)"
-    if isinstance(node, ast.Attribute):
-        # argparse.SUPPRESS
-        if isinstance(node.value, ast.Name) and node.attr == "SUPPRESS":
-            return "SUPPRESS"
+    # argparse.SUPPRESS
+    if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name) and node.attr == "SUPPRESS":
+        return "SUPPRESS"
     if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.USub):
         return f"-{_resolve_constant(node.operand)}"
     return str(ast.dump(node))
@@ -148,10 +147,7 @@ def format_table(args_list: list[dict]) -> str:
         default = arg["default"]
         if arg["action"] == "store_true":
             # Show actual default (usually False, but --keep-audio defaults True)
-            if default == "True":
-                default = "`True`"
-            else:
-                default = "`False`"
+            default = "`True`" if default == "True" else "`False`"
         elif default:
             default = f"`{default}`"
 

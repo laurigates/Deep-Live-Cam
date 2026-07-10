@@ -29,9 +29,7 @@ def test_macos_intel_returns_fixed_cameras(mock_is_macos):
 def test_linux_bounded_loop(mock_cv2, mock_is_macos):
     """Linux: bounded probe with 3 consecutive failure break."""
     # Camera 0 succeeds, camera 1 succeeds, cameras 2-4 fail (3 consecutive)
-    mock_cap = MagicMock()
     open_sequence = [True, True, False, False, False]
-    call_count = [0]
 
     def mock_video_capture(i):
         cap = MagicMock()

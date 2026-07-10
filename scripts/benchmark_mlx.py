@@ -84,8 +84,7 @@ def benchmark_onnx_coreml(onnx_path: str, runs: int, warmup: int) -> dict | None
 def benchmark_mlx(onnx_path: str, runs: int, warmup: int) -> dict | None:
     """Benchmark MLX native inference."""
     try:
-        import mlx.core as mx
-
+        # mlx_inswapper itself raises ImportError when mlx is unavailable
         from modules.mlx_inswapper import MLXSessionWrapper
     except ImportError as exc:
         print(f"  [skip] {exc}")

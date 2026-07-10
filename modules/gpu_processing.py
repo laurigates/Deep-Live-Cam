@@ -79,13 +79,8 @@ def _ksize_odd(ksize: tuple[int, int]) -> tuple[int, int]:
 def _cv_type_for(img: np.ndarray) -> int:
     """Return the OpenCV type constant matching *img* (uint8 only)."""
     channels = 1 if img.ndim == 2 else img.shape[2]
-    if channels == 1:
-        return cv2.CV_8UC1
-    elif channels == 3:
-        return cv2.CV_8UC3
-    elif channels == 4:
-        return cv2.CV_8UC4
-    return cv2.CV_8UC3  # fallback
+    types = {1: cv2.CV_8UC1, 3: cv2.CV_8UC3, 4: cv2.CV_8UC4}
+    return types.get(channels, cv2.CV_8UC3)  # CV_8UC3 as fallback
 
 
 # ---------------------------------------------------------------------------
