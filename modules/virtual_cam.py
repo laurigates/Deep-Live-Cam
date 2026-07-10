@@ -99,7 +99,7 @@ def stop() -> None:
     if _camera is not None:
         try:
             _camera.close()
-        except Exception:
-            pass
+        except Exception as exc:  # best-effort close during teardown; pyvirtualcam backend errors vary by platform
+            logger.warning("Error closing virtual camera: %s", exc)
         logger.info("Virtual camera stopped")
         _camera = None

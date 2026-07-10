@@ -7,6 +7,7 @@ if any(arg.startswith("--execution-provider") for arg in sys.argv):
 # reduce tensorflow log level
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 import argparse
+import logging
 import platform
 import shutil
 import signal
@@ -37,6 +38,8 @@ from modules.utilities import (
     restore_audio,
     set_download_progress_callback,
 )
+
+logger = logging.getLogger(__name__)
 
 # Lazy-loaded heavy imports — deferred until actually needed to save 3-5s startup.
 torch = None  # loaded on demand by _ensure_torch()
@@ -572,15 +575,19 @@ def destroy(to_quit=True) -> None:
             from modules.ui_webcam import stop_active_session
 
             stop_active_session()
-        except Exception:
-            pass
+        except ImportError:
+            pass  # headless mode — ui_webcam (tkinter stack) never loaded
+        except Exception:  # shutdown must proceed even if webcam teardown fails
+            logger.exception("Error stopping active webcam session during shutdown")
         try:
             import modules.ui as ui
 
             if ui.ROOT is not None:
                 ui.ROOT.quit()
-        except Exception:
-            pass
+        except ImportError:
+            pass  # headless mode — tkinter/UI stack not available
+        except Exception:  # shutdown must proceed even if the UI teardown fails
+            logger.exception("Error quitting UI root during shutdown")
         raise SystemExit(0)
 
 

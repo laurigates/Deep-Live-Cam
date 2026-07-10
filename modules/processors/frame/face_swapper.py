@@ -923,7 +923,8 @@ def swap_face(source_face: Face, target_face: Face, temp_frame: Frame, config=No
         if swapped_frame_raw.shape != temp_frame.shape:
             try:
                 swapped_frame_raw = gpu_resize(swapped_frame_raw, (temp_frame.shape[1], temp_frame.shape[0]))
-            except Exception:
+            except cv2.error as exc:  # resize failure — the outer handler catches anything else
+                logger.warning("Resize of swapped frame failed (%s); returning original frame", exc)
                 return original_frame
 
         swapped_frame = np.clip(swapped_frame_raw, 0, 255).astype(np.uint8)

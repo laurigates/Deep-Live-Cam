@@ -1,5 +1,6 @@
 """Tests for the virtual camera module."""
 
+import logging
 from unittest.mock import MagicMock, patch
 
 import numpy as np
@@ -152,6 +153,22 @@ class TestVirtualCamWithMock:
         virtual_cam.stop()
         assert virtual_cam.is_active() is False
         mock_camera.close.assert_called_once()
+
+    def test_stop_logs_warning_when_close_raises(self, caplog):
+        """A failing close() must be logged, not silently swallowed (issue #104)."""
+        from modules import virtual_cam
+
+        original = virtual_cam._camera
+        mock_camera = MagicMock()
+        mock_camera.close.side_effect = RuntimeError("boom")
+        virtual_cam._camera = mock_camera
+        try:
+            with caplog.at_level(logging.WARNING, logger="modules.virtual_cam"):
+                virtual_cam.stop()
+            assert virtual_cam.is_active() is False
+            assert "Error closing virtual camera" in caplog.text
+        finally:
+            virtual_cam._camera = original
 
     @patch("modules.virtual_cam._AVAILABLE", True)
     @patch("modules.virtual_cam.pyvirtualcam")

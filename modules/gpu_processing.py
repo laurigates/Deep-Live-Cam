@@ -50,7 +50,9 @@ try:
         if not _has_cvt:
             missing.append("cvtColor")
         print(f"[gpu_processing] cv2.cuda.GpuMat exists but missing: {', '.join(missing)} – falling back to CPU.")
-except Exception:
+except (AttributeError, cv2.error):
+    # cv2.cuda / GpuMat absent or unusable on this build — any failure here
+    # simply means there is no usable CUDA; fall back to CPU paths.
     if not IS_APPLE_SILICON:
         print("[gpu_processing] OpenCV CUDA not available – using CPU fallback for all operations.")
 

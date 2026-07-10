@@ -14,6 +14,7 @@ Supports Practical-RIFE v4.25 and v4.25.lite models.
 """
 
 import glob
+import logging
 import os
 import shutil
 import subprocess
@@ -24,6 +25,8 @@ import modules.globals
 from modules.paths import MODELS_DIR
 
 NAME = "DLC.RIFE-INTERPOLATION"
+
+logger = logging.getLogger(__name__)
 
 RIFE_DIR = os.path.join(MODELS_DIR, "rife-ncnn-vulkan")
 
@@ -39,6 +42,9 @@ _NATIVE_RIFE = None
 _NATIVE_RIFE_MODEL = None
 _NATIVE_RIFE_LOCK = threading.Lock()
 
+# Warn-once flag for live interpolation failures (hot path, ~30 calls/sec)
+_live_interp_warned = False
+
 
 def _update_status(message: str) -> None:
     """Print status and forward to UI if available."""
@@ -47,8 +53,10 @@ def _update_status(message: str) -> None:
         from modules.core import update_status
 
         update_status(message, NAME)
-    except Exception:
-        pass
+    except ImportError as exc:
+        # modules.core may not be importable during early startup (circular import);
+        # the message was already printed above, so only UI forwarding is lost.
+        logger.warning("Could not forward status to UI: %s", exc)
 
 
 # ---------------------------------------------------------------------------
@@ -305,6 +313,8 @@ def interpolate_frame_pair(frame0, frame1, multiplier: int = 2, should_stop=None
     GPU error) so callers can safely skip interpolation.
     """
 
+    global _live_interp_warned
+
     if should_stop is not None and should_stop():
         return []
 
@@ -328,7 +338,12 @@ def interpolate_frame_pair(frame0, frame1, multiplier: int = 2, should_stop=None
             interpolated = rife.process_cv2(frame0, frame1, timestep=timestep)
             intermediates.append(interpolated)
         return intermediates
-    except Exception:
+    # Intentionally broad: the native binding can raise arbitrary GPU/runtime
+    # errors that cannot be enumerated — the caller safely skips interpolation.
+    except Exception as exc:
+        if not _live_interp_warned:
+            logger.warning("Live RIFE interpolation failed, skipping intermediates: %s", exc)
+            _live_interp_warned = True
         return []
 
 
